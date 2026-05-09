@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 22592 11736" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="global_root_note_scale_selector_filter">
+        <path id="global_root_note_scale_selector_filter_bg" d="M22591.907,487.8L22591.907,10561.979C22591.907,11209.681 22066.056,11735.532 21418.354,11735.532L1173.553,11735.532C525.852,11735.532 0,11209.681 0,10561.979L0,1173.553C0,525.852 525.852,0 1173.553,0L22104.108,0C22373.332,0 22591.907,218.576 22591.907,487.8Z" style="fill:#333;"/>
+        <g id="modo_toggle_select_btn_select_note_scale_view">
+            <g id="touch_note_scale_view">
+                <g id="touch_note_scale_view_disp">
+                    <path id="touch_note_scale_view_disp_bg" d="M21807.517,9665.127L21807.517,10903.91C21807.517,10989.373 21738.132,11058.758 21652.669,11058.758L17919.803,11058.758C17834.34,11058.758 17764.955,10989.373 17764.955,10903.91L17764.955,9665.127C17764.955,9579.664 17834.34,9510.279 17919.803,9510.279L21652.669,9510.279C21738.132,9510.279 21807.517,9579.664 21807.517,9665.127Z" style="fill:#0d0d0d;"/>
+                    <g id="touch_note_scale_view_disp_lbl" transform="matrix(1144.420862,0,0,1144.420862,21428.067963,10647.602585)">
+                    </g>
+                    <text x="18247.941px" y="10647.603px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1144.421px;fill:#858585;">F# Gb</text>
+                </g>
+                <g id="touch_note_scale_view_title" transform="matrix(984.63557,0,0,984.63557,17224.244487,10603.594346)">
+                </g>
+                <text x="14489.092px" y="10603.594px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:984.636px;fill:#858585;">NOTE</text>
+            </g>
+            <g id="modo_dropdown_btn">
+                <g id="dropdown_btn">
+                    <path id="dropdown_btn_bg" d="M13542.578,9624.305L13542.578,10966.072C13542.578,11058.64 13467.425,11133.793 13374.857,11133.793L6523.274,11133.793C6430.706,11133.793 6355.553,11058.64 6355.553,10966.072L6355.553,9624.305C6355.553,9531.737 6430.706,9456.584 6523.274,9456.584L13374.857,9456.584C13467.425,9456.584 13542.578,9531.737 13542.578,9624.305Z" style="fill:#0d0d0d;"/>
+                    <g id="icon_chevron_down">
+                        <path id="chevron" d="M12309.435,10081.225L12601.808,10429.662C12623.744,10455.804 12620.329,10494.837 12594.187,10516.773C12568.045,10538.709 12529.012,10535.294 12507.076,10509.152L12214.702,10160.715C12192.766,10134.573 12196.181,10095.54 12222.324,10073.604C12248.466,10051.668 12287.499,10055.083 12309.435,10081.225Z" style="fill:#3f81da;"/>
+                        <path id="chevron1" serif:id="chevron" d="M12927.746,10160.715L12635.372,10509.152C12613.436,10535.294 12574.403,10538.709 12548.261,10516.773C12522.119,10494.837 12518.704,10455.804 12540.64,10429.662L12833.013,10081.225C12854.949,10055.083 12893.982,10051.668 12920.124,10073.604C12946.267,10095.54 12949.682,10134.573 12927.746,10160.715Z" style="fill:#3f81da;"/>
+                    </g>
+                    <g id="dropdown_btn_lbl" transform="matrix(1233.847084,0,0,1233.847084,11503.735798,10724.654667)">
+                    </g>
+                    <text x="7185.271px" y="10724.655px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1233.847px;fill:#858585;">MAJOR</text>
+                </g>
+                <g id="dropdown_btn_title" transform="matrix(1527.446007,0,0,1527.446007,5835.586474,10829.153347)">
+                </g>
+                <text x="1083.947px" y="10829.153px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1527.446px;fill:#858585;">MODO</text>
+            </g>
+        </g>
+        <g id="root_note_scale_selector_piano">
+            <g id="key_B">
+                <path id="key_bg" d="M21853.713,1231.805L21853.713,8213.289C21853.713,8459.806 21653.572,8659.947 21407.055,8659.947L19322.652,8659.947C19076.134,8659.947 18875.994,8459.806 18875.994,8213.289L18875.994,1231.805C18875.994,985.288 19076.134,785.147 19322.652,785.147L21407.055,785.147C21653.572,785.147 21853.713,985.288 21853.713,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,20759.133513,7822.143618)">
+                </g>
+                <text x="19970.573px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">B</text>
+            </g>
+            <g id="key_A">
+                <path id="key_bg1" serif:id="key_bg" d="M18840.737,1231.805L18840.737,8213.289C18840.737,8459.806 18640.596,8659.947 18394.079,8659.947L16309.676,8659.947C16063.158,8659.947 15863.018,8459.806 15863.018,8213.289L15863.018,1231.805C15863.018,985.288 16063.158,785.147 16309.676,785.147L18394.079,785.147C18640.596,785.147 18840.737,985.288 18840.737,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl1" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,17746.157377,7822.143618)">
+                </g>
+                <text x="16957.597px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">A</text>
+            </g>
+            <g id="key_G">
+                <path id="key_bg2" serif:id="key_bg" d="M15827.761,1231.805L15827.761,8213.289C15827.761,8459.806 15627.62,8659.947 15381.103,8659.947L13296.699,8659.947C13050.182,8659.947 12850.041,8459.806 12850.041,8213.289L12850.041,1231.805C12850.041,985.288 13050.182,785.147 13296.699,785.147L15381.103,785.147C15627.62,785.147 15827.761,985.288 15827.761,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl2" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,14798.702173,7822.143618)">
+                </g>
+                <text x="13879.1px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">G</text>
+            </g>
+            <g id="key_F">
+                <path id="key_bg3" serif:id="key_bg" d="M12814.785,1231.805L12814.785,8213.289C12814.785,8459.806 12614.644,8659.947 12368.127,8659.947L10283.723,8659.947C10037.206,8659.947 9837.065,8459.806 9837.065,8213.289L9837.065,785.147L12368.127,785.147C12614.644,785.147 12814.785,985.288 12814.785,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl3" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,11687.011682,7822.143618)">
+                </g>
+                <text x="10964.838px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">F</text>
+            </g>
+            <g id="key_E">
+                <path id="key_bg4" serif:id="key_bg" d="M9801.808,785.147L9801.808,8213.289C9801.808,8459.806 9601.668,8659.947 9355.151,8659.947L7270.747,8659.947C7024.23,8659.947 6824.089,8459.806 6824.089,8213.289L6824.089,1231.805C6824.089,985.288 7024.23,785.147 7270.747,785.147L9801.808,785.147Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl4" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,8707.228969,7822.143618)">
+                </g>
+                <text x="7918.669px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">E</text>
+            </g>
+            <g id="key_D">
+                <path id="key_bg5" serif:id="key_bg" d="M6788.832,1231.805L6788.832,8213.289C6788.832,8459.806 6588.692,8659.947 6342.174,8659.947L4257.771,8659.947C4011.254,8659.947 3811.113,8459.806 3811.113,8213.289L3811.113,1231.805C3811.113,985.288 4011.254,785.147 4257.771,785.147L6342.174,785.147C6588.692,785.147 6788.832,985.288 6788.832,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl5" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,5726.86898,7822.143618)">
+                </g>
+                <text x="4873.076px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">D</text>
+            </g>
+            <g id="key_C">
+                <path id="key_bg6" serif:id="key_bg" d="M3775.833,1231.805L3775.833,8213.289C3775.833,8459.806 3575.693,8659.947 3329.175,8659.947L1244.772,8659.947C998.255,8659.947 798.114,8459.806 798.114,8213.289L798.114,1231.805C798.114,985.288 998.255,785.147 1244.772,785.147L3329.175,785.147C3575.693,785.147 3775.833,985.288 3775.833,1231.805Z" style="fill:#d9d9d9;"/>
+                <g id="key_lbl6" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,2713.870049,7822.143618)">
+                </g>
+                <text x="1860.077px" y="7822.144px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#1a1a1a;">C</text>
+            </g>
+            <g id="key_D-_Eb" serif:id="key_D#_Eb">
+                <path id="key_bg7" serif:id="key_bg" d="M8054.363,777.765L5523.302,777.765L5523.302,5369.306C5523.302,5578.846 5693.421,5748.965 5902.961,5748.965L7674.704,5748.965C7884.243,5748.965 8054.363,5578.846 8054.363,5369.306L8054.363,777.765Z"/>
+                <g id="key_lbl7" serif:id="key_lbl">
+                    <g id="key_lbl8" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,7495.078105,2771.620346)">
+                    </g>
+                    <text x="5983.767px" y="2771.62px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">D#</text>
+                    <g id="key_lbl9" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,7462.461958,4110.230328)">
+                    </g>
+                    <text x="6016.383px" y="4110.23px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">Eb</text>
+                </g>
+            </g>
+            <g id="key_A-_Bb" serif:id="key_A#_Bb">
+                <path id="key_bg8" serif:id="key_bg" d="M20106.268,777.765L17575.206,777.765L17575.206,5369.306C17575.206,5578.846 17745.326,5748.965 17954.865,5748.965L19726.608,5748.965C19936.148,5748.965 20106.268,5578.846 20106.268,5369.306L20106.268,777.765Z"/>
+                <g id="key_lbl10" serif:id="key_lbl">
+                    <g id="key_lbl11" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,19563.776221,2779.00297)">
+                    </g>
+                    <text x="18117.698px" y="2779.003px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">A#</text>
+                    <g id="key_lbl12" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,19563.776221,4117.612953)">
+                    </g>
+                    <text x="18117.698px" y="4117.613px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">Bb</text>
+                </g>
+            </g>
+            <g id="key_G-_Ab" serif:id="key_G#_Ab">
+                <path id="key_bg9" serif:id="key_bg" d="M17128.548,777.765L14597.487,777.765L14597.487,5369.306C14597.487,5578.846 14767.607,5748.965 14977.146,5748.965L16748.889,5748.965C16958.429,5748.965 17128.548,5578.846 17128.548,5369.306L17128.548,777.765Z"/>
+                <g id="key_lbl13" serif:id="key_lbl">
+                    <g id="key_lbl14" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,16665.707942,2779.00297)">
+                    </g>
+                    <text x="15088.587px" y="2779.003px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">G#</text>
+                    <g id="key_lbl15" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,16600.18701,4117.612953)">
+                    </g>
+                    <text x="15154.108px" y="4117.613px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">Ab</text>
+                </g>
+            </g>
+            <g id="key_on_F-_Gb" serif:id="key_on_F#_Gb">
+                <path id="key_on_bg" d="M13899.088,777.765L11368.027,777.765L11368.027,5369.306C11368.027,5578.846 11538.147,5748.965 11747.686,5748.965L13519.429,5748.965C13728.969,5748.965 13899.088,5578.846 13899.088,5369.306L13899.088,777.765Z" style="fill:#2e4668;"/>
+                <g id="key_on_lbl">
+                    <g id="key_on_lbl1" serif:id="key_on_lbl" transform="matrix(1182.263158,0,0,1182.263158,13309.286638,2771.620346)">
+                    </g>
+                    <text x="11929.595px" y="2771.62px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#e6e6e6;">F#</text>
+                    <g id="key_on_lbl2" serif:id="key_on_lbl" transform="matrix(1182.263158,0,0,1182.263158,13408.000994,4110.230328)">
+                    </g>
+                    <text x="11830.88px" y="4110.23px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#e6e6e6;">Gb</text>
+                </g>
+            </g>
+            <g id="key_C-_Db" serif:id="key_C#_Db">
+                <path id="key_bg10" serif:id="key_bg" d="M5041.364,777.765L2510.303,777.765L2510.303,5369.306C2510.303,5578.846 2680.422,5748.965 2889.962,5748.965L4661.705,5748.965C4871.244,5748.965 5041.364,5578.846 5041.364,5369.306L5041.364,777.765Z"/>
+                <g id="key_lbl16" serif:id="key_lbl">
+                    <g id="key_lbl17" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,4566.768562,2771.620346)">
+                    </g>
+                    <text x="3055.458px" y="2771.62px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">C#</text>
+                    <g id="key_lbl18" serif:id="key_lbl" transform="matrix(1182.263158,0,0,1182.263158,4566.768562,4110.230328)">
+                    </g>
+                    <text x="3055.458px" y="4110.23px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1182.263px;fill:#8c8c8c;">Db</text>
+                </g>
+            </g>
+        </g>
+    </g>
+</svg>

@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<svg width="100%" height="100%" viewBox="0 0 6025 11760" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xml:space="preserve" xmlns:serif="http://www.serif.com/" style="fill-rule:evenodd;clip-rule:evenodd;stroke-linejoin:round;stroke-miterlimit:2;">
+    <g id="type_chord_selector">
+        <path id="global_genere_moods_BPM_grid_compas_selector_filter_bg" d="M6024.019,903.603L6024.019,10855.906C6024.019,11354.618 5619.128,11759.509 5120.416,11759.509L903.603,11759.509C404.891,11759.509 0,11354.618 0,10855.906L0,903.603C0,404.891 404.891,0 903.603,0L5120.416,0C5619.128,0 6024.019,404.891 6024.019,903.603Z" style="fill:#333;"/>
+        <g id="type_chord_selector_btn">
+            <g id="button_nota">
+                <path id="button_nota_bg" d="M5431.035,9561.811L5431.035,10741.464C5431.035,10958.486 5254.84,11134.681 5037.817,11134.681L983.551,11134.681C766.528,11134.681 590.333,10958.486 590.333,10741.464L590.333,9561.811C590.333,9344.788 766.528,9168.594 983.551,9168.594L5037.817,9168.594C5254.84,9168.594 5431.035,9344.788 5431.035,9561.811Z" style="fill:#0d0d0d;"/>
+                <g id="button_nota_lbl" transform="matrix(1370.419901,0,0,1370.419901,4458.056061,10561.16714)">
+                </g>
+                <text x="1563.312px" y="10561.167px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1370.42px;fill:#858585;">Note</text>
+            </g>
+            <g id="button_triada">
+                <path id="button_triada_bg" d="M5431.035,7318.601L5431.035,8498.254C5431.035,8715.277 5254.84,8891.471 5037.817,8891.471L983.551,8891.471C766.528,8891.471 590.333,8715.277 590.333,8498.254L590.333,7318.601C590.333,7101.579 766.528,6925.384 983.551,6925.384L5037.817,6925.384C5254.84,6925.384 5431.035,7101.579 5431.035,7318.601Z" style="fill:#0d0d0d;"/>
+                <g id="button_triada_lbl" transform="matrix(1370.419901,0,0,1370.419901,4165.302786,8321.832024)">
+                </g>
+                <text x="1856.065px" y="8321.832px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1370.42px;fill:#858585;">T<tspan x="2642.317px 3098.677px " y="8321.832px 8321.832px ">ri</tspan>a</text>
+            </g>
+            <g id="button_7ma">
+                <path id="button_7ma_bg" d="M5431.035,5090.456L5431.035,6270.109C5431.035,6487.131 5254.84,6663.326 5037.817,6663.326L983.551,6663.326C766.528,6663.326 590.333,6487.131 590.333,6270.109L590.333,5090.456C590.333,4873.434 766.528,4697.239 983.551,4697.239L5037.817,4697.239C5254.84,4697.239 5431.035,4873.434 5431.035,5090.456Z" style="fill:#0d0d0d;"/>
+                <g id="button_7ma_lbl" transform="matrix(1370.419901,0,0,1370.419901,4343.631353,6089.812224)">
+                </g>
+                <text x="1677.736px" y="6089.812px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1370.42px;fill:#858585;">7ma</text>
+            </g>
+            <g id="button_9na">
+                <path id="button_9na_bg" d="M5431.035,2837.296L5431.035,4016.948C5431.035,4233.971 5254.84,4410.166 5037.817,4410.166L983.551,4410.166C766.528,4410.166 590.333,4233.971 590.333,4016.948L590.333,2837.296C590.333,2620.273 766.528,2444.078 983.551,2444.078L5037.817,2444.078C5254.84,2444.078 5431.035,2620.273 5431.035,2837.296Z" style="fill:#0d0d0d;"/>
+                <g id="button_9na_lbl" transform="matrix(1370.419901,0,0,1370.419901,4153.927231,3817.278774)">
+                </g>
+                <text x="1867.441px" y="3817.279px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1370.42px;fill:#858585;">9na</text>
+            </g>
+        </g>
+        <g id="octave_selector_title" transform="matrix(1047.734316,0,0,1047.734316,4992.866721,1583.079216)">
+        </g>
+        <text x="1151.345px" y="1583.079px" style="font-family:'ArialMT', 'Arial', sans-serif;font-size:1047.734px;fill:#858585;">CHORD</text>
+    </g>
+</svg>
