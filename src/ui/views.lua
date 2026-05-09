@@ -12,15 +12,19 @@ local SCALE_OPTIONS = (function() local t = {} for _, v in ipairs(config.SCALES)
 local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
 
 -- Uniform Scale Factor & Offsets.
--- MUST be set BEFORE calling UX/UY/US. Set by DrawFullView (computed from gfx.w/h)
--- and DrawCompactView (S=1, OX=0, OY=0). S defaults to 0 so uninitialized use
--- renders invisible instead of silently wrong.
-local S, OX, OY = 0, 0, 0
+-- Set ONLY via SetScale() at the start of DrawFullView.
+-- Do NOT assign _S/_OX/_OY directly — use SetScale().
+-- Underscore prefix = internal, do not touch from outside this module.
+local _S, _OX, _OY = 0, 0, 0
 local page_override_timer = 0
 
-local function UX(v) return math.floor(v * S + OX) end
-local function UY(v) return math.floor(v * S + OY) end
-local function US(v) return math.floor(v * S) end
+local function UX(v) return math.floor(v * _S + _OX) end
+local function UY(v) return math.floor(v * _S + _OY) end
+local function US(v) return math.floor(v * _S) end
+
+-- Set the scale context for the current frame.
+-- Must be called before any UX/UY/US call. Only DrawFullView calls this.
+local function SetScale(s, ox, oy) _S, _OX, _OY = s, ox, oy end
 
 local function DrawTooltip(text)
     if not config.state.show_tooltips then return end
@@ -399,9 +403,8 @@ end
 function views.DrawCompactView() end
 
 function views.DrawFullView()
-    S = math.min(gfx.w / 39914, gfx.h / 29162)
-    OX = (gfx.w - 39914 * S) / 2
-    OY = (gfx.h - 29162 * S) / 2
+    local s = math.min(gfx.w / 39914, gfx.h / 29162)
+    SetScale(s, (gfx.w - 39914 * s) / 2, (gfx.h - 29162 * s) / 2)
     helpers.SetColor(theme.colors.bg)
     gfx.rect(0, 0, gfx.w, gfx.h, 1)
     views.DrawHeader()
