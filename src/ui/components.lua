@@ -6,6 +6,7 @@ local format = require("ui.format")
 local colors = require("ui.colors")
 local progression = require("core.progression")
 local buttons = require("ui.buttons")
+local paginator = require("ui.paginator")
 
 local components = {}
 
@@ -72,35 +73,6 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
         gfx.rect(x, y + r, w + 1, math.max(0, h - r * 2) + 1, 1)
     else
         gfx.roundrect(x, y, w, h, r, 1)
-    end
-end
-
-function components.DrawPaginator(x, y, total_pages)
-    local radius = 6
-    local spacing = 24
-    local start_x = x - ((total_pages - 1) * spacing) / 2
-    for i = 1, total_pages do
-        local cx = start_x + (i - 1) * spacing
-        helpers.SetColor(config.state.current_page == i and theme.colors.page_active or theme.colors.page_inactive)
-        gfx.circle(cx, y, radius, 1, 1)
-        if config.state.show_tooltips then
-            local dot_hover = (gfx.mouse_x - cx)^2 + (gfx.mouse_y - y)^2 <= (radius + 5)^2
-            if dot_hover then
-                gfx.setfont(1, "Calibri", 11)
-                local label = "Page " .. i
-                local lw, lh = gfx.measurestr(label)
-                local tx = cx - lw/2 - 2
-                local ty = y - lh - 8
-                helpers.SetColor({0, 0, 0, 0.75})
-                components.DrawRoundedRect(tx - 2, ty - 2, lw + 4, lh + 4, 3, true)
-                helpers.SetColor(theme.colors.text)
-                gfx.x, gfx.y = tx, ty
-                gfx.drawstr(label)
-            end
-        end
-        if config.state.mouse_click and (gfx.mouse_x - cx)^2 + (gfx.mouse_y - y)^2 <= radius^2 then
-            config.state.current_page = i
-        end
     end
 end
 
@@ -679,5 +651,6 @@ components.DrawButton = buttons.DrawButton
 components.DrawToolIcon = buttons.DrawToolIcon
 components.DrawTransportButton = buttons.DrawTransportButton
 components.DrawNoteDisplay = buttons.DrawNoteDisplay
+components.DrawPaginator = paginator.DrawPaginator
 
 return components
