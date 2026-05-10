@@ -37,6 +37,7 @@ local compact = require("ui.compact")
 local last_focus_check = 0
 local is_intercepting = false
 local last_dock_state = 0
+local temp_ctx = {}  -- Reusable context table for key press handling (Issue 12)
 
 -- Toggle dock state (Ctrl+D)
 local function ToggleDock()
@@ -87,20 +88,14 @@ local function HandleKeyboard()
             state.is_pressed = true
             local map = config.VKEY_MAP[k_code]
             if map then
-                -- Velocity Humanization
-                local vel = 100
-                if config.state.use_velocity then
-                    vel = 85 + math.random(30) -- Range 85-115 for human feel
-                end
+                -- Velocity Humanization (Issue 21)
+                local vel = config.state.use_velocity and (85 + math.random(30)) or 100
                 
-                -- Minimal context with octave override (midi.TriggerChord only needs these 4 fields)
-                local temp_ctx = {
-                    octave = config.state.octave + map.oct,
-                    root_index = config.state.root_index,
-                    scale_index = config.state.scale_index,
-                    chord_mode_index = config.state.chord_mode_index
-                }
-                
+                -- Reusable context with octave override (Issue 12)
+                temp_ctx.octave = config.state.octave + map.oct
+                temp_ctx.root_index = config.state.root_index
+                temp_ctx.scale_index = config.state.scale_index
+                temp_ctx.chord_mode_index = config.state.chord_mode_index
                 state.midi_notes = midi.TriggerChord(map.deg, true, temp_ctx, vel)
             end
         elseif not is_down and state.is_pressed then
@@ -113,35 +108,7 @@ local function HandleKeyboard()
     end
 end
 
--- Handle keyboard shortcuts when GFX is not running (compact mode)
--- TODO: Merge with HandleKeyboard (remove is_intercepting guard difference)
-local function HandleKeyboardCompact()
-    if not is_intercepting then return end
-    -- Use global VKeys state for compact mode
-    for k_code, state in pairs(config.state.key_states) do
-        local is_down = reaper.JS_VKeys_GetState(0):byte(k_code) ~= 0
-        if is_down and not state.is_pressed then
-            state.is_pressed = true
-            local map = config.VKEY_MAP[k_code]
-            if map then
-                local vel = config.state.use_velocity and (85 + math.random(30)) or 100
-                local temp_ctx = {
-                    octave = config.state.octave + map.oct,
-                    root_index = config.state.root_index,
-                    scale_index = config.state.scale_index,
-                    chord_mode_index = config.state.chord_mode_index
-                }
-                state.midi_notes = midi.TriggerChord(map.deg, true, temp_ctx, vel)
-            end
-        elseif not is_down and state.is_pressed then
-            state.is_pressed = false
-            for _, n in ipairs(state.midi_notes) do
-                midi.SendMidi(n, false)
-            end
-            state.midi_notes = {}
-        end
-    end
-end
+
 
 local function InterceptMappedKeys(state)
     -- Only intercept the specific keys the script uses, not ALL keys.
@@ -193,11 +160,23 @@ local function CheckFocus()
     end
 end
 
+local function CleanupAll()
+    midi.AllNotesOff()
+    sequencer.Stop()
+    if is_intercepting then
+        InterceptMappedKeys(false)
+    end
+    compact.Cleanup()
+end
+
 local function MainLoop()
     -- Decrement note display timer
     if config.state.active_note_draw_timer > 0 then
         config.state.active_note_draw_timer = config.state.active_note_draw_timer - 1
     end
+
+    -- Decrement page override timer in ALL modes (Issue 8)
+    views.DecrementPageOverrideTimer()
     
     -- Shared logic for ALL modes
     CheckFocus()
@@ -209,15 +188,21 @@ local function MainLoop()
         compact.ProcessMouseInterception()
         compact.UpdateCompactView()
         compact.HandlePanel()
-        HandleKeyboardCompact()
         reaper.defer(MainLoop)
         return
     end
 
-    -- Process transport bar clicks even in FULL mode so the full-view toggle button works
-    if config.state.compact.is_active then
+    -- Overlay mode: compact bar visible alongside full view (auto-start)
+    if config.state.compact_overlay_active then
         compact.ProcessMouseInterception()
-        -- If SwitchViewMode was triggered, view_mode is now COMPACT and gfx was quit
+        compact.UpdateCompactView()
+        -- Si TogglePanel se disparó (clic en la barra → panel_open = true),
+        -- no podemos dibujar el panel sin conflicto de GFX. Transicionamos a
+        -- compacto completo: gfx.quit() cierra la full view, luego HandlePanel
+        -- en el próximo frame crea la ventana del panel (panel_open ya es true).
+        if compact.IsPanelOpen() then
+            compact.SwitchViewMode()  -- overlay_active=false, view_mode=COMPACT, gfx.quit()
+        end
         if config.state.view_mode == config.VIEW_MODES.COMPACT then
             reaper.defer(MainLoop)
             return
@@ -251,13 +236,9 @@ local function MainLoop()
         ToggleDock()
     end
     if char == -1 or char == 27 then
-        -- Exit Cleanup
-        midi.AllNotesOff()
-        sequencer.Stop()
-        if is_intercepting then
-            InterceptMappedKeys(false)
-        end
-        compact.Cleanup()
+        if config.state.did_cleanup then return end
+        config.state.did_cleanup = true
+        CleanupAll()
         gfx.quit()
         return
     end
@@ -271,21 +252,61 @@ local function Init()
     end
 
     -- Register cleanup for safe exit
+    config.state.did_cleanup = false
     reaper.atexit(function()
-        midi.AllNotesOff()
-        sequencer.Stop()
-        if is_intercepting then
-            InterceptMappedKeys(false)
-        end
-        compact.Cleanup()
+        if config.state.did_cleanup then return end
+        config.state.did_cleanup = true
+        CleanupAll()
     end)
 
     gfx.init("GROVE SCALE RUNNER", 720, 500, 0, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)
 
+    -- Load persisted preferences from REAPER ExtState
+    local ext_compact = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_compact")
+    if ext_compact == "1" then config.state.auto_start_compact = true end
+    local ext_reaper = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_reaper")
+    if ext_reaper == "1" then config.state.auto_start_reaper = true end
+
     -- Ensure clean state on startup
     InterceptMappedKeys(false)
     is_intercepting = false
+
+    -- Auto-start: compact bar overlay alongside full view
+    if config.state.auto_start_compact then
+        compact.InitOverlay()
+    end
+
+    -- Auto-start: register as REAPER startup script if enabled
+    if config.state.auto_start_reaper then
+        local resource_path = reaper.GetResourcePath()
+        if resource_path and #resource_path > 0 then
+            local startup_dir = resource_path .. "\\Scripts\\Startup\\"
+            local startup_file = startup_dir .. "GROVE_Scale_Runner.lua"
+
+            local f = io.open(startup_file, "r")
+            if not f then
+                -- Derive absolute path to this script
+                local info = debug.getinfo(1, 'S')
+                local our_path = (info.source or ""):gsub("^@", "")  -- strip @ prefix
+
+                -- Ensure Startup directory exists
+                reaper.RecursiveCreateDirectory(startup_dir, 0)
+
+                -- Create wrapper script that dofile()s the real main.lua
+                local fh = io.open(startup_file, "w")
+                if fh then
+                    local escaped = our_path:gsub("\\", "\\\\")
+                    fh:write("-- Auto-start for GROVE Scale Runner\n")
+                    fh:write("-- REAPER runs all .lua files in Scripts/Startup/ at launch\n")
+                    fh:write("dofile[[" .. escaped .. "]]\n")
+                    fh:close()
+                end
+            else
+                f:close()
+            end
+        end
+    end
 
     reaper.defer(MainLoop)
 end

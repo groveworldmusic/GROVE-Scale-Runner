@@ -1,4 +1,6 @@
 -- GROVE FL MIDI: Shared UI Helpers
+local config = require("config")
+local theme = require("ui.theme")
 local helpers = {}
 
 -- Set GFX color from {r,g,b,a} table with optional alpha multiplier
@@ -6,18 +8,29 @@ function helpers.SetColor(c, alpha_mult)
     gfx.set(c[1], c[2], c[3], (c[4] or 1) * (alpha_mult or 1))
 end
 
--- Strip accents and special characters for stable rendering
-function helpers.StripAccents(str)
-    local s = str
-    local subs = {
-        ["Á"]="A", ["É"]="E", ["Í"]="I", ["Ó"]="O", ["Ú"]="U",
-        ["á"]="a", ["é"]="e", ["í"]="i", ["ó"]="o", ["ú"]="u",
-        ["Ñ"]="N", ["ñ"]="n"
-    }
-    for k, v in pairs(subs) do
-        s = s:gsub(k, v)
-    end
-    return s
+-- Draw a tooltip at mouse position with optional font_size (default 11)
+function helpers.DrawTooltip(text, font_size)
+    if not config.state.show_tooltips then return end
+    local fs = font_size or 11
+    gfx.setfont(1, "Calibri", fs)
+    local tw, th = gfx.measurestr(text)
+    local tx = gfx.mouse_x + 14
+    local ty = gfx.mouse_y - th - 6
+    if tx + tw > gfx.w then tx = gfx.mouse_x - tw - 14 end
+    if ty < 0 then ty = gfx.mouse_y + 14 end
+    if ty + th + 6 > gfx.h then ty = gfx.mouse_y - th - 6 end
+    helpers.SetColor({0, 0, 0, 0.75})
+    -- Filled rounded rect via circles + rect (avoids dependency on components)
+    local r = 4
+    gfx.circle(tx - 4 + r, ty - 2 + r, r, 1, 1)
+    gfx.circle(tx - 4 + tw + 8 - r, ty - 2 + r, r, 1, 1)
+    gfx.circle(tx - 4 + r, ty - 2 + th + 4 - r, r, 1, 1)
+    gfx.circle(tx - 4 + tw + 8 - r, ty - 2 + th + 4 - r, r, 1, 1)
+    gfx.rect(tx - 4 + r, ty - 2, math.max(0, tw + 8 - r * 2) + 1, th + 4 + 1, 1)
+    gfx.rect(tx - 4, ty - 2 + r, tw + 8 + 1, math.max(0, th + 4 - r * 2) + 1, 1)
+    helpers.SetColor(theme.colors.text)
+    gfx.x, gfx.y = tx, ty
+    gfx.drawstr(text)
 end
 
 -- Medium abbreviations for full-view dropdowns

@@ -5,6 +5,12 @@ local midi = require("core.midi")
 
 local components = {}
 
+-- Cached scale note tables for DrawPianoKeyboard (Issue 13)
+local cached_scale_root = nil
+local cached_scale_idx = nil
+local cached_scale_notes = {}
+local cached_note_to_degree = {}
+
 -- Resolve display color for a degree: grade color or flat blue depending on mode
 local function DegreeColor(degree)
     if config.state.color_mode ~= "grade" then
@@ -17,22 +23,7 @@ end
 local DEGREE_KEY_LABELS = {"Q", "W", "E", "R", "T", "Y", "U"}
 local ROMAN_NUMERALS = {"I", "II", "III", "IV", "V", "VI", "VII"}
 
--- Local tooltip helper for components
-local function DrawTooltip(text)
-    if not config.state.show_tooltips then return end
-    gfx.setfont(1, "Calibri", 11)
-    local tw, th = gfx.measurestr(text)
-    local tx = gfx.mouse_x + 14
-    local ty = gfx.mouse_y - th - 6
-    if tx + tw > gfx.w then tx = gfx.mouse_x - tw - 14 end
-    if ty < 0 then ty = gfx.mouse_y + 14 end
-    if ty + th + 6 > gfx.h then ty = gfx.mouse_y - th - 6 end
-    helpers.SetColor({0, 0, 0, 0.75})
-    components.DrawRoundedRect(tx - 4, ty - 2, tw + 8, th + 4, 4, true)
-    helpers.SetColor(theme.colors.text)
-    gfx.x, gfx.y = tx, ty
-    gfx.drawstr(text)
-end
+
 
 -- Shared piano keyboard layout constants
 -- Used by both the full-view GFX piano (DrawPianoKeyboard) and compact LICE piano
@@ -73,9 +64,9 @@ function components.DrawIsland(x, y, w, h, title, font_size)
     end
 end
 
-function components.DrawToolIcon(type, x, y, size)
+function components.DrawToolIcon(type, x, y, size, active)
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + size and gfx.mouse_y >= y and gfx.mouse_y <= y + size
-    helpers.SetColor(hover and theme.colors.text or theme.colors.text_dim)
+    helpers.SetColor(active and theme.colors.btn_active or (hover and theme.colors.text or theme.colors.text_dim))
     
     local r = size / 2
     if type == "settings" then
@@ -98,6 +89,16 @@ function components.DrawToolIcon(type, x, y, size)
         local qw, qh = gfx.measurestr("?")
         gfx.x, gfx.y = x + (size - qw)/2, y + (size - qh)/2 - 1
         gfx.drawstr("?")
+    elseif type == "scroll" then
+        -- Scroll Icon (up/down arrows)
+        local cx, cy = x + r, y + r
+        local a = size * 0.3
+        -- Up arrow
+        gfx.line(cx, cy - a*0.7, cx - a*0.5, cy - a*0.2)
+        gfx.line(cx, cy - a*0.7, cx + a*0.5, cy - a*0.2)
+        -- Down arrow
+        gfx.line(cx, cy + a*0.7, cx - a*0.5, cy + a*0.2)
+        gfx.line(cx, cy + a*0.7, cx + a*0.5, cy + a*0.2)
     end
     
     return config.state.mouse_click and hover
@@ -205,12 +206,8 @@ function components.DrawPaginator(x, y, total_pages)
     end
 end
 
-function components.DrawProgressionSlot(global_idx, x, y, w, h)
-    local slot = config.state.progression[global_idx]
-    local seq = config.state.sequencer
-    local play = seq.is_playing and seq.current_step == global_idx
-    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
-    
+-- Extracted: background, glow, progress bar, flash overlay
+local function DrawSlotBackground(global_idx, x, y, w, h, slot, play, seq)
     -- Background Glow for playing slot
     if play then
         helpers.SetColor(theme.colors.slot_playing, 0.2)
@@ -255,7 +252,10 @@ function components.DrawProgressionSlot(global_idx, x, y, w, h)
         local prog_w = math.floor(w * seq.progress)
         components.DrawRoundedRect(x, y, prog_w, h, 8, true)
     end
+end
 
+-- Extracted: note name, roman numeral, slot number
+local function DrawSlotLabel(global_idx, x, y, w, h, slot)
     -- Slot number (top-left corner)
     helpers.SetColor(theme.colors.text_dim, 0.3)
     gfx.setfont(1, "Calibri", math.floor(h * 0.15))
@@ -263,87 +263,12 @@ function components.DrawProgressionSlot(global_idx, x, y, w, h)
     gfx.x, gfx.y = x + 4, y + 2
     gfx.drawstr(num_str)
 
-    if hover then
-        helpers.SetColor({1,1,1,0.1})
-        components.DrawRoundedRect(x, y, w, h, 8, true)
-
-        -- Drag target highlight: match dragged item's grade color
-        if config.state.drag.is_dragging then
-            local drag_deg = config.state.drag.source_degree
-            if drag_deg == -1 and config.state.drag.source_slot_idx ~= -1 then
-                local src = config.state.progression[config.state.drag.source_slot_idx]
-                if src then drag_deg = src.degree end
-            end
-            local highlight = DegreeColor(drag_deg)
-            helpers.SetColor(highlight, 0.3)
-            components.DrawRoundedRect(x, y, w, h, 8, true)
-        end
-
-        -- RIGHT CLICK TO DELETE (on fresh click-down only)
-        if (gfx.mouse_cap & 2) == 2 and (config.state.last_mouse_cap & 2) == 0 then
-            config.state.progression[global_idx] = nil
-        end
-
-        -- Start Drag from Slot
-        if (gfx.mouse_cap & 1) == 1 and not config.state.drag.is_dragging and slot then
-            config.state.drag.is_dragging = true
-            config.state.drag.source_slot_idx = global_idx
-            config.state.drag.start_x, config.state.drag.start_y = gfx.mouse_x, gfx.mouse_y
-        end
-
-        -- Drop Logic (Left Release)
-        if config.state.drag.is_dragging and (gfx.mouse_cap & 1) == 0 then
-            local dx = gfx.mouse_x - (config.state.drag.start_x or gfx.mouse_x)
-            local dy = gfx.mouse_y - (config.state.drag.start_y or gfx.mouse_y)
-            local dist = math.sqrt(dx*dx + dy*dy)
-            
-            if config.state.drag.source_slot_idx == global_idx and dist < 5 then
-                -- LEFT CLICK TO DELETE (Optional fallback)
-                config.state.progression[global_idx] = nil
-            elseif config.state.drag.source_slot_idx ~= -1 and config.state.drag.source_slot_idx ~= global_idx then
-                -- SWAP instead of overwrite
-                local temp = config.state.progression[global_idx]
-                config.state.progression[global_idx] = config.state.progression[config.state.drag.source_slot_idx]
-                config.state.progression[config.state.drag.source_slot_idx] = temp
-            elseif config.state.drag.source_degree ~= -1 then
-                -- NEW FROM PAD
-                config.state.progression[global_idx] = { 
-                    degree = config.state.drag.source_degree, 
-                    root_index = config.state.root_index, 
-                    scale_index = config.state.scale_index, 
-                    octave = config.state.octave, 
-                    chord_mode_index = config.state.chord_mode_index 
-                }
-                config.state.slot_flash.idx = global_idx
-                config.state.slot_flash.timer = 10
-            end
-            
-            -- Cleanup immediately so DrawDragPreview doesn't see stale state
-            config.state.drag.is_dragging = false
-            config.state.drag.source_degree = -1
-            config.state.drag.source_slot_idx = -1
-            config.state.drag.pending_degree = nil
-        end
-
-        if not config.state.drag.is_dragging then
-            if slot then
-                local nn = config.NOTE_NAMES[(midi.GetMidiNote(slot.root_index, slot.scale_index, slot.degree, slot.octave) % 12) + 1]
-                local show_chord = slot.chord_mode_index > 1
-                local label = show_chord and (nn .. " " .. config.CHORD_MODES[slot.chord_mode_index].name:sub(1,1):upper() .. config.CHORD_MODES[slot.chord_mode_index].name:sub(2):lower()) or nn
-                DrawTooltip("Slot " .. global_idx .. ": " .. label)
-            else
-                DrawTooltip("Slot " .. global_idx .. " — Empty")
-            end
-        end
-    end
-    
     if slot then
         local nn = config.NOTE_NAMES[(midi.GetMidiNote(slot.root_index, slot.scale_index, slot.degree, slot.octave) % 12) + 1]
         local show_chord = slot.chord_mode_index > 1
         local label = show_chord and (nn .. " " .. config.CHORD_MODES[slot.chord_mode_index].name:sub(1,1):upper() .. config.CHORD_MODES[slot.chord_mode_index].name:sub(2):lower()) or nn
         
         helpers.SetColor(theme.colors.text)
-        -- INCREASED FONT SIZE
         gfx.setfont(1, "Calibri", math.floor(h * 0.35))
         local nw, nh = gfx.measurestr(label)
         gfx.x, gfx.y = x+(w-nw)/2, y + (h/2) - nh
@@ -354,6 +279,111 @@ function components.DrawProgressionSlot(global_idx, x, y, w, h)
         local dw = gfx.measurestr(deg)
         gfx.x, gfx.y = x+(w-dw)/2, y + (h/2) + 6
         gfx.drawstr(deg)
+    end
+end
+
+-- Extracted: hover, tooltips, right-click delete, drag-start, drag-drop swap/new
+local function HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
+    if not hover then return end
+
+    helpers.SetColor({1,1,1,0.1})
+    components.DrawRoundedRect(x, y, w, h, 8, true)
+
+    -- Drag target highlight: match dragged item's grade color
+    if config.state.drag.is_dragging then
+        local drag_deg = config.state.drag.source_degree
+        if drag_deg == -1 and config.state.drag.source_slot_idx ~= -1 then
+            local src = config.state.progression[config.state.drag.source_slot_idx]
+            if src then drag_deg = src.degree end
+        end
+        local highlight = DegreeColor(drag_deg)
+        helpers.SetColor(highlight, 0.3)
+        components.DrawRoundedRect(x, y, w, h, 8, true)
+    end
+
+    -- RIGHT CLICK TO DELETE (on fresh click-down only)
+    if (gfx.mouse_cap & 2) == 2 and (config.state.last_mouse_cap & 2) == 0 then
+        config.state.progression[global_idx] = nil
+    end
+
+    -- CLICK + DRAG: track pending, start drag only after 8px threshold
+    if (gfx.mouse_cap & 1) == 1 and not config.state.drag.is_dragging and not config.state.slider_dragging and slot then
+        if not config.state.drag.pending_slot_idx then
+            config.state.drag.pending_slot_idx = global_idx
+            config.state.drag.start_x, config.state.drag.start_y = gfx.mouse_x, gfx.mouse_y
+        elseif config.state.drag.pending_slot_idx == global_idx then
+            local dx = gfx.mouse_x - config.state.drag.start_x
+            local dy = gfx.mouse_y - config.state.drag.start_y
+            if math.sqrt(dx*dx + dy*dy) >= 8 then
+                config.state.drag.is_dragging = true
+                config.state.drag.source_slot_idx = global_idx
+                config.state.drag.pending_slot_idx = nil
+            end
+        end
+    end
+
+    -- Clear pending if mouse released without drag
+    if (gfx.mouse_cap & 1) == 0 and config.state.drag.pending_slot_idx == global_idx then
+        -- LEFT CLICK TO PLAY NOTE (no drag happened)
+        if slot then
+            midi.TriggerChord(slot.degree, true, slot)
+            midi.TriggerChord(slot.degree, false, slot)
+        end
+        config.state.drag.pending_slot_idx = nil
+    end
+
+    -- Drop Logic (Left Release after drag)
+    if config.state.drag.is_dragging and (gfx.mouse_cap & 1) == 0 then
+        if config.state.drag.source_slot_idx ~= -1 and config.state.drag.source_slot_idx ~= global_idx then
+            -- SWAP instead of overwrite
+            local temp = config.state.progression[global_idx]
+            config.state.progression[global_idx] = config.state.progression[config.state.drag.source_slot_idx]
+            config.state.progression[config.state.drag.source_slot_idx] = temp
+        elseif config.state.drag.source_degree ~= -1 then
+            -- NEW FROM PAD
+            config.state.progression[global_idx] = { 
+                degree = config.state.drag.source_degree, 
+                root_index = config.state.root_index, 
+                scale_index = config.state.scale_index, 
+                octave = config.state.octave, 
+                chord_mode_index = config.state.chord_mode_index 
+            }
+            config.state.slot_flash.idx = global_idx
+            config.state.slot_flash.timer = 10
+        end
+        
+        -- Cleanup immediately so DrawDragPreview doesn't see stale state
+        config.state.drag.is_dragging = false
+        config.state.drag.source_degree = -1
+        config.state.drag.source_slot_idx = -1
+        config.state.drag.pending_degree = nil
+    end
+
+    if not config.state.drag.is_dragging then
+        if slot then
+            local nn = config.NOTE_NAMES[(midi.GetMidiNote(slot.root_index, slot.scale_index, slot.degree, slot.octave) % 12) + 1]
+            local show_chord = slot.chord_mode_index > 1
+            local label = show_chord and (nn .. " " .. config.CHORD_MODES[slot.chord_mode_index].name:sub(1,1):upper() .. config.CHORD_MODES[slot.chord_mode_index].name:sub(2):lower()) or nn
+            helpers.DrawTooltip("Slot " .. global_idx .. ": " .. label, 11)
+        else
+            helpers.DrawTooltip("Slot " .. global_idx .. " — Empty", 11)
+        end
+    end
+end
+
+function components.DrawProgressionSlot(global_idx, x, y, w, h)
+    local slot = config.state.progression[global_idx]
+    local seq = config.state.sequencer
+    local play = seq.is_playing and seq.current_step == global_idx
+    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
+    
+    DrawSlotBackground(global_idx, x, y, w, h, slot, play, seq)
+    DrawSlotLabel(global_idx, x, y, w, h, slot)
+    HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
+
+    -- Cleanup: clear pending_slot_idx if mouse released outside slot bounce zone
+    if (gfx.mouse_cap & 1) == 0 and not config.state.drag.is_dragging and not hover then
+        config.state.drag.pending_slot_idx = nil
     end
 end
 
@@ -396,6 +426,16 @@ function components.DrawDropdown(x, y, w, h, label, value, options, current_inde
         gfx.line(cx, cy+2+i, cx+4, cy-2+i, 1)
     end
     
+    -- Scroll wheel selection
+    if hover and config.state.use_scroll and config.state.mouse_wheel_delta ~= 0 then
+        local delta = config.state.mouse_wheel_delta > 0 and -1 or 1
+        config.state.mouse_wheel_delta = 0
+        local new_idx = current_index + delta
+        if new_idx < 1 then new_idx = #options end
+        if new_idx > #options then new_idx = 1 end
+        return new_idx
+    end
+    
     if hover and config.state.mouse_click then
         local menu_str = ""
         for i, opt in ipairs(options) do
@@ -426,14 +466,26 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
     
     local mx, my = gfx.mouse_x, gfx.mouse_y
     
-    -- Compute which note indices belong to the current scale and their degree
-    local scale_notes = {}
-    local note_to_degree = {}
-    local intervals = config.SCALES[config.state.scale_index].intervals
-    for degree, interval in ipairs(intervals) do
-        local note_idx = ((config.state.root_index - 1 + interval) % 12) + 1
-        scale_notes[note_idx] = true
-        note_to_degree[note_idx] = degree
+    -- Cached scale note sets (Issue 13): only recompute when root/scale changes
+    if cached_scale_root ~= config.state.root_index or cached_scale_idx ~= config.state.scale_index then
+        cached_scale_notes = {}
+        cached_note_to_degree = {}
+        local intervals = config.SCALES[config.state.scale_index].intervals
+        for degree, interval in ipairs(intervals) do
+            local note_idx = ((config.state.root_index - 1 + interval) % 12) + 1
+            cached_scale_notes[note_idx] = true
+            cached_note_to_degree[note_idx] = degree
+        end
+        cached_scale_root = config.state.root_index
+        cached_scale_idx = config.state.scale_index
+    end
+    local scale_notes = cached_scale_notes
+    local note_to_degree = cached_note_to_degree
+
+    -- Pre-compute active note pitch-class lookup (Issue 18): avoids O(N·M) inner loop
+    local active_mod12 = {}
+    for midi_note, _ in pairs(config.state.active_notes) do
+        active_mod12[(midi_note % 12) + 1] = true
     end
     
     -- Draw White Keys first
@@ -463,17 +515,12 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
         gfx.x, gfx.y = wx + (white_w - nw)/2, y + h - nh - 10
         gfx.drawstr(n)
         
-        -- Active note glow: illuminate the entire key while its note/chord is sounding
-        if not is_root then
-            for midi_note, _ in pairs(config.state.active_notes) do
-                if (midi_note % 12) + 1 == wk then
-                    local deg = note_to_degree[wk]
-                    local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.3}
-                    helpers.SetColor(glow, 0.2)
-                    components.DrawRoundedRect(wx, y, white_w - 2, h, 4, true)
-                    break
-                end
-            end
+        -- Active note glow (Issue 18): O(1) lookup via pre-computed pitch-class set
+        if not is_root and active_mod12[wk] then
+            local deg = note_to_degree[wk]
+            local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.3}
+            helpers.SetColor(glow, 0.2)
+            components.DrawRoundedRect(wx, y, white_w - 2, h, 4, true)
         end
     end
     
@@ -505,17 +552,12 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
         gfx.x, gfx.y = bx + (black_w - nw)/2, y + black_h - nh - 10
         gfx.drawstr(n)
         
-        -- Active note glow for black keys
-        if not is_root then
-            for midi_note, _ in pairs(config.state.active_notes) do
-                if (midi_note % 12) + 1 == bk.idx then
-                    local deg = note_to_degree[bk.idx]
-                    local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.4}
-                    helpers.SetColor(glow, 0.3)
-                    components.DrawRoundedRect(bx, y, black_w, black_h, 3, true)
-                    break
-                end
-            end
+        -- Active note glow for black keys (Issue 18): O(1) lookup
+        if not is_root and active_mod12[bk.idx] then
+            local deg = note_to_degree[bk.idx]
+            local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.4}
+            helpers.SetColor(glow, 0.3)
+            components.DrawRoundedRect(bx, y, black_w, black_h, 3, true)
         end
     end
     
@@ -576,7 +618,7 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
         components.DrawRoundedRect(x, y, w, h, 10, true)
         
         -- Bug fix: only start drag after moving 8px (distinguish click from drag)
-        if (gfx.mouse_cap & 1) == 1 and not config.state.drag.is_dragging then
+        if (gfx.mouse_cap & 1) == 1 and not config.state.drag.is_dragging and not config.state.slider_dragging then
             if not config.state.drag.pending_degree then
                 config.state.drag.pending_degree = degree
                 config.state.drag.start_x, config.state.drag.start_y = gfx.mouse_x, gfx.mouse_y
@@ -586,15 +628,18 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
                 if math.sqrt(dx*dx + dy*dy) >= 8 then
                     config.state.drag.is_dragging = true
                     config.state.drag.source_degree = config.state.drag.pending_degree
-                    -- Kill any held notes from the initial click when drag starts
-                    midi.AllNotesOff()
+                    -- Only release pad-held notes when drag starts (Issue 5)
+                    for _, n in ipairs(config.state.mouse_pad_state.midi_notes) do
+                        midi.SendMidi(n, false)
+                    end
+                    config.state.mouse_pad_state.midi_notes = {}
                 end
             end
         end
 
         if not config.state.drag.is_dragging then
             local key_label = DEGREE_KEY_LABELS[degree]
-            DrawTooltip(key_label and (roman .. " (" .. key_label .. ")") or roman)
+            helpers.DrawTooltip(key_label and (roman .. " (" .. key_label .. ")") or roman, 11)
         end
     end
     
@@ -660,6 +705,7 @@ function components.DrawDragPreview(w, h)
         config.state.drag.source_degree = -1
         config.state.drag.source_slot_idx = -1
         config.state.drag.pending_degree = nil
+        config.state.drag.pending_slot_idx = nil
     end
     if not config.state.drag.is_dragging then return end
 
@@ -677,10 +723,15 @@ function components.DrawDragPreview(w, h)
     end
     local x, y = gfx.mouse_x - cw/2, gfx.mouse_y - ch/2
 
-    -- Preview background: match grade color when dragging a pad
+    -- Preview background: match grade color of dragged item
     local preview_color = theme.colors.btn_active
     if config.state.drag.source_degree ~= -1 then
         preview_color = DegreeColor(config.state.drag.source_degree)
+    elseif config.state.drag.source_slot_idx ~= -1 then
+        local src_slot = config.state.progression[config.state.drag.source_slot_idx]
+        if src_slot then
+            preview_color = DegreeColor(src_slot.degree)
+        end
     end
     helpers.SetColor(preview_color, 0.8)
     components.DrawRoundedRect(x, y, cw, ch, 8, true)

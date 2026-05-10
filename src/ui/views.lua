@@ -16,7 +16,6 @@ local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
 -- Do NOT assign _S/_OX/_OY directly — use SetScale().
 -- Underscore prefix = internal, do not touch from outside this module.
 local _S, _OX, _OY = 0, 0, 0
-local page_override_timer = 0
 
 local function UX(v) return math.floor(v * _S + _OX) end
 local function UY(v) return math.floor(v * _S + _OY) end
@@ -26,21 +25,7 @@ local function US(v) return math.floor(v * _S) end
 -- Must be called before any UX/UY/US call. Only DrawFullView calls this.
 local function SetScale(s, ox, oy) _S, _OX, _OY = s, ox, oy end
 
-local function DrawTooltip(text)
-    if not config.state.show_tooltips then return end
-    gfx.setfont(1, "Calibri", US(700))
-    local tw, th = gfx.measurestr(text)
-    local tx = gfx.mouse_x + 14
-    local ty = gfx.mouse_y - th - 6
-    if tx + tw > gfx.w then tx = gfx.mouse_x - tw - 14 end
-    if ty < 0 then ty = gfx.mouse_y + 14 end
-    if ty + th + 6 > gfx.h then ty = gfx.mouse_y - th - 6 end
-    helpers.SetColor({0, 0, 0, 0.75})
-    components.DrawRoundedRect(tx - 4, ty - 2, tw + 8, th + 4, 4, true)
-    helpers.SetColor(theme.colors.text)
-    gfx.x, gfx.y = tx, ty
-    gfx.drawstr(text)
-end
+
 
 
 
@@ -70,7 +55,7 @@ local function ShowQuickConfigMenu()
 end
 
 function views.DrawHeader()
-    local h = US(2500)
+    local h = US(2200)
     local left_edge = UX(0)
     
     gfx.setfont(1, "Calibri", US(1500)) 
@@ -80,18 +65,18 @@ function views.DrawHeader()
     gfx.x, gfx.y = left_edge, (h - th) / 2
     gfx.drawstr(title)
     
-    gfx.setfont(1, "Calibri", US(800))
+    gfx.setfont(1, "Calibri", US(850))
     helpers.SetColor(theme.colors.text_dim)
     local ver = "v1.0.0  © groveworldmusic"
     local vw, vh = gfx.measurestr(ver)
     local ver_x = left_edge + tw + US(800)
-    local ver_y = (h - th) / 2 + US(500)
+    local ver_y = (h - th) / 2 + US(420)
     gfx.x, gfx.y = ver_x, ver_y
     gfx.drawstr(ver)
 
     -- Compute icon positions first (used for state text boundary below)
-    local icon_size = US(1800)
-    local icon_gap = US(400)
+    local icon_size = US(1700)
+    local icon_gap = US(420)
     local right_edge = UX(39914)
     local view_x = right_edge - icon_size - icon_gap
     local settings_x = view_x - icon_size - icon_gap
@@ -102,9 +87,15 @@ function views.DrawHeader()
     local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
     local state_str = "  ·  " .. config.NOTE_NAMES[config.state.root_index] .. " " .. scale_abbr .. " · " .. config.CHORD_MODES[config.state.chord_mode_index].name .. " · C" .. math.floor(config.state.octave)
     local sw, sh = gfx.measurestr(state_str)
-    local state_x = math.min(ver_x + vw + US(200), help_x - sw - US(200))
+    local state_x = math.min(ver_x + vw + US(250), help_x - sw - US(250))
     gfx.x, gfx.y = state_x, ver_y
     gfx.drawstr(state_str)
+    -- Scroll indicator
+    gfx.setfont(1, "Calibri", US(700))
+    local scroll_indicator = config.state.use_scroll and "  ·  Scroll: ON" or "  ·  Scroll: OFF"
+    local siw, sih = gfx.measurestr(scroll_indicator)
+    gfx.x, gfx.y = state_x + sw + US(60), ver_y + 2
+    gfx.drawstr(scroll_indicator)
     
     if components.DrawToolIcon("help", help_x, (h - icon_size) / 2, icon_size) then
         config.state.show_tooltips = not config.state.show_tooltips
@@ -112,7 +103,10 @@ function views.DrawHeader()
     if components.DrawToolIcon("settings", settings_x, (h - icon_size) / 2, icon_size) then
         local is_grade = config.state.color_mode == "grade"
         local toggle_label = is_grade and "Cambiar a Colores Planos" or "Cambiar a Grados a color"
-        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini"
+        local scroll_label = (config.state.use_scroll and "✓ " or "") .. "Activar Scroll en Dropdowns"
+        local compact_label = (config.state.auto_start_compact and "✓ " or "") .. "Iniciar en Vista Mini"
+        local reaper_label = (config.state.auto_start_reaper and "✓ " or "") .. "Iniciar con REAPER"
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
@@ -137,6 +131,16 @@ function views.DrawHeader()
             config.state.view_offset_x = 0
             config.state.view_offset_y = 0
             compact.ResetAutoPosition()
+        elseif choice == 4 then
+            config.state.use_scroll = not config.state.use_scroll
+        elseif choice == 5 then
+            config.state.auto_start_compact = not config.state.auto_start_compact
+            reaper.SetExtState("GROVE_Scale_Runner", "auto_start_compact",
+                config.state.auto_start_compact and "1" or "0", true)
+        elseif choice == 6 then
+            config.state.auto_start_reaper = not config.state.auto_start_reaper
+            reaper.SetExtState("GROVE_Scale_Runner", "auto_start_reaper",
+                config.state.auto_start_reaper and "1" or "0", true)
         end
     end
     
@@ -146,7 +150,7 @@ function views.DrawHeader()
 end
 
 function views.DrawIslands()
-    local y_start = UY(2896)
+    local y_start = UY(2196)
     local island_h = US(11750)
     local std_island_w = US(5316)
     local std_btn_w = US(4400)
@@ -159,12 +163,12 @@ function views.DrawIslands()
     ---------------------------------------------------------------------------
     local i1_x, i1_w = UX(0), US(22591)
     components.DrawIsland(i1_x, y_start, i1_w, island_h, "SCALE", title_font_size)
-    local piano_x, piano_y = UX(798), UY(3681)
+    local piano_x, piano_y = UX(798), UY(2981)
     local piano_w, piano_h = US(21056), US(7875)
     components.DrawPianoKeyboard(piano_x, piano_y, piano_w, piano_h, US(1400))
     
     local drop_h = US(1677)
-    local drop_y = UY(12353)
+    local drop_y = UY(11653)
     local modo_lbl_x = UX(1000)
     local drop_x = UX(4800)
     local drop_w = US(7187)
@@ -181,7 +185,7 @@ function views.DrawIslands()
                                           SCALE_OPTIONS, config.state.scale_index, btn_font_size)
     if choice then config.state.scale_index = choice end
     
-    local note_x, note_y = UX(17450), UY(12407)
+    local note_x, note_y = UX(17450), UY(11707)
     local note_w, note_h = US(4042), US(1548)
     local note_lbl_x = UX(14000)
     helpers.SetColor(theme.colors.text_dim)
@@ -198,11 +202,11 @@ function views.DrawIslands()
     components.DrawIsland(i2_x, y_start, std_island_w, island_h, "OCTAVA", title_font_size)
     local btn_x = i2_x + (std_island_w - std_btn_w)/2
     local oct_open_up = y_start > gfx.h / 2
-    local oct_choice = components.DrawDropdown(btn_x, UY(5245), std_btn_w, std_btn_h, nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size)
+    local oct_choice = components.DrawDropdown(btn_x, UY(4545), std_btn_w, std_btn_h, nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, oct_open_up)  -- Issue 9
     if oct_choice then config.state.octave = math.floor(oct_choice - 1) end
-    if components.DrawButton(btn_x, UY(7523), std_btn_w, std_btn_h, "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
-    if components.DrawButton(btn_x, UY(9775), std_btn_w, std_btn_h, "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
-    if components.DrawButton(btn_x, UY(12043), std_btn_w, std_btn_h, "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3 end
+    if components.DrawButton(btn_x, UY(6823), std_btn_w, std_btn_h, "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
+    if components.DrawButton(btn_x, UY(9075), std_btn_w, std_btn_h, "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
+    if components.DrawButton(btn_x, UY(11343), std_btn_w, std_btn_h, "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3 end
     
     ---------------------------------------------------------------------------
     -- Island 3: Chord
@@ -210,10 +214,10 @@ function views.DrawIslands()
     local i3_x = UX(28832)
     components.DrawIsland(i3_x, y_start, std_island_w, island_h, "CHORD", title_font_size)
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
-    if components.DrawButton(cbtn_x, UY(5340), std_btn_w, std_btn_h, "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4 end
-    if components.DrawButton(cbtn_x, UY(7593), std_btn_w, std_btn_h, "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3 end
-    if components.DrawButton(cbtn_x, UY(9822), std_btn_w, std_btn_h, "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2 end
-    if components.DrawButton(cbtn_x, UY(12065), std_btn_w, std_btn_h, "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1 end
+    if components.DrawButton(cbtn_x, UY(4640), std_btn_w, std_btn_h, "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4 end
+    if components.DrawButton(cbtn_x, UY(6893), std_btn_w, std_btn_h, "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3 end
+    if components.DrawButton(cbtn_x, UY(9122), std_btn_w, std_btn_h, "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2 end
+    if components.DrawButton(cbtn_x, UY(11365), std_btn_w, std_btn_h, "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1 end
     
     ---------------------------------------------------------------------------
     -- Island 4: Command Vertical Stack (Alineación Exacta)
@@ -242,7 +246,7 @@ function views.DrawIslands()
     gfx.x, gfx.y = i4_x + (b_w - vw)/2, v_y + (b_h - vh)/2
     gfx.drawstr("VEL")
     if v_hover and not config.state.drag.is_dragging then
-        DrawTooltip(config.state.use_velocity and "Click: disable" or "Click: enable")
+        helpers.DrawTooltip(config.state.use_velocity and "Click: disable" or "Click: enable", US(700))
     end
     if config.state.mouse_click and v_hover and not config.state.drag.is_dragging then config.state.use_velocity = not config.state.use_velocity end
     
@@ -264,7 +268,7 @@ function views.DrawIslands()
         gfx.triangle(cx-s/2, cy-s/2, cx-s/2, cy+s/2, cx+s/2, cy)
     end
     if p_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Play/Stop progression")
+        helpers.DrawTooltip("Play/Stop progression", US(700))
     end
     if config.state.mouse_click and p_hover and not config.state.drag.is_dragging then config.state.sequencer.is_playing = not is_playing end
     
@@ -281,7 +285,7 @@ function views.DrawIslands()
     gfx.x, gfx.y = i4_x + (b_w - cw)/2, c_y + (b_h - ch)/2
     gfx.drawstr("CLEAR")
     if c_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Clear all slots")
+        helpers.DrawTooltip("Clear all slots", US(700))
     end
     if config.state.mouse_click and c_hover and not config.state.drag.is_dragging then for i=1, 16 do config.state.progression[i] = nil end end
     
@@ -297,7 +301,7 @@ function views.DrawIslands()
     gfx.x, gfx.y = i4_x + (b_w - ew)/2, e_y + (b_h - eh)/2
     gfx.drawstr("EXPORT")
     if e_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Export MIDI")
+        helpers.DrawTooltip("Export MIDI", US(700))
     end
     if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then midi.ExportToMidi() end
 
@@ -328,7 +332,13 @@ function views.DrawIslands()
 
     -- Interaction
     if s_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Volume: " .. volume .. "%")
+        helpers.DrawTooltip("Volume: " .. volume .. "%", US(700))
+    end
+    -- Scroll wheel volume adjustment
+    if s_hover and config.state.use_scroll and config.state.mouse_wheel_delta ~= 0 then
+        local delta = config.state.mouse_wheel_delta > 0 and 5 or -5
+        config.state.mouse_wheel_delta = 0
+        config.state.sequencer.volume = math.max(0, math.min(100, volume + delta))
     end
     if config.state.mouse_click and s_hover and not config.state.drag.is_dragging then
         config.state.slider_dragging = true
@@ -342,15 +352,19 @@ function views.DrawIslands()
     end
 end
 
+function views.DecrementPageOverrideTimer()
+    -- Decrement in ALL modes, not just DrawPerformanceArea (Issue 8)
+    if config.state.page_override_timer > 0 then config.state.page_override_timer = config.state.page_override_timer - 1 end
+end
+
 function views.DrawPerformanceArea()
-    if config.state.sequencer.is_playing and page_override_timer <= 0 then
+    if config.state.sequencer.is_playing and config.state.page_override_timer <= 0 then
         local target_page = math.floor((config.state.sequencer.current_step - 1) / 4) + 1
         if target_page > 0 and target_page <= 4 then config.state.current_page = target_page end
     end
-    if page_override_timer > 0 then page_override_timer = page_override_timer - 1 end
     
     local x_start, w = UX(0), US(39914)
-    local y, h = UY(15075), US(13363)
+    local y, h = UY(14375), US(13363)
     
     -- Scroll pagination logic
     local hover_area = gfx.mouse_x >= x_start and gfx.mouse_x <= x_start + w and gfx.mouse_y >= y and gfx.mouse_y <= y + h
@@ -369,19 +383,19 @@ function views.DrawPerformanceArea()
     local pad_spacing = (avail_w - (pad_w * num_pads)) / (num_pads - 1)
     for i = 1, num_pads do
         local px = x_start + margin + (i - 1) * (pad_w + pad_spacing)
-        local py = UY(15897)
+        local py = UY(15197)
         components.DrawScalePad(px, py, pad_w, pad_h, i, US(1500), US(1100), num_intervals)
     end
     local slot_w, slot_h = US(9350), US(6760)
     local slot_spacing = (avail_w - (slot_w * 4)) / 3
-    local slots_y = UY(20430)
+    local slots_y = UY(19730)
     local start_idx = (config.state.current_page - 1) * 4 + 1
     for i = 0, 3 do
         local sx = x_start + margin + i * (slot_w + slot_spacing)
         components.DrawProgressionSlot(start_idx + i, sx, slots_y, slot_w, slot_h)
     end
     local page_center_x = x_start + w/2
-    local page_y = UY(27892)
+    local page_y = UY(27192)
     components.DrawPaginator(page_center_x, page_y, 4)
     
     local btn_size = US(1000)
@@ -404,11 +418,11 @@ function views.DrawPerformanceArea()
     gfx.x, gfx.y = prev_cx - lt/2, page_y - lh/2
     gfx.drawstr("<")
     if prev_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Previous page")
+        helpers.DrawTooltip("Previous page", US(700))
     end
     if config.state.mouse_click and prev_hover and can_prev then
         config.state.current_page = config.state.current_page - 1
-        page_override_timer = 30
+        config.state.page_override_timer = 30
     end
     
     -- Next button
@@ -424,33 +438,28 @@ function views.DrawPerformanceArea()
     gfx.x, gfx.y = next_cx - rt/2, page_y - rh/2
     gfx.drawstr(">")
     if next_hover and not config.state.drag.is_dragging then
-        DrawTooltip("Next page")
+        helpers.DrawTooltip("Next page", US(700))
     end
     if config.state.mouse_click and next_hover and can_next then
         config.state.current_page = config.state.current_page + 1
-        page_override_timer = 30
+        config.state.page_override_timer = 30
     end
     
     helpers.SetColor(theme.colors.text_dim, 0.7)
     gfx.setfont(1, "Calibri", US(900))
     local page_text = "Page " .. config.state.current_page .. "/4"
     local pw, ph = gfx.measurestr(page_text)
-    gfx.x, gfx.y = x_start + w - pw - US(700), UY(27892) - ph/2
+    gfx.x, gfx.y = x_start + w - pw - US(700), UY(27192) - ph/2
     gfx.drawstr(page_text)
     
     -- Render Dragging Feedback on top
     components.DrawDragPreview(slot_w, slot_h)
 end
 
--- NOTE: DrawCompactView was removed in 2026-05.
--- It was unused and was bit-rotting. See git history for the original implementation.
-function views.DrawCompactView() end
-
 function views.DrawFullView()
-    local s = math.min(gfx.w / 39914, gfx.h / 29162)
-    -- Márgenes horizontales iguales (50/50)
-    local ox = (gfx.w - 39914 * s) * 0.5
-    local oy = (gfx.h - 29162 * s) / 2
+    local s = math.min(gfx.w / 39914, gfx.h / 29162) * 1.025
+    local ox = (gfx.w - 39914 * s) / 2
+    local oy = (gfx.h - 29162 * s) / 2 + 600 * s
     SetScale(s, ox, oy)
     helpers.SetColor(theme.colors.bg)
     gfx.rect(0, 0, gfx.w, gfx.h, 1)
@@ -543,8 +552,8 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
     end
     x_pos = x_pos + btn_w + gap
 
-    -- [◀ Undock] button - undock and return to floating
-    if components.DrawTransportButton("◀", x_pos, btn_y, 50, btn_h) then
+    -- [◄ Undock] button - undock and return to floating (Issue 6: U+25C4 better glyph support)
+    if components.DrawTransportButton("◄", x_pos, btn_y, 50, btn_h) then
         gfx.dock(0)
         config.state.docked_mode = false
         config.state.dock_id = 0

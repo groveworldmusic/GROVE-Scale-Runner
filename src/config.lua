@@ -46,22 +46,28 @@ config.state = {
     view_mode = config.VIEW_MODES.FULL,
     root_index = 1, scale_index = 1, octave = 4, chord_mode_index = 1,
     use_velocity = true,
+    use_scroll = true,
     show_tooltips = false,
     last_note_played = "None", active_note_draw_timer = 0,
     key_states = {},
     mouse_pad_state = { active_degree = -1, midi_notes = {} },
     pad_flash = { degree = -1, timer = 0, prev_active = {} },
-    drag = { is_dragging = false, source_degree = -1, source_slot_idx = -1, start_x = 0, start_y = 0, x = 0, y = 0, pending_degree = nil },
+    drag = { is_dragging = false, source_degree = -1, source_slot_idx = -1, start_x = 0, start_y = 0, x = 0, y = 0, pending_degree = nil, pending_slot_idx = nil },
     slider_dragging = false,
     progression = {}, -- Now holds up to 16 slots
     current_page = 1, -- Page 1 to 4
+    page_override_timer = 0,
     slot_flash = { idx = -1, timer = 0 },
     sequencer = { is_playing = false, current_step = 0, last_measure = -1, midi_notes = {}, progress = 0, internal_beats = 0, last_time = nil, volume = 100 },
     active_notes = {},  -- ref-counted: [midi_note] = count
     color_mode = "grade", -- "grade" = grade_colors per degree, "flat" = all blue
     last_mouse_cap = 0, mouse_click = false, mouse_wheel_delta = 0,
-    view_offset_x = 0,
+    view_offset_x = 1000,
     view_offset_y = 0,
+    -- Auto-start configuration
+    auto_start_compact = false,  -- Start compact bar overlay alongside full view
+    auto_start_reaper = false,   -- Auto-launch this script when REAPER starts
+    compact_overlay_active = false,  -- Compact bar visible alongside full view
     -- Docked transport bar state
     docked_mode = false,
     dock_id = 0,
@@ -72,8 +78,7 @@ config.state = {
         transport_hwnd = nil,
         lice_bitmap = nil,
         lice_font = nil,
-        gdi_font = nil,
-        is_active = false
+        gdi_font = nil
     }
 }
 
