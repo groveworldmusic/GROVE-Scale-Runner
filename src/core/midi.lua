@@ -16,12 +16,21 @@ end
 function midi.SendMidi(note, on, velocity)
     if not note or note < 0 or note > 127 then return end
     local vel = velocity or 100
+    if on then local vol = config.state.sequencer.volume or 100; vel = math.floor(vel * vol / 100) end
     -- TODO: Make MIDI channel configurable (currently hardcoded to channel 0)
     reaper.StuffMIDIMessage(0, on and 0x90 or 0x80, note, on and vel or 0)
     if on then
         local name = config.NOTE_NAMES[(note % 12) + 1] or "?"
         config.state.last_note_played = string.format("%s%d", name, math.floor(note/12)-1)
         config.state.active_note_draw_timer = 20
+        config.state.active_notes[note] = (config.state.active_notes[note] or 0) + 1
+    else
+        if config.state.active_notes[note] then
+            config.state.active_notes[note] = config.state.active_notes[note] - 1
+            if config.state.active_notes[note] <= 0 then
+                config.state.active_notes[note] = nil
+            end
+        end
     end
 end
 
@@ -56,6 +65,8 @@ function midi.AllNotesOff()
     end
     config.state.mouse_pad_state.active_degree = -1
     config.state.mouse_pad_state.midi_notes = {}
+    
+    config.state.active_notes = {}
     
     -- NOTE: sequencer.Stop() is called at each AllNotesOff call site in main.lua
     -- to avoid circular dependency (sequencer → midi → sequencer)

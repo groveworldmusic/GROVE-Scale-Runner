@@ -1,8 +1,23 @@
+-- @description Scale Runner — QWERTY to MIDI Controller for REAPER
 -- @version 1.0.0
 -- @author GROVE WORLD MUSIC
 -- @about
 --   Scale Runner: QWERTY to MIDI Controller
---   Multi-module architecture with Reaper integration
+--   Multi-module architecture with REAPER integration.
+--   Maps keyboard keys to scale degrees and chord modes.
+--   Includes sequencer, piano keyboard, performance pads,
+--   progression slots, docked transport bar, and compact mode via JS_Composite.
+-- @provides
+--   [main] src/main.lua
+--   src/config.lua
+--   src/core/midi.lua
+--   src/core/sequencer.lua
+--   src/ui/theme.lua
+--   src/ui/helpers.lua
+--   src/ui/components.lua
+--   src/ui/views.lua
+--   src/ui/compact.lua
+-- @website https://github.com/GroveWorldMusic/GROVE-Scale-Runner
 
 local info = debug.getinfo(1, 'S')
 local script_path = info.source:match([[^@?(.*[\/])[^\/]-$]])
@@ -197,6 +212,16 @@ local function MainLoop()
         HandleKeyboardCompact()
         reaper.defer(MainLoop)
         return
+    end
+
+    -- Process transport bar clicks even in FULL mode so the full-view toggle button works
+    if config.state.compact.is_active then
+        compact.ProcessMouseInterception()
+        -- If SwitchViewMode was triggered, view_mode is now COMPACT and gfx was quit
+        if config.state.view_mode == config.VIEW_MODES.COMPACT then
+            reaper.defer(MainLoop)
+            return
+        end
     end
 
     -- GFX mode: mouse state + GFX calls

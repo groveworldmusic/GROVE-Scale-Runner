@@ -5,6 +5,14 @@ local midi = require("core.midi")
 
 local components = {}
 
+-- Resolve display color for a degree: grade color or flat blue depending on mode
+local function DegreeColor(degree)
+    if config.state.color_mode ~= "grade" then
+        return theme.colors.btn_active
+    end
+    return (theme.colors.grade_colors or {})[((degree-1) % 7) + 1] or theme.colors.btn_active
+end
+
 -- QWERTY key labels for degrees 1-7 (base octave)
 local DEGREE_KEY_LABELS = {"Q", "W", "E", "R", "T", "Y", "U"}
 local ROMAN_NUMERALS = {"I", "II", "III", "IV", "V", "VI", "VII"}
@@ -100,7 +108,7 @@ function components.DrawNoteDisplay(x, y, w, h, note)
     components.DrawRoundedRect(x, y, w, h, 6, true)
     
     helpers.SetColor(theme.colors.text)
-    gfx.setfont(1, "Calibri", math.floor(h * 0.5))
+    gfx.setfont(1, "Calibri", math.floor(h * 0.7))
     local note_str = note == "None" and "-" or note
     local nw, nh = gfx.measurestr(note_str)
     gfx.x, gfx.y = x + (w - nw) / 2, y + (h - nh) / 2
@@ -210,7 +218,7 @@ function components.DrawProgressionSlot(global_idx, x, y, w, h)
     end
 
     if slot then
-        local slot_color = (theme.colors.grade_colors or {})[slot.degree] or theme.colors.slot_filled
+        local slot_color = DegreeColor(slot.degree)
         helpers.SetColor(slot_color)
         if play then helpers.SetColor(theme.colors.slot_playing, 0.4) end
         components.DrawRoundedRect(x, y, w, h, 8, true)
@@ -266,7 +274,7 @@ function components.DrawProgressionSlot(global_idx, x, y, w, h)
                 local src = config.state.progression[config.state.drag.source_slot_idx]
                 if src then drag_deg = src.degree end
             end
-            local highlight = (theme.colors.grade_colors or {})[drag_deg] or theme.colors.btn_active
+            local highlight = DegreeColor(drag_deg)
             helpers.SetColor(highlight, 0.3)
             components.DrawRoundedRect(x, y, w, h, 8, true)
         end
@@ -395,7 +403,7 @@ function components.DrawDropdown(x, y, w, h, label, value, options, current_inde
             menu_str = menu_str .. (i == current_index and "!" or "") .. safe_opt .. "|"
         end
         if open_up then
-            gfx.x, gfx.y = x, y - (#options * 20 + 10)
+            gfx.x, gfx.y = x, y
         else
             gfx.x, gfx.y = x, y + h
         end
@@ -443,8 +451,7 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
             -- Bottom edge indicator for scale notes (grade-colored)
             if in_scale then
                 local deg = note_to_degree[wk]
-                local bar_color = (theme.colors.grade_colors or {})[((deg-1) % 7) + 1] or theme.colors.btn_active
-                helpers.SetColor(bar_color, 0.7)
+                helpers.SetColor(DegreeColor(deg), 0.7)
                 gfx.rect(wx + 4, y + h - 5, white_w - 10, 3, 1)
             end
         end
@@ -455,6 +462,19 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
         local nw, nh = gfx.measurestr(n)
         gfx.x, gfx.y = wx + (white_w - nw)/2, y + h - nh - 10
         gfx.drawstr(n)
+        
+        -- Active note glow: illuminate the entire key while its note/chord is sounding
+        if not is_root then
+            for midi_note, _ in pairs(config.state.active_notes) do
+                if (midi_note % 12) + 1 == wk then
+                    local deg = note_to_degree[wk]
+                    local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.3}
+                    helpers.SetColor(glow, 0.2)
+                    components.DrawRoundedRect(wx, y, white_w - 2, h, 4, true)
+                    break
+                end
+            end
+        end
     end
     
     -- Draw Black Keys on top with text
@@ -472,8 +492,7 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
             -- Bottom edge indicator for scale notes (grade-colored)
             if in_scale then
                 local deg = note_to_degree[bk.idx]
-                local bar_color = (theme.colors.grade_colors or {})[((deg-1) % 7) + 1] or theme.colors.btn_active
-                helpers.SetColor(bar_color, 0.7)
+                helpers.SetColor(DegreeColor(deg), 0.7)
                 gfx.rect(bx + 3, y + black_h - 4, black_w - 6, 2, 1)
             end
         end
@@ -485,7 +504,21 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
         local nw, nh = gfx.measurestr(n)
         gfx.x, gfx.y = bx + (black_w - nw)/2, y + black_h - nh - 10
         gfx.drawstr(n)
+        
+        -- Active note glow for black keys
+        if not is_root then
+            for midi_note, _ in pairs(config.state.active_notes) do
+                if (midi_note % 12) + 1 == bk.idx then
+                    local deg = note_to_degree[bk.idx]
+                    local glow = deg and DegreeColor(deg) or {1, 1, 1, 0.4}
+                    helpers.SetColor(glow, 0.3)
+                    components.DrawRoundedRect(bx, y, black_w, black_h, 3, true)
+                    break
+                end
+            end
+        end
     end
+    
     
     -- Input Handling
     if config.state.mouse_click then
@@ -504,8 +537,9 @@ function components.DrawPianoKeyboard(x, y, w, h, font_size)
     end
 end
 
-function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size)
-    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
+function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total_degrees)
+    local disabled = total_degrees and degree > total_degrees
+    local hover = not disabled and gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
     local rn = midi.GetMidiNote(config.state.root_index, config.state.scale_index, degree, config.state.octave)
     local chord_type = config.CHORD_MODES[config.state.chord_mode_index].name
     -- Bug fix: in Note mode (index 1 = "Off"), show only the note name, no chord suffix
@@ -514,8 +548,10 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
     local roman = ROMAN_NUMERALS[degree]
     
     local active = false
-    for _, state in pairs(config.state.key_states) do if state.is_pressed and config.VKEY_MAP[state.code].deg == degree then active = true break end end
-    if config.state.mouse_pad_state.active_degree == degree then active = true end
+    if not disabled then
+        for _, state in pairs(config.state.key_states) do if state.is_pressed and config.VKEY_MAP[state.code].deg == degree then active = true break end end
+        if config.state.mouse_pad_state.active_degree == degree then active = true end
+    end
 
     -- Flash trigger on pad activation
     if degree >= 1 and degree <= 7 then
@@ -528,11 +564,14 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
     end
 
     -- Base
-    local grade_color = theme.colors.grade_colors[((degree-1) % 7) + 1] or theme.colors.btn_active
-    helpers.SetColor(grade_color, active and 1 or 0.9)
+    if disabled then
+        helpers.SetColor({0.3, 0.3, 0.3, 0.35})
+    else
+        helpers.SetColor(DegreeColor(degree), active and 1 or 0.9)
+    end
     components.DrawRoundedRect(x, y, w, h, 10, true)
     
-    if hover then
+    if hover and not disabled then
         helpers.SetColor({1, 1, 1, 0.15})
         components.DrawRoundedRect(x, y, w, h, 10, true)
         
@@ -547,6 +586,8 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
                 if math.sqrt(dx*dx + dy*dy) >= 8 then
                     config.state.drag.is_dragging = true
                     config.state.drag.source_degree = config.state.drag.pending_degree
+                    -- Kill any held notes from the initial click when drag starts
+                    midi.AllNotesOff()
                 end
             end
         end
@@ -562,7 +603,11 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
         config.state.drag.pending_degree = nil
     end
     
-    helpers.SetColor(theme.colors.text)
+    if disabled then
+        helpers.SetColor({0.5, 0.5, 0.5, 0.6})
+    else
+        helpers.SetColor(theme.colors.text)
+    end
     gfx.setfont(1, "Calibri", main_font_size or 18)
     local cw, ch = gfx.measurestr(label)
     gfx.x, gfx.y = x + (w-cw)/2, y + (h/2) - ch
@@ -575,20 +620,20 @@ function components.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_si
 
     -- Keyboard shortcut hint
     local key_label = DEGREE_KEY_LABELS[degree]
-    if key_label then
-        helpers.SetColor(theme.colors.text_dim, 0.5)
-        gfx.setfont(1, "Calibri", math.max(9, math.floor((sub_font_size or 14) * 0.75)))
+    if key_label and not disabled then
+        helpers.SetColor(theme.colors.text)
+        gfx.setfont(1, "Calibri", sub_font_size or 14)
         local kw = gfx.measurestr(key_label)
         gfx.x, gfx.y = x + w - kw - 4, y + 2
         gfx.drawstr(key_label)
     end
 
-    if config.state.mouse_click and hover then
+    if not disabled and config.state.mouse_click and hover then
         if config.state.mouse_pad_state.active_degree ~= degree then
             config.state.mouse_pad_state.active_degree = degree
             config.state.mouse_pad_state.midi_notes = midi.TriggerChord(degree, true)
         end
-    elseif config.state.mouse_pad_state.active_degree == degree and (gfx.mouse_cap & 1) == 0 then
+    elseif not disabled and config.state.mouse_pad_state.active_degree == degree and (gfx.mouse_cap & 1) == 0 then
         -- Only turn off mouse-pad notes, not all notes (avoids killing QWERTY-held notes)
         for _, n in ipairs(config.state.mouse_pad_state.midi_notes) do
             midi.SendMidi(n, false)
@@ -635,7 +680,7 @@ function components.DrawDragPreview(w, h)
     -- Preview background: match grade color when dragging a pad
     local preview_color = theme.colors.btn_active
     if config.state.drag.source_degree ~= -1 then
-        preview_color = (theme.colors.grade_colors or {})[config.state.drag.source_degree] or preview_color
+        preview_color = DegreeColor(config.state.drag.source_degree)
     end
     helpers.SetColor(preview_color, 0.8)
     components.DrawRoundedRect(x, y, cw, ch, 8, true)

@@ -110,10 +110,14 @@ function views.DrawHeader()
         config.state.show_tooltips = not config.state.show_tooltips
     end
     if components.DrawToolIcon("settings", settings_x, (h - icon_size) / 2, icon_size) then
-        local menu = "Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini"
+        local is_grade = config.state.color_mode == "grade"
+        local toggle_label = is_grade and "Cambiar a Colores Planos" or "Cambiar a Grados a color"
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini"
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
+            config.state.color_mode = is_grade and "flat" or "grade"
+        elseif choice == 2 then
             local ret, csv = reaper.GetUserInputs("Posicion Vista Mini", 3,
                 "Offset X (0=auto),Offset Y,extrawidth=200",
                 config.state.view_offset_x .. "," .. config.state.view_offset_y)
@@ -129,7 +133,7 @@ function views.DrawHeader()
                     config.state.view_offset_y = ny_num
                 end
             end
-        elseif choice == 2 then
+        elseif choice == 3 then
             config.state.view_offset_x = 0
             config.state.view_offset_y = 0
             compact.ResetAutoPosition()
@@ -194,7 +198,7 @@ function views.DrawIslands()
     components.DrawIsland(i2_x, y_start, std_island_w, island_h, "OCTAVA", title_font_size)
     local btn_x = i2_x + (std_island_w - std_btn_w)/2
     local oct_open_up = y_start > gfx.h / 2
-    local oct_choice = components.DrawDropdown(btn_x, UY(5245), std_btn_w, std_btn_h, nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, nil, oct_open_up)
+    local oct_choice = components.DrawDropdown(btn_x, UY(5245), std_btn_w, std_btn_h, nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size)
     if oct_choice then config.state.octave = math.floor(oct_choice - 1) end
     if components.DrawButton(btn_x, UY(7523), std_btn_w, std_btn_h, "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
     if components.DrawButton(btn_x, UY(9775), std_btn_w, std_btn_h, "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
@@ -216,9 +220,9 @@ function views.DrawIslands()
     ---------------------------------------------------------------------------
     local i4_x = UX(34598)
     local b_w = std_island_w
-    local b_h = US(2650)
+    local b_h = US(1980)
     -- Padding calculado dinámicamente para alinear el borde inferior
-    local b_gap = (island_h - (b_h * 4)) / 3
+    local b_gap = (island_h - (b_h * 5)) / 4
     local function PressOverlay(x, y, w, h)
         helpers.SetColor({0, 0, 0, 0.15})
         gfx.rect(x, y, w, h / 2, 1)
@@ -296,6 +300,46 @@ function views.DrawIslands()
         DrawTooltip("Export MIDI")
     end
     if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then midi.ExportToMidi() end
+
+    -- 5. VOLUME SLIDER
+    local s_y = e_y + b_h + b_gap
+    local s_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= s_y and gfx.mouse_y <= s_y + b_h
+    local volume = config.state.sequencer.volume or 100
+
+    -- Track (mismo island_bg que los botones para que coincida visualmente)
+    helpers.SetColor(theme.colors.island_bg)
+    components.DrawRoundedRect(i4_x, s_y, b_w, b_h, 10, true)
+
+    -- Fill (barra activa con padding interno de US(180))
+    local fill_pad = US(180)
+    local fill_w = (volume / 100) * (b_w - fill_pad * 2)
+    if fill_w > 0 then
+        helpers.SetColor(theme.colors.btn_active)
+        components.DrawRoundedRect(i4_x + fill_pad, s_y + fill_pad, fill_w, b_h - fill_pad * 2, 10, true)
+    end
+
+    -- Label
+    helpers.SetColor(theme.colors.text)
+    gfx.setfont(1, "Calibri", US(1100))
+    local label = string.format("VOL %d%%", volume)
+    local lw, lh = gfx.measurestr(label)
+    gfx.x, gfx.y = i4_x + (b_w - lw)/2, s_y + (b_h - lh)/2
+    gfx.drawstr(label)
+
+    -- Interaction
+    if s_hover and not config.state.drag.is_dragging then
+        DrawTooltip("Volume: " .. volume .. "%")
+    end
+    if config.state.mouse_click and s_hover and not config.state.drag.is_dragging then
+        config.state.slider_dragging = true
+    end
+    if config.state.slider_dragging then
+        local ratio = (gfx.mouse_x - i4_x) / b_w
+        config.state.sequencer.volume = math.floor(math.max(0, math.min(100, ratio * 100)))
+        if (gfx.mouse_cap & 1) == 0 then
+            config.state.slider_dragging = false
+        end
+    end
 end
 
 function views.DrawPerformanceArea()
@@ -321,12 +365,12 @@ function views.DrawPerformanceArea()
     local avail_w = w - (margin * 2)
     local pad_w, pad_h = US(5300), US(4116)
     local num_intervals = #config.SCALES[config.state.scale_index].intervals
-    local num_pads = math.max(2, math.min(7, num_intervals))
+    local num_pads = 7  -- always draw 7 slots; extra ones beyond num_intervals draw grayed out
     local pad_spacing = (avail_w - (pad_w * num_pads)) / (num_pads - 1)
     for i = 1, num_pads do
         local px = x_start + margin + (i - 1) * (pad_w + pad_spacing)
         local py = UY(15897)
-        components.DrawScalePad(px, py, pad_w, pad_h, i, US(1500), US(1100))
+        components.DrawScalePad(px, py, pad_w, pad_h, i, US(1500), US(1100), num_intervals)
     end
     local slot_w, slot_h = US(9350), US(6760)
     local slot_spacing = (avail_w - (slot_w * 4)) / 3
@@ -404,7 +448,10 @@ function views.DrawCompactView() end
 
 function views.DrawFullView()
     local s = math.min(gfx.w / 39914, gfx.h / 29162)
-    SetScale(s, (gfx.w - 39914 * s) / 2, (gfx.h - 29162 * s) / 2)
+    -- Márgenes horizontales iguales (50/50)
+    local ox = (gfx.w - 39914 * s) * 0.5
+    local oy = (gfx.h - 29162 * s) / 2
+    SetScale(s, ox, oy)
     helpers.SetColor(theme.colors.bg)
     gfx.rect(0, 0, gfx.w, gfx.h, 1)
     views.DrawHeader()

@@ -1,7 +1,25 @@
 # Windows
 Thumbs.db
+thumbs.db
+Desktop.ini
 *.swp
+*.bak
+
+# macOS
+.DS_Store
+.DS_Store?
+.Spotlight-V100
+.Trashes
 
 # Temp
 tmp/
 *.log
+
+# Backups
+*.zip
+*.7z
+*.rar
+
+# REAPER
+reaper.ini
+*.ReaperLangPack

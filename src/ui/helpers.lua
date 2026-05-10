@@ -20,8 +20,33 @@ function helpers.StripAccents(str)
     return s
 end
 
--- Abbreviations for scale names (2+2 for two-word, first 5 for single-word)
+-- Medium abbreviations for full-view dropdowns
 local FULL_ABBREV = {
+    ["Major"] = "Major",
+    ["Major Bebop"] = "Maj Bebop",
+    ["Major Pentatonic"] = "Maj Penta",
+    ["Minor Harmonic"] = "Min Harmo",
+    ["Minor Hungarian"] = "Min Hunga",
+    ["Minor Melodic"] = "Min Melod",
+    ["Minor Natural (Aeolian)"] = "Min Natur",
+    ["Minor Neopolitan"] = "Min Neopo",
+    ["Minor Pentatonic"] = "Min Penta",
+    ["Arabic"] = "Arabic",
+    ["Blues"] = "Blues",
+    ["Diminished"] = "Diminishe",
+    ["Dominant Bebop"] = "Dom Bebop",
+    ["Dorian"] = "Dorian",
+    ["Enigmatic"] = "Enigmatic",
+    ["Japanese Insen"] = "Jap Insen",
+    ["Locrian"] = "Locrian",
+    ["Lydian"] = "Lydian",
+    ["Mixolydian"] = "Mixolydia",
+    ["Neopolitan"] = "Neopolita",
+    ["Phrygian"] = "Phrygian",
+}
+
+-- Ultra-short abbreviations for compact view (2+2 for two-word, first 5 for single-word)
+local COMPACT_ABBREV = {
     ["Major"] = "Major",
     ["Major Bebop"] = "Ma Be",
     ["Major Pentatonic"] = "Ma Pe",
@@ -47,6 +72,10 @@ local FULL_ABBREV = {
 
 function helpers.AbbreviateScale(name)
     return FULL_ABBREV[name] or name
+end
+
+function helpers.CompactAbbreviateScale(name)
+    return COMPACT_ABBREV[name] or name
 end
 
 return helpers

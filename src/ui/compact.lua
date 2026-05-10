@@ -26,7 +26,7 @@ local FLOAT_GAP = 42  -- gap visual entre panel y barra de transporte
 -- Cached dropdown options (shared with the panel)
 local SCALE_OPTIONS = (function()
     local t = {}
-    for i, s in ipairs(config.SCALES) do t[i] = helpers.AbbreviateScale(s.name) end
+    for i, s in ipairs(config.SCALES) do t[i] = helpers.CompactAbbreviateScale(s.name) end
     return t
 end)()
 local SCALE_FULL = (function() local t={}; for _, s in ipairs(config.SCALES) do t[#t+1]=s.name end return t end)()
@@ -55,11 +55,11 @@ local last_peek_time = 0
 local panel_open = false
 local panel_inited = false
 local panel_init_x, panel_init_y = 0, 0
-local panel_dropdown_up = false  -- true = menus open upward
 local panel_last_mouse_cap = 0
 local panel_hwnd = nil
 local panel_first_frame = true
 local panel_instance = 0
+local panel_open_up = false  -- dropdown direction based on panel screen position
 local RESTORE_BTN_SIZE = 12
 local restore_btn_x = 0  -- x of the restore-full-view button on the compact bar
 local function PanelTitle() return "Scale Runner - Panel#" .. panel_instance end
@@ -245,12 +245,12 @@ function compact.HandlePanel()
     local vel_w = 71     -- vel takes what remains
     -- Sum: 85+60+60+71 + 3*6 = 294 ✓
 
-    -- Determine dropdown direction: open UP if panel is in lower half of screen
-    local open_up = panel_dropdown_up
+    -- Dropdown direction: always open upward (above the button) in the panel
+    local open_up = true
 
     -- Scale dropdown (wider)
     local r = components.DrawDropdown(piano_key_left, cy, scale_w, ch, nil,
-        helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name),
+        helpers.CompactAbbreviateScale(config.SCALES[config.state.scale_index].name),
         SCALE_FULL, config.state.scale_index, 16, open_up)
     if r then config.state.scale_index = r end
 
@@ -352,14 +352,20 @@ function compact.SwitchViewMode()
     local c = config.state.compact
     if config.state.view_mode == config.VIEW_MODES.FULL then
         local dock = gfx.dock(-1)
-        config.state.last_gfx_state = {dock=dock, x=0, y=0, w=gfx.w, h=gfx.h}
+        local wx, wy = 0, 0
+        local hwnd = reaper.JS_Window_Find(config.script_title, true)
+        if hwnd then
+            local _, left, top, right, bottom = reaper.JS_Window_GetRect(hwnd)
+            wx, wy = left or 0, top or 0
+        end
+        config.state.last_gfx_state = {dock=dock, x=wx, y=wy, w=gfx.w, h=gfx.h}
         config.state.view_mode = config.VIEW_MODES.COMPACT
         gfx.quit()
         c.transport_hwnd = compact.FindTransportWindow()
     else
         if panel_open then ClosePanel() end
         config.state.view_mode = config.VIEW_MODES.FULL
-        compact.Cleanup()
+        -- Keep transport interception alive so the full-view toggle button works both ways
         local gs = config.state.last_gfx_state
         gfx.init(config.script_title, gs.w, gs.h, gs.dock, gs.x, gs.y)
         gfx.setfont(1, "Calibri", 16)
@@ -372,11 +378,11 @@ end
 
 local function DrawCompactBar(bm, y_off)
     local key_n = config.NOTE_NAMES[config.state.root_index]
-    local scale_n = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
+    local scale_n = helpers.CompactAbbreviateScale(config.SCALES[config.state.scale_index].name)
     local oct_n = "C" .. math.floor(config.state.octave)
-    local chord_n = config.CHORD_MODES[config.state.chord_mode_index].name:sub(1, 3)
-    local wk, ws, wo, wch = 24, 60, 24, 15
-    local x = 10
+    local chord_n = (config.state.chord_mode_index == 1) and "Note" or config.CHORD_MODES[config.state.chord_mode_index].name:sub(1, 3)
+    local wk, ws, wo, wch = 16, 34, 16, 24
+    local x = 6
     DrawLICEText(bm, x, y_off + 6, key_n, theme.colors.text); x = x + wk
     local disp, dc = scale_n, theme.colors.text
     if config.state.active_note_draw_timer > 0 then
@@ -387,9 +393,9 @@ local function DrawCompactBar(bm, y_off)
     DrawLICEText(bm, x, y_off + 6, oct_n, theme.colors.text_dim); x = x + wo
     DrawLICEText(bm, x, y_off + 6, chord_n, theme.colors.text_dim); x = x + wch
 
-    -- Restore full-view button (small outlined square at the right edge)
+    -- Restore full-view button (4px after chord text, tight with the group)
     local btn_size = RESTORE_BTN_SIZE
-    local btn_x = cv_w - btn_size - 3
+    local btn_x = x + 4
     local btn_y = y_off + (BAR_H - btn_size) / 2
     restore_btn_x = btn_x
     local btn_color = theme.colors.text_dim
@@ -416,16 +422,6 @@ local function TogglePanel()
         panel_hwnd = nil
         panel_first_frame = true
         panel_instance = panel_instance + 1
-
-        -- Determine dropdown direction: open UP if panel is in lower half of screen
-        local main_hwnd = reaper.GetMainHwnd()
-        local _, m_left, m_top, m_right, m_bottom = reaper.JS_Window_GetRect(main_hwnd)
-        if m_left then
-            local main_h = m_bottom - m_top
-            panel_dropdown_up = panel_init_y > main_h / 2
-        else
-            panel_dropdown_up = false
-        end
     end
 end
 
@@ -454,11 +450,15 @@ function compact.UpdateCompactView()
         cv_y = 2
     end
 
+    -- Content width = left padding + all columns + gap to button + button + right margin
+    local content_w = 6 + 16 + 34 + 16 + 24 + 4 + RESTORE_BTN_SIZE + 5
+
     reaper.JS_LICE_Resize(c.lice_bitmap, cv_w, cv_h)
-    DrawLICERect(c.lice_bitmap, 0, 0, cv_w, cv_h, theme.colors.bg, true, 8)
+    DrawLICERect(c.lice_bitmap, 0, 0, content_w, cv_h, theme.colors.bg, true, 8)
     DrawCompactBar(c.lice_bitmap, 0)
 
-    reaper.JS_Composite(c.transport_hwnd, cv_x, cv_y, cv_w, cv_h, c.lice_bitmap, 0, 0, cv_w, cv_h, true)
+    reaper.JS_Composite(c.transport_hwnd, cv_x, cv_y, content_w, cv_h, c.lice_bitmap, 0, 0, content_w, cv_h, true)
+    -- Invalidate full old area + new content area to clean up stale pixels
     reaper.JS_Window_InvalidateRect(c.transport_hwnd, cv_x, cv_y, cv_x + cv_w, cv_y + cv_h, false)
 end
 
