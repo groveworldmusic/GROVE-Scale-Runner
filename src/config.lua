@@ -60,7 +60,7 @@ config.state = {
     active_notes = {},  -- ref-counted: [midi_note] = count
     color_mode = "grade", -- "grade" = grade_colors per degree, "flat" = all blue
     last_mouse_cap = 0, mouse_click = false, mouse_wheel_delta = 0,
-    view_offset_x = 1000,
+    view_offset_x = 0,
     view_offset_y = 0,
     -- Docked transport bar state
     docked_mode = false,
