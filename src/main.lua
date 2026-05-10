@@ -12,11 +12,17 @@
 --   src/config.lua
 --   src/core/midi.lua
 --   src/core/sequencer.lua
+--   src/core/progression.lua
 --   src/ui/theme.lua
 --   src/ui/helpers.lua
 --   src/ui/components.lua
 --   src/ui/views.lua
 --   src/ui/compact.lua
+--   src/ui/colors.lua
+--   src/ui/format.lua
+--   src/ui/buttons.lua
+--   src/ui/paginator.lua
+--   src/ui/dropdown.lua
 -- @website https://github.com/GroveWorldMusic/GROVE-Scale-Runner
 
 local info = debug.getinfo(1, 'S')
@@ -33,11 +39,9 @@ local midi = require("core.midi")
 local sequencer = require("core.sequencer")
 local views = require("ui.views")
 local compact = require("ui.compact")
+local keyboard = require("core.keyboard")
 
-local last_focus_check = 0
-local is_intercepting = false
 local last_dock_state = 0
-local temp_ctx = {}  -- Reusable context table for key press handling (Issue 12)
 
 -- Toggle dock state (Ctrl+D)
 local function ToggleDock()
@@ -79,93 +83,12 @@ local function CheckDockState()
     end
 end
 
-local function HandleKeyboard()
-    if not is_intercepting then return end
-    
-    for k_code, state in pairs(config.state.key_states) do
-        local is_down = reaper.JS_VKeys_GetState(0):byte(k_code) ~= 0
-        if is_down and not state.is_pressed then
-            state.is_pressed = true
-            local map = config.VKEY_MAP[k_code]
-            if map then
-                -- Velocity Humanization (Issue 21)
-                local vel = config.state.use_velocity and (85 + math.random(30)) or 100
-                
-                -- Reusable context with octave override (Issue 12)
-                temp_ctx.octave = config.state.octave + map.oct
-                temp_ctx.root_index = config.state.root_index
-                temp_ctx.scale_index = config.state.scale_index
-                temp_ctx.chord_mode_index = config.state.chord_mode_index
-                state.midi_notes = midi.TriggerChord(map.deg, true, temp_ctx, vel)
-            end
-        elseif not is_down and state.is_pressed then
-            state.is_pressed = false
-            for _, n in ipairs(state.midi_notes) do
-                midi.SendMidi(n, false)
-            end
-            state.midi_notes = {}
-        end
-    end
-end
 
-
-
-local function InterceptMappedKeys(state)
-    -- Only intercept the specific keys the script uses, not ALL keys.
-    -- This allows the VKB and Reaper shortcuts to work normally for unmapped keys.
-    local action = state and 1 or -1
-    for k_code, _ in pairs(config.VKEY_MAP) do
-        reaper.JS_VKeys_Intercept(k_code, action)
-    end
-end
-
-local function IsPluginOrScriptFocused()
-    local hwnd = reaper.JS_Window_GetFocus()
-    if not hwnd then return false end
-    
-    -- Our own script window has focus
-    if hwnd == gfx.hwnd then return true end
-    
-    -- GetFocusedFX2() retval bitmask:
-    --   bit 1 (& 1): track FX is focused
-    --   bit 2 (& 2): take FX is focused  
-    --   bit 4 (& 4): window is open but NOT actively focused
-    -- We want to intercept ONLY when a plugin is ACTIVELY focused (bits 1/2 set, bit 4 NOT set)
-    local retval = reaper.GetFocusedFX2()
-    local plugin_type = retval & 3  -- track FX or take FX
-    local is_unfocused = retval & 4 -- window open but not focused
-    
-    if plugin_type ~= 0 and is_unfocused == 0 then
-        return true -- A plugin window is actively focused
-    end
-    
-    return false
-end
-
-local function CheckFocus()
-    local now = reaper.time_precise()
-    if now - last_focus_check > 0.2 then  -- ~3 frames at 60fps, matches REAPER's typical defer cycle
-        last_focus_check = now
-        
-        local should_intercept = IsPluginOrScriptFocused()
-        
-        if should_intercept and not is_intercepting then
-            InterceptMappedKeys(true)
-            is_intercepting = true
-        elseif not should_intercept and is_intercepting then
-            InterceptMappedKeys(false)
-            is_intercepting = false
-            midi.AllNotesOff()
-        end
-    end
-end
 
 local function CleanupAll()
     midi.AllNotesOff()
     sequencer.Stop()
-    if is_intercepting then
-        InterceptMappedKeys(false)
-    end
+    keyboard.Cleanup()
     compact.Cleanup()
 end
 
@@ -179,9 +102,9 @@ local function MainLoop()
     views.DecrementPageOverrideTimer()
     
     -- Shared logic for ALL modes
-    CheckFocus()
+    keyboard.CheckFocus()
     sequencer.Run()
-    HandleKeyboard()
+    keyboard.HandleKeyboard()
 
     -- Compact mode (no GFX window)
     if config.state.view_mode == config.VIEW_MODES.COMPACT then
@@ -224,13 +147,13 @@ local function MainLoop()
 
     config.state.last_mouse_cap = gfx.mouse_cap
 
-    -- Re-check: DrawFullView may have called SwitchViewMode() or ToggleMIDIIsland()
+    -- Re-check: DrawFullView may have called SwitchViewMode() or midi.ToggleIsland()
     if config.state.view_mode == config.VIEW_MODES.COMPACT then
         reaper.defer(MainLoop)
         return
     end
-    if config.state.midi_island_toggled then
-        config.state.midi_island_toggled = false
+    if midi.midi_island_toggled then
+        midi.midi_island_toggled = false
         reaper.defer(MainLoop)
         return
     end
@@ -274,8 +197,7 @@ local function Init()
     if ext_reaper == "1" then config.state.auto_start_reaper = true end
 
     -- Ensure clean state on startup
-    InterceptMappedKeys(false)
-    is_intercepting = false
+    keyboard.InterceptMappedKeys(false)
 
     -- Auto-start: compact bar overlay alongside full view
     if config.state.auto_start_compact then
