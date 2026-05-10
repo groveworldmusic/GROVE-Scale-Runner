@@ -71,6 +71,10 @@ config.state = {
     -- Docked transport bar state
     docked_mode = false,
     dock_id = 0,
+    -- MIDI Island
+    midi_island_expanded = false,
+    midi_channel = 1,
+    midi_island_toggled = false,
     -- Compact composite state (for JS_Composite transport bar view)
     last_gfx_state = {dock=0, x=100, y=100, w=720, h=500},
     -- Compact composite resources (managed by ui/compact.lua)

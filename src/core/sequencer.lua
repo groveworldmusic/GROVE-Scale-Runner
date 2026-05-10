@@ -64,10 +64,12 @@ function sequencer.Run()
         for _, n in ipairs(config.state.sequencer.midi_notes) do midi.SendMidi(n, false) end
         config.state.sequencer.midi_notes = {}
         
+        -- Cache GetLastFilledSlot() once (Issue 19)
+        local loop = sequencer.GetLastFilledSlot()
+        
         -- Catch up skipped steps if frame was delayed — trigger each skipped slot
         while config.state.sequencer.last_measure >= 0 and cur_m > config.state.sequencer.last_measure + 1 do
             config.state.sequencer.last_measure = config.state.sequencer.last_measure + 1
-            local loop = sequencer.GetLastFilledSlot()
             if loop > 0 then
                 local skipped_step = (config.state.sequencer.last_measure % loop) + 1
                 local skipped_slot = config.state.progression[skipped_step]
@@ -79,8 +81,6 @@ function sequencer.Run()
                 end
             end
         end
-        
-        local loop = sequencer.GetLastFilledSlot()
         if loop == 0 then 
             sequencer.Stop()
             return 

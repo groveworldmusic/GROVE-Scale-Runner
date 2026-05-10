@@ -21,6 +21,7 @@ theme.colors = {
     btn_active = hex2rgb("#3f81da"),-- Active mode
     pad_active = hex2rgb("#3f81da"),-- Pad highlight (used in compact.lua note flash)
     island_bg = hex2rgb("#333333"), -- Background for control islands
+    bar_bg = hex2rgb("#242424"),   -- Compact transport bar background (Adaptive grid default)
     slot_filled = hex2rgb("#3f81da"),-- Filled slot (blue)
     slot_playing = hex2rgb("#6ba659"),-- Playing slot / Play button
     piano_white = hex2rgb("#d9d9d9"),

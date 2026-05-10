@@ -34,4 +34,4 @@ None.
 - **MIDI via Reaper**: `reaper.StuffMIDIMessage` for note on/off; no external MIDI libraries.
 - **Package path**: `package.path` extended at runtime via `debug.getinfo(1, 'S')` for relative requires.
 - **State management**: Global `config.state` object; no external state libraries.
-- **No testing infrastructure**: Reaper Lua scripts have no test runners; SDD applies without TDD enforcement.
+- **Testing**: Custom mock-based tests in `tests/test_midi.lua` (standalone, no REAPER dep). No `lua` CLI available — tests verified via static analysis only. SDD verification uses manual + static review.

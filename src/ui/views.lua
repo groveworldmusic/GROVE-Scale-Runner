@@ -25,6 +25,26 @@ local function US(v) return math.floor(v * _S) end
 -- Must be called before any UX/UY/US call. Only DrawFullView calls this.
 local function SetScale(s, ox, oy) _S, _OX, _OY = s, ox, oy end
 
+-- Toggle the MIDI island expanded/collapsed state.
+-- Resizes window via gfx.quit()+gfx.init(). Docked mode is not supported.
+local function ToggleMIDIIsland()
+    if config.state.docked_mode then return end
+    config.state.midi_island_expanded = not config.state.midi_island_expanded
+    config.state.midi_island_toggled = true
+    local dock = gfx.dock(-1)
+    -- Capturar posición actual de la ventana antes de gfx.quit()
+    local gs = config.state.last_gfx_state
+    local hwnd = gfx.hwnd
+    if hwnd then
+        local l, t, r, b = reaper.JS_Window_GetRect(hwnd)
+        gs.x, gs.y = l, t
+    end
+    local new_h = config.state.midi_island_expanded and 793 or 497
+    gfx.quit()
+    gfx.init(config.script_title, 720, new_h, dock, gs.x, gs.y)
+    gfx.setfont(1, "Calibri", 16)
+end
+
 
 
 
@@ -272,38 +292,57 @@ function views.DrawIslands()
     end
     if config.state.mouse_click and p_hover and not config.state.drag.is_dragging then config.state.sequencer.is_playing = not is_playing end
     
-    -- 3. CLEAR Island
+    -- 3. CLEAR + EXPORT (side by side, same row)
     local c_y = p_y + b_h + b_gap
-    local c_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= c_y and gfx.mouse_y <= c_y + b_h
-    local c_bg = c_hover and {0.4, 0.1, 0.1, 1} or theme.colors.island_bg
-    helpers.SetColor(c_bg)
-    components.DrawRoundedRect(i4_x, c_y, b_w, b_h, 10, true)
-    if config.state.mouse_click and c_hover and not config.state.drag.is_dragging then PressOverlay(i4_x, c_y, b_w, b_h) end
-    helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", US(1300))
-    local cw, ch = gfx.measurestr("CLEAR")
-    gfx.x, gfx.y = i4_x + (b_w - cw)/2, c_y + (b_h - ch)/2
-    gfx.drawstr("CLEAR")
-    if c_hover and not config.state.drag.is_dragging then
+    local split_gap = US(500)  -- gap entre CLEAR y EXPORT
+    local half_w = math.floor((b_w - split_gap) / 2)
+    local clear_x = i4_x
+    local export_x = i4_x + half_w + split_gap
+
+    -- CLEAR icon (left half)
+    local clear_hover = gfx.mouse_x >= clear_x and gfx.mouse_x <= clear_x + half_w and gfx.mouse_y >= c_y and gfx.mouse_y <= c_y + b_h
+    local clear_bg = clear_hover and {0.4, 0.1, 0.1, 1} or theme.colors.island_bg
+    helpers.SetColor(clear_bg)
+    components.DrawRoundedRect(clear_x, c_y, half_w, b_h, 10, true)
+    if config.state.mouse_click and clear_hover and not config.state.drag.is_dragging then PressOverlay(clear_x, c_y, half_w, b_h) end
+    local icon_pad = math.floor((half_w - b_h) / 2)
+    if components.DrawToolIcon("clear", clear_x + icon_pad, c_y, b_h, false) then
+        for i=1, 16 do config.state.progression[i] = nil end
+    end
+    if clear_hover and not config.state.drag.is_dragging then
         helpers.DrawTooltip("Clear all slots", US(700))
     end
-    if config.state.mouse_click and c_hover and not config.state.drag.is_dragging then for i=1, 16 do config.state.progression[i] = nil end end
-    
-    -- 4. EXPORT Island
-    local e_y = c_y + b_h + b_gap
-    local e_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= e_y and gfx.mouse_y <= e_y + b_h
-    helpers.SetColor(e_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    components.DrawRoundedRect(i4_x, e_y, b_w, b_h, 10, true)
-    if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then PressOverlay(i4_x, e_y, b_w, b_h) end
-    helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", btn_font_size or US(1300))
-    local ew, eh = gfx.measurestr("EXPORT")
-    gfx.x, gfx.y = i4_x + (b_w - ew)/2, e_y + (b_h - eh)/2
-    gfx.drawstr("EXPORT")
-    if e_hover and not config.state.drag.is_dragging then
+
+    -- EXPORT icon (right half)
+    local export_hover = gfx.mouse_x >= export_x and gfx.mouse_x <= export_x + half_w and gfx.mouse_y >= c_y and gfx.mouse_y <= c_y + b_h
+    local export_bg = export_hover and theme.colors.btn_hover or theme.colors.island_bg
+    helpers.SetColor(export_bg)
+    components.DrawRoundedRect(export_x, c_y, half_w, b_h, 10, true)
+    if config.state.mouse_click and export_hover and not config.state.drag.is_dragging then PressOverlay(export_x, c_y, half_w, b_h) end
+    if components.DrawToolIcon("export", export_x + icon_pad, c_y, b_h, false) then
+        midi.ExportToMidi()
+    end
+    if export_hover and not config.state.drag.is_dragging then
         helpers.DrawTooltip("Export MIDI", US(700))
     end
-    if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then midi.ExportToMidi() end
+
+    -- 4. MIDI TOGGLE (replaces old EXPORT)
+    local e_y = c_y + b_h + b_gap
+    local e_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= e_y and gfx.mouse_y <= e_y + b_h
+    local midi_expanded = config.state.midi_island_expanded
+    local e_bg = midi_expanded and theme.colors.btn_active or (e_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    helpers.SetColor(e_bg)
+    components.DrawRoundedRect(i4_x, e_y, b_w, b_h, 10, true)
+    if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then PressOverlay(i4_x, e_y, b_w, b_h) end
+    helpers.SetColor(midi_expanded and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", US(1500))
+    local ew, eh = gfx.measurestr("MIDI")
+    gfx.x, gfx.y = i4_x + (b_w - ew)/2, e_y + (b_h - eh)/2
+    gfx.drawstr("MIDI")
+    if e_hover and not config.state.drag.is_dragging then
+        helpers.DrawTooltip(midi_expanded and "Collapse MIDI island" or "Expand MIDI island", US(700))
+    end
+    if config.state.mouse_click and e_hover and not config.state.drag.is_dragging then ToggleMIDIIsland() end
 
     -- 5. VOLUME SLIDER
     local s_y = e_y + b_h + b_gap
@@ -456,16 +495,72 @@ function views.DrawPerformanceArea()
     components.DrawDragPreview(slot_w, slot_h)
 end
 
+function views.DrawMIDIIsland()
+    if not config.state.midi_island_expanded then return end
+
+    -- MIDI CH button centrado entre performance area y MIDI island
+    -- Gap total = VEL height (1980) + b_gap (~1389) = ~3369 virtual
+    -- perf_end = fin visual del área de performance (14375 + 13363)
+    local perf_end = 27738
+    local vel_h_v = 1980
+    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)  -- b_gap en virtual; +1422 (~25px) para 49px de gap perf area→MIDI island
+    local total_gap = vel_h_v + gap_v
+    local top_pad = 428  -- padding arriba del botón (~7px); bottom pad queda ~942 (~16.6px)
+    local btn_y_v = perf_end + top_pad                       -- ~29856
+    local b_w = US(5347)  -- ~94px
+    local content_w = US(39914)
+    local btn_x = UX(0) + math.floor((content_w - b_w) / 2)  -- centrado
+    local btn_y = UY(btn_y_v)
+    local btn_h = US(vel_h_v)
+
+    -- MIDI CH button (mismo tamaño y estilo que VEL)
+    local ch = config.state.midi_channel
+    local hover = gfx.mouse_x >= btn_x and gfx.mouse_x <= btn_x + b_w and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
+    helpers.SetColor(hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(btn_x, btn_y, b_w, btn_h, 10, true)
+    if config.state.mouse_click and hover and not config.state.drag.is_dragging then
+        local menu = ""
+        for i = 1, 16 do
+            menu = menu .. (i == ch and "!" or "") .. tostring(i) .. "|"
+        end
+        gfx.x, gfx.y = btn_x, btn_y + btn_h
+        local choice = gfx.showmenu(menu:sub(1, -2))
+        if choice and choice > 0 then config.state.midi_channel = choice end
+    end
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", US(1500))
+    local label = "CH " .. tostring(ch)
+    local lw, lh = gfx.measurestr(label)
+    gfx.x, gfx.y = btn_x + (b_w - lw)/2, btn_y + (btn_h - lh)/2
+    gfx.drawstr(label)
+    if hover and not config.state.drag.is_dragging then
+        helpers.DrawTooltip("MIDI Channel: " .. ch, US(700))
+    end
+
+    -- Island background debajo del gap
+    local island_y_v = btn_y_v + btn_h + gap_v - top_pad  -- ~32531
+    local y = UY(island_y_v)
+    local w = US(39914)
+    local h = US(14000)
+
+    helpers.SetColor(theme.colors.island_bg)
+    components.DrawRoundedRect(UX(0), y, w, h, 15, true)
+end
+
 function views.DrawFullView()
-    local s = math.min(gfx.w / 39914, gfx.h / 29162) * 1.025
+    -- Scale es CONSTANTE: se calcula contra la altura BASE de diseño (500px)
+    -- para que el contenido NO se deforme al expandir/colapsar la MIDI island.
+    -- Expandir solo agrega canvas abajo para la isla, no cambia el zoom.
+    local s = math.min(gfx.w / 39914, 500 / 29162) * 1.025
     local ox = (gfx.w - 39914 * s) / 2
-    local oy = (gfx.h - 29162 * s) / 2 + 600 * s
+    local oy = 600 * s - 10
     SetScale(s, ox, oy)
     helpers.SetColor(theme.colors.bg)
     gfx.rect(0, 0, gfx.w, gfx.h, 1)
     views.DrawHeader()
     views.DrawIslands()
     views.DrawPerformanceArea()
+    views.DrawMIDIIsland()
 end
 
 -- Docked Transport Bar: compact 50px horizontal strip
@@ -558,7 +653,7 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
         config.state.docked_mode = false
         config.state.dock_id = 0
         -- Resize back to normal window
-        gfx.init("GROVE SCALE RUNNER", 720, 500, 0, config.state.view_offset_x, config.state.view_offset_y)
+        gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     end
 end
 

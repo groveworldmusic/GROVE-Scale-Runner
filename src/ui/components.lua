@@ -99,6 +99,47 @@ function components.DrawToolIcon(type, x, y, size, active)
         -- Down arrow
         gfx.line(cx, cy + a*0.7, cx - a*0.5, cy + a*0.2)
         gfx.line(cx, cy + a*0.7, cx + a*0.5, cy + a*0.2)
+    elseif type == "clear" then
+        -- Trash can outline (centrado verticalmente)
+        local padding = size * 0.2
+        local body_w = size - padding * 2
+        local body_h = size * 0.48
+        local body_x = x + padding
+        local body_y = y + size * 0.30
+
+        -- Lid line
+        local lid_y = body_y - size * 0.04
+        gfx.line(body_x - size * 0.06, lid_y, body_x + body_w + size * 0.06, lid_y)
+
+        -- Handles on lid
+        local hw = size * 0.12
+        gfx.line(body_x + body_w * 0.28, lid_y, body_x + body_w * 0.28, y + size * 0.16)
+        gfx.line(body_x + body_w * 0.72, lid_y, body_x + body_w * 0.72, y + size * 0.16)
+        gfx.line(body_x + body_w * 0.28, y + size * 0.16, body_x + body_w * 0.72, y + size * 0.16)
+
+        -- Body (rect open top)
+        gfx.rect(body_x, body_y, body_w, body_h, 0)
+
+        -- Inner vertical lines
+        gfx.line(body_x + body_w * 0.3, body_y + size * 0.06, body_x + body_w * 0.3, body_y + body_h - size * 0.06)
+        gfx.line(body_x + body_w * 0.5, body_y + size * 0.06, body_x + body_w * 0.5, body_y + body_h - size * 0.06)
+        gfx.line(body_x + body_w * 0.7, body_y + size * 0.06, body_x + body_w * 0.7, body_y + body_h - size * 0.06)
+    elseif type == "export" then
+        -- Arrow up from tray (centrado verticalmente)
+        local cx = x + size / 2
+        local bottom = y + size - size * 0.22  -- tray un poco más arriba
+
+        -- Tray (horizontal line with small vertical edges)
+        gfx.line(x + size * 0.1, bottom, x + size * 0.9, bottom)
+        gfx.line(x + size * 0.1, bottom, x + size * 0.1, bottom - size * 0.04)
+        gfx.line(x + size * 0.9, bottom, x + size * 0.9, bottom - size * 0.04)
+
+        -- Arrow shaft
+        gfx.line(cx, bottom - size * 0.04, cx, y + size * 0.19)
+
+        -- Arrow head
+        gfx.line(cx, y + size * 0.19, cx - size * 0.22, y + size * 0.36)
+        gfx.line(cx, y + size * 0.19, cx + size * 0.22, y + size * 0.36)
     end
     
     return config.state.mouse_click and hover

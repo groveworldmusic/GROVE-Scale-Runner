@@ -1,0 +1,111 @@
+## Verification Report
+
+**Change**: Mouse Wheel Scroll for Dropdowns + Volume
+**Version**: 1.0
+**Mode**: Standard (no test infrastructure)
+
+---
+
+### Completeness
+
+| Metric | Value |
+|--------|-------|
+| Tasks total | 5 |
+| Tasks complete | 5 |
+| Tasks incomplete | 0 |
+
+All 5 tasks from the task plan are implemented. However, some have correctness issues detailed below.
+
+---
+
+### Build & Tests Execution
+
+**Build**: ➖ Not applicable (Lua, no build step)
+
+**Tests**: ➖ Not applicable (no test infrastructure — Reaper Lua)
+
+**Coverage**: ➖ Not available
+
+---
+
+### Spec Compliance Matrix
+
+| # | Scenario | Static Evidence | Result |
+|---|----------|-----------------|--------|
+| 1 | Scale dropdown wraps from first to last on scroll UP | DrawDropdown cyclic wrap: `if new_idx < 1 then new_idx = #options end`. Code returns `new_idx`. BUT scroll direction inverted (UP → next item in code, spec says UP → previous). Delta NOT consumed. | ⚠️ PARTIAL |
+| 2 | Octave dropdown wraps from last to first on scroll DOWN | DrawDropdown cyclic wrap: `if new_idx > #options then new_idx = 1 end`. BUT scroll direction inverted (DOWN → previous item in code, spec says DOWN → next item). Delta NOT consumed. | ⚠️ PARTIAL |
+| 3 | Panel compact dropdowns respond to scroll | compact.lua:246 captures `gfx.mouse_wheel` into `config.state.mouse_wheel_delta`. DrawDropdown in compact panel reads it. **BUT** `gfx.mouse_wheel` is NOT zeroed (missing `gfx.mouse_wheel = 0`), causing scroll to repeat every frame in the panel. | ❌ UNTESTED |
+| 4 | Volume scroll UP and clamp at 100 | Code clamps: `math.max(0, math.min(100, volume + delta))`. BUT scroll direction inverted (DOWN → +5 in code, spec says UP → +5). Delta NOT consumed. | ⚠️ PARTIAL |
+| 5 | Volume scroll UP stays at 100 | Clamp at 100 via `math.min(100, ...)`. Direction issue same as #4. | ⚠️ PARTIAL |
+| 6 | Volume scroll DOWN clamps at 0 | Clamp at 0 via `math.max(0, ...)`. Direction issue same as #4. | ⚠️ PARTIAL |
+| 7 | Toggle scroll off disables dropdown and volume scroll | DrawDropdown checks `config.state.use_scroll`. Volume slider checks `config.state.use_scroll`. Pagination does NOT check it. ✅ | ✅ COMPLIANT |
+| 8 | Toggle scroll back on re-enables scroll | `DrawToolIcon("scroll", ...)` toggles `config.state.use_scroll = not config.state.use_scroll`. ✅ | ✅ COMPLIANT |
+| 9 | No cascade between widgets | Delta NOT consumed by DrawDropdown or volume slider. **However**, position-based isolation prevents visible cascading in practice. Scroll direction DOES cascade if cursor overlaps areas (impossible with current layout). | ⚠️ PARTIAL |
+| 10 | Pagination still works when cursor is over performance area | `DrawPerformanceArea` checks `hover_area` (not `use_scroll`). Pagination fires independently. ✅ | ✅ COMPLIANT |
+
+**Compliance summary**: 4/10 full compliant, 5/10 partial, 1/10 untested (failing)
+
+---
+
+### Correctness (Static Evidence)
+
+| Requirement | Status | Notes |
+|------------|--------|-------|
+| **Config State** | ✅ Implemented | `config.lua:49` → `use_scroll = true` |
+| **Dropdown Scroll (full view)** | ⚠️ Implemented | Cyclic wrap correct. Direction inverted. Delta not consumed. |
+| **Dropdown Scroll (compact panel)** | ❌ Broken | `gfx.mouse_wheel` not zeroed → scroll repeats every frame |
+| **Volume Scroll** | ⚠️ Implemented | Clamp [0,100] correct. Direction inverted. Delta not consumed. |
+| **Scroll Toggle Icon** | ⚠️ Implemented | Toggle works. No visual active state. Text indicator compensates. |
+| **Scroll Toggle: pagination isolation** | ✅ Implemented | Pagination does not check `use_scroll` — always scrolls |
+| **Root note dropdown NOT affected** | ✅ Implemented | Root note is set via piano keyboard, not a dropdown |
+| **Delta Consumption Per Widget** | ❌ Not implemented | Neither DrawDropdown nor volume slider zeroes the delta |
+
+---
+
+### Coherence (Design)
+
+| Decision | Followed? | Notes |
+|----------|-----------|-------|
+| DrawToolIcon optional `active` parameter | ❌ No | Chosen in design. Not implemented. Function signature unchanged. |
+| Cyclic wrap for dropdowns | ✅ Yes | `if new_idx < 1 then new_idx = #options end` + bottom wrap |
+| Clamped volume [0, 100] | ✅ Yes | `math.max(0, math.min(100, volume + delta))` |
+| Delta consumed per widget (zeroed after use) | ❌ No | Design explicitly shows `config.state.mouse_wheel_delta = 0`. Not in code. |
+| Scroll handler before click handler (DrawDropdown) | ✅ Yes | Lines 416-422 (scroll) before lines 424-437 (showmenu) |
+| Compact panel captures `gfx.mouse_wheel` | ⚠️ Partial | Reads the value (line 246). Does NOT zero gfx.mouse_wheel. |
+
+---
+
+### Issues Found
+
+**CRITICAL**: 1 issue
+
+1. **compact.lua does not zero `gfx.mouse_wheel` after reading**  
+   `config.state.mouse_wheel_delta = gfx.mouse_wheel` (line 246) stores the wheel value but never zeroes `gfx.mouse_wheel`. REAPER's gfx.mouse_wheel is an accumulated counter that does NOT auto-reset between frames (main.lua:199 explicitly zeroes it for the main context). Without zeroing, the compact panel's separate GFX context retains the last scroll value, causing dropdowns to scroll repeatedly each frame on a single scroll tick until the user scrolls again or closes the panel.  
+   **Fix**: Add `gfx.mouse_wheel = 0` immediately after line 246.
+   *Found in*: `src/ui/compact.lua:246`
+
+**WARNING**: 3 issues
+
+1. **Scroll direction inverted from spec**  
+   The spec says "Scroll UP → previous item" and "Scroll UP → +5 volume". The code does the opposite: scroll UP → next item / scroll UP → -5 volume. While this follows the existing codebase convention (pagination at views.lua:388 uses the same sign mapping), it violates the approved spec.  
+   *Found in*: `src/ui/components.lua:417`, `src/ui/views.lua:356`
+
+2. **Delta consumption missing in DrawDropdown and volume slider**  
+   The spec requires `config.state.mouse_wheel_delta = 0` after each widget consumes it. The design code block explicitly includes `config.state.mouse_wheel_delta = 0`. Neither DrawDropdown (components.lua:415-422) nor the volume slider (views.lua:355-358) implements this. In the current layout, position isolation prevents visible cascading, but this is fragile.  
+   **Fix**: Add `config.state.mouse_wheel_delta = 0` after the new index/volume computation in both handlers.  
+   *Found in*: `src/ui/components.lua:421`, `src/ui/views.lua:357`
+
+3. **DrawToolIcon missing `active` parameter — scroll icon has no visual state distinction**  
+   The design chose to add an optional 5th `active` parameter to DrawToolIcon, which was not implemented. The scroll toggle icon renders identically whether `use_scroll` is true or false (color depends only on hover). The spec requires "a visually distinct active state." Partially mitigated by the text indicator ("Scroll: ON/OFF") in the header.  
+   **Fix**: Add `active` param to DrawToolIcon signature and use `btn_active` color when active. Pass `config.state.use_scroll` when calling `DrawToolIcon("scroll", ...)` in views.lua.  
+   *Found in*: `src/ui/components.lua:82`, `src/ui/views.lua:160`
+
+**SUGGESTION**: None
+
+---
+
+### Verdict
+
+**PASS WITH WARNINGS**
+
+Implementation is functional for the primary use case (full view dropdowns respond to scroll, volume responds to scroll, toggle works). However, it has 1 critical bug in the compact panel (scroll repeats every frame due to un-zeroed gfx.mouse_wheel), 3 warning-level issues (inverted scroll direction from spec, missing delta consumption, missing active visual state on icon), and 5/10 spec scenarios are only partially compliant. Recommend fixing the critical compact-panel issue before merging.

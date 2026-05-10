@@ -17,8 +17,8 @@ function midi.SendMidi(note, on, velocity)
     if not note or note < 0 or note > 127 then return end
     local vel = velocity or 100
     if on then local vol = config.state.sequencer.volume or 100; vel = math.floor(vel * vol / 100) end
-    -- TODO: Make MIDI channel configurable (currently hardcoded to channel 0)
-    reaper.StuffMIDIMessage(0, on and 0x90 or 0x80, note, on and vel or 0)
+    local ch = config.state.midi_channel - 1
+    reaper.StuffMIDIMessage(ch, on and 0x90 or 0x80, note, on and vel or 0)
     if on then
         local name = config.NOTE_NAMES[(note % 12) + 1] or "?"
         config.state.last_note_played = string.format("%s%d", name, math.floor(note/12)-1)
@@ -48,7 +48,7 @@ end
 
 function midi.AllNotesOff()
     -- Send CC 123 (All Notes Off) — some VSTs respond to this
-    reaper.StuffMIDIMessage(0, 0xB0, 123, 0)
+    reaper.StuffMIDIMessage(config.state.midi_channel - 1, 0xB0, 123, 0)
     
     -- Explicit note-offs: not all VSTs respond to CC 123, so send individual Note Off
     -- for every held note before clearing state tables

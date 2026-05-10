@@ -47,7 +47,7 @@ local function ToggleDock()
         config.state.docked_mode = false
         config.state.dock_id = 0
         -- Resize back to normal window
-        gfx.init("GROVE SCALE RUNNER", 720, 500, 0, config.state.view_offset_x, config.state.view_offset_y)
+        gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     else
         -- Dock: call gfx.dock(1) to dock in transport bar slot
         config.state.dock_id = gfx.dock(1)
@@ -224,8 +224,13 @@ local function MainLoop()
 
     config.state.last_mouse_cap = gfx.mouse_cap
 
-    -- Re-check: DrawFullView may have called SwitchViewMode()
+    -- Re-check: DrawFullView may have called SwitchViewMode() or ToggleMIDIIsland()
     if config.state.view_mode == config.VIEW_MODES.COMPACT then
+        reaper.defer(MainLoop)
+        return
+    end
+    if config.state.midi_island_toggled then
+        config.state.midi_island_toggled = false
         reaper.defer(MainLoop)
         return
     end
@@ -259,7 +264,7 @@ local function Init()
         CleanupAll()
     end)
 
-    gfx.init("GROVE SCALE RUNNER", 720, 500, 0, config.state.view_offset_x, config.state.view_offset_y)
+    gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)
 
     -- Load persisted preferences from REAPER ExtState

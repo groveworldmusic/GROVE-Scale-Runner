@@ -21,8 +21,7 @@ local PANEL_PH = 171
 local PANEL_PIANO_H = 128
 local PANEL_CONTROLS_Y = PANEL_PIANO_H + 10  -- 128 + 10 = 138
 local PANEL_PAD = 5
-local FLOAT_GAP = 6  -- gap visual entre panel y barra de transporte
-local TITLE_BAR_H = 25  -- altura estimada de la barra de título de la ventana GFX
+local FLOAT_GAP = 42  -- gap visual entre panel y barra de transporte
 
 -- Cached dropdown options (shared with the panel)
 local SCALE_OPTIONS = (function()
@@ -47,24 +46,27 @@ end)()
 -- =========================================================
 
 local cv_x, cv_y, cv_w, cv_h = 0, 0, 0, BAR_H
-local intercept_active = false
+local intercept_active_l = false  -- WM_LBUTTONDOWN registered (passthrough=true, always active)
+local intercept_active_r = false  -- WM_RBUTTONDOWN registered (passthrough=false, hover-activated)
 local cv_auto_x = nil
 local use_auto_pos = true
-local last_peek_time = 0
+local last_l_time = 0  -- last WM_LBUTTONDOWN timestamp seen
+local last_r_time = 0  -- last WM_RBUTTONDOWN timestamp seen
+local menu_dismiss_time = 0    -- reaper.time_precise() when the context menu was last dismissed
 local last_transport_w = nil  -- Track transport width for auto-position invalidation (Issue 10)
 
 -- Panel (floating GFX) state
 local panel_open = false
 local panel_inited = false
 local panel_init_x, panel_init_y = 0, 0
+local panel_opened_bar_y = 0  -- bar_screen_y when panel was opened, for auto-reposition
 local panel_last_mouse_cap = 0
 local panel_hwnd = nil
 local panel_first_frame = true
-local panel_instance = 0
 local panel_open_up = false  -- dropdown direction based on panel screen position
 local RESTORE_BTN_SIZE = 12
 local restore_btn_x = 0  -- x of the restore-full-view button on the compact bar
-local function PanelTitle() return "Scale Runner - Panel#" .. panel_instance end
+local function PanelTitle() return "Scale Runner" end
 
 -- =========================================================
 -- LICE SYSTEM
@@ -239,10 +241,36 @@ function compact.HandlePanel()
         return
     end
 
+    -- Auto-reposition: si la barra de transporte se movio significativamente
+    -- (ej. usuario cambio dock de top a bottom), reposicionar el panel.
+    local rect = GetTransportScreenRect()
+    if rect and math.abs(rect.bar_screen_y - panel_opened_bar_y) > 50 then
+        -- Recalcular posicion
+        panel_init_x = math.floor(rect.bar_center_x - PANEL_PW / 2 - 26)
+        local enough = rect.bar_screen_y >= PANEL_PH + FLOAT_GAP
+        if enough then
+            panel_init_y = math.floor(rect.bar_screen_y - PANEL_PH - FLOAT_GAP)
+        else
+            local BELOW_OFFSET_AUTO = 38  -- misma compensacion que TogglePanel
+            panel_init_y = math.floor(rect.bar_screen_y + BAR_H + FLOAT_GAP - BELOW_OFFSET_AUTO)
+        end
+        panel_open_up = enough  -- misma logica que TogglePanel
+        panel_opened_bar_y = rect.bar_screen_y
+
+        -- Cerrar ventana actual; se recreara en el proximo frame con nueva posicion
+        gfx.quit()
+        panel_inited = false
+        panel_hwnd = nil
+        panel_first_frame = true  -- filtrar clicks stale del cierre/apertura
+        return
+    end
+
     -- Fresh click detection (skip first frame to discard stale click that opened the panel)
     config.state.mouse_click = not panel_first_frame and (gfx.mouse_cap & 1) == 1 and panel_last_mouse_cap == 0
     panel_first_frame = false
     panel_last_mouse_cap = gfx.mouse_cap
+    config.state.mouse_wheel_delta = gfx.mouse_wheel
+    gfx.mouse_wheel = 0
 
     -- Background (fill entire window, no rounded corners to avoid border artifacts)
     helpers.SetColor(theme.colors.island_bg)
@@ -306,21 +334,22 @@ end
 -- =========================================================
 
 function compact.ShowContextMenu()
-    -- Save current GFX state BEFORE creating the temp context-menu window.
-    -- gfx.init("", 0, 0) below replaces the GFX context; if we don't save now,
-    -- SwitchViewMode later reads gfx.w/gfx.h = 0 and corrupts last_gfx_state.
-    if config.state.view_mode == config.VIEW_MODES.FULL then
-        local saved_dock = gfx.dock(-1)
-        local sw, sh = gfx.w, gfx.h
-        if sw and sw > 0 then
-            config.state.last_gfx_state.dock = saved_dock
-            config.state.last_gfx_state.w = sw
-            config.state.last_gfx_state.h = sh
-        end
+    local is_full = config.state.view_mode == config.VIEW_MODES.FULL
+
+    -- CRITICAL: Only create a temp GFX window in compact mode (no GFX context exists).
+    -- In full/overlay mode, the full view's GFX is already open — creating a temp
+    -- window with gfx.init would DESTROY the full view's GFX context (per REAPER API).
+    if is_full then
+        -- Use existing GFX context for the menu
+        gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
+    else
+        gfx.init("", 0, 0)
+        local mx, my = reaper.GetMousePosition()
+        gfx.x, gfx.y = gfx.screentoclient(mx, my)
     end
 
     local menu = "#Scale Runner|"
-    menu = menu .. (config.state.view_mode == config.VIEW_MODES.COMPACT and "Cambiar a Vista Completa" or "Cambiar a Vista Compacta") .. "|"
+    menu = menu .. (is_full and "Cambiar a Vista Compacta" or "Cambiar a Vista Completa") .. "|"
     menu = menu .. ">Tonalidad|"
     for i, n in ipairs(config.NOTE_NAMES) do menu = menu .. (config.state.root_index == i and "!" or "") .. n .. "|" end
     menu = menu .. "<|>Escala|"
@@ -333,11 +362,13 @@ function compact.ShowContextMenu()
     menu = menu .. "Exportar Progresion MIDI|Panic (Notas Off)||"
     menu = menu .. ">Posicion|Ajustar Offset X/Y...|Resetear Verticalmente|<"
 
-    gfx.init("", 0, 0)
-    local mx, my = reaper.GetMousePosition()
-    gfx.x, gfx.y = gfx.screentoclient(mx, my)
     local ret = gfx.showmenu(menu)
-    gfx.quit()
+
+    -- Only quit temp window (never destroy the full view's GFX context)
+    if not is_full then gfx.quit() end
+
+    -- Record timestamp so the next left-click doesn't also toggle the panel
+    menu_dismiss_time = reaper.time_precise()
 
     local OFFSET_TONE = 2
     local OFFSET_SCALE = OFFSET_TONE + #config.NOTE_NAMES
@@ -381,6 +412,8 @@ end
 function compact.SwitchViewMode()
     local c = config.state.compact
     if config.state.view_mode == config.VIEW_MODES.FULL then
+        -- FULL → COMPACT: close full view, end overlay
+        config.state.compact_overlay_active = false
         -- Guard: only capture GFX state if the context is valid (gfx.w > 0).
         -- When called from ShowContextMenu after gfx.quit(), the context is gone.
         if gfx.w and gfx.w > 0 then
@@ -397,13 +430,37 @@ function compact.SwitchViewMode()
         gfx.quit()
         c.transport_hwnd = compact.FindTransportWindow()
     else
+        -- COMPACT → FULL: open full view AND activate overlay so the compact
+        -- bar stays visible and clickable (user can close the full view from it).
         if panel_open then ClosePanel() end
         config.state.view_mode = config.VIEW_MODES.FULL
-        -- Keep transport interception alive so the full-view toggle button works both ways
+        config.state.compact_overlay_active = true
+        if not c.transport_hwnd then
+            c.transport_hwnd = compact.FindTransportWindow()
+        end
+        EnsureLICE()
         local gs = config.state.last_gfx_state
         gfx.init(config.script_title, gs.w, gs.h, gs.dock, gs.x, gs.y)
         gfx.setfont(1, "Calibri", 16)
     end
+end
+
+-- Initialize compact bar overlay alongside the full view (auto-start)
+-- Returns true if the panel is open (used by main.lua for overlay mode)
+function compact.IsPanelOpen() return panel_open end
+
+function compact.InitOverlay()
+    config.state.compact_overlay_active = true
+    config.state.view_mode = config.VIEW_MODES.FULL  -- stay in full mode
+    local c = config.state.compact
+    c.transport_hwnd = compact.FindTransportWindow()
+    if not c.transport_hwnd then
+        config.state.compact_overlay_active = false
+        return
+    end
+    EnsureLICE()
+    -- Don't call gfx.quit() — full view stays visible
+    -- Interception will start on first MainLoop call via compact_overlay_active check
 end
 
 -- =========================================================
@@ -449,18 +506,33 @@ local function TogglePanel()
         -- cv_w es 156 pero el contenido visible es ~103px, ajustamos 26px a la izquierda
         panel_init_x = math.floor(rect.bar_center_x - PANEL_PW / 2 - 26)
 
-        -- Determinar si hay espacio arriba de la barra
-        local space_above = rect.bar_screen_y - FLOAT_GAP
-        local enough_above = space_above >= PANEL_PH + FLOAT_GAP
+        -- Determinar si hay espacio arriba de la barra de transporte en pantalla
+        local enough_above = rect.bar_screen_y >= PANEL_PH + FLOAT_GAP
 
         if enough_above then
-            -- Panel arriba de la barra (comportamiento normal)
+            -- Panel flota arriba de la barra
+            -- gfx.init(x, y) posiciona el frame de la ventana. El área cliente
+            -- empieza title_bar px más abajo, así que el gap visual real es:
+            --   FLOAT_GAP - TITLE_BAR_H  (≈ 42 - 31 = 11px → flota justo)
             panel_init_y = math.floor(rect.bar_screen_y - PANEL_PH - FLOAT_GAP)
         else
-            -- Panel debajo de la barra (cuando está dockeada on top)
-            panel_init_y = math.floor(rect.bar_screen_y + BAR_H + FLOAT_GAP)
+            -- Panel debajo de la barra: gfx.init(x, y) posiciona el FRAME de la
+            -- ventana. El área cliente empieza TITLE_BAR_H px más abajo, por lo
+            -- que el gap visual es FLOAT_GAP + TITLE_BAR_H. Restamos gran parte
+            -- del title bar para acercarlo sin que el frame solape la barra.
+            local TITLE_BAR_H = 31
+            local BELOW_OFFSET = 38  -- entre 31 (42px gap) y 62 (11px gap, solapa)
+            panel_init_y = math.floor(rect.bar_screen_y + BAR_H + FLOAT_GAP - BELOW_OFFSET)
         end
-        panel_open_up = not enough_above  -- Issue 2: open away from bar direction
+        -- Dirección de dropdowns: si el panel está sobre la barra (enough_above = true),
+        -- los dropdowns abren hacia ABAJO desde el borde inferior del botón (open_up = false)
+        -- para que el menú se desplegue dentro del panel sin superponerse al teclado.
+        -- Si el panel está debajo de la barra (enough_above = false), abren hacia ARRIBA
+        -- desde el borde superior del botón (open_up = true) para no salirse del panel.
+        panel_open_up = enough_above
+
+        -- Guardar posición de barra para auto-reposición
+        panel_opened_bar_y = rect.bar_screen_y
 
         if panel_init_x + PANEL_PW > rect.right then panel_init_x = rect.right - PANEL_PW - 10 end
         if panel_init_x < 0 then panel_init_x = 10 end
@@ -468,7 +540,6 @@ local function TogglePanel()
         panel_inited = false
         panel_hwnd = nil
         panel_first_frame = true
-        panel_instance = panel_instance + 1
     end
 end
 
@@ -499,21 +570,37 @@ function compact.UpdateCompactView()
     end
 
     if h_trans and h_trans > 0 then
-        cv_y = math.floor((h_trans - BAR_H) / 2) + config.state.view_offset_y
+        cv_y = math.floor((h_trans - BAR_H) / 2) + 2 + config.state.view_offset_y
     else
-        cv_y = 2
+        cv_y = 4
     end
 
     -- Content width = left padding + all columns + gap to button + button + right margin
     local content_w = 6 + 16 + 34 + 16 + 24 + 4 + RESTORE_BTN_SIZE + 5
 
     reaper.JS_LICE_Resize(c.lice_bitmap, cv_w, cv_h)
-    DrawLICERect(c.lice_bitmap, 0, 0, content_w, cv_h, theme.colors.bg, true, 8)
+    DrawLICERect(c.lice_bitmap, 0, 0, content_w, cv_h, theme.colors.bar_bg, true, 8)
     DrawCompactBar(c.lice_bitmap, 0)
 
     reaper.JS_Composite(c.transport_hwnd, cv_x, cv_y, content_w, cv_h, c.lice_bitmap, 0, 0, content_w, cv_h, true)
     -- Invalidate full old area + new content area to clean up stale pixels
     reaper.JS_Window_InvalidateRect(c.transport_hwnd, cv_x, cv_y, cv_x + cv_w, cv_y + cv_h, false)
+end
+
+-- =========================================================
+-- ZONE HIT-TEST HELPER
+-- =========================================================
+
+-- Returns "restore", "content", or nil based on rel_x in bitmap-local coords.
+-- rel_x = wx - cv_x (0 at bitmap left edge).
+local function GetCompactZone(rel_x)
+    local restore_right = restore_btn_x + RESTORE_BTN_SIZE + 5
+    if rel_x >= restore_btn_x and rel_x < restore_right then
+        return "restore"
+    elseif rel_x >= 0 and rel_x < restore_btn_x then
+        return "content"
+    end
+    return nil
 end
 
 -- =========================================================
@@ -525,42 +612,70 @@ function compact.ProcessMouseInterception()
     if not c.transport_hwnd then c.transport_hwnd = compact.FindTransportWindow() end
     if not c.transport_hwnd then return end
 
-    if not intercept_active then
-        reaper.JS_WindowMessage_Intercept(c.transport_hwnd, "WM_LBUTTONDOWN", false)
-        reaper.JS_WindowMessage_Intercept(c.transport_hwnd, "WM_RBUTTONDOWN", false)
-        intercept_active = true; c.is_active = true
-    end
-
-    -- Pre-check cursor position BEFORE removing intercepted messages.
-    -- Only peek+remove when cursor is within the compact view rect so that
-    -- clicks on transport controls (play/stop/record) reach REAPER normally.
     local mx, my = reaper.GetMousePosition()
     local wx, wy = reaper.JS_Window_ScreenToClient(c.transport_hwnd, mx, my)
-    if not (wx >= cv_x and wx <= cv_x + cv_w and wy >= cv_y and wy <= cv_y + cv_h) then
-        return
+    local is_on_bar = wx >= cv_x and wx <= cv_x + cv_w and wy >= cv_y and wy <= cv_y + cv_h
+
+    -- Left-click intercept (always active, passthrough=true — transport still works)
+    if not intercept_active_l then
+        reaper.JS_WindowMessage_Intercept(c.transport_hwnd, "WM_LBUTTONDOWN", true)
+        intercept_active_l = true
     end
 
-    local l_peak, _, l_time = reaper.JS_WindowMessage_Peek(c.transport_hwnd, "WM_LBUTTONDOWN", true)
-    local r_peak, _, r_time = reaper.JS_WindowMessage_Peek(c.transport_hwnd, "WM_RBUTTONDOWN", true)
+    -- Right-click intercept (dynamic, passthrough=false — transport does NOT get the click)
+    -- Released immediately when cursor leaves the bar, activated on entry.
+    -- This matches Gridbox.lua behavior: no debounce, no silent click consumption.
+    if is_on_bar and not intercept_active_r then
+        reaper.JS_WindowMessage_Intercept(c.transport_hwnd, "WM_RBUTTONDOWN", false)
+        intercept_active_r = true
+    elseif not is_on_bar and intercept_active_r then
+        reaper.JS_WindowMessage_Release(c.transport_hwnd, "WM_RBUTTONDOWN")
+        intercept_active_r = false
+    end
 
-    local timestamp = math.max(l_time or 0, r_time or 0)
-    -- Process left-click FIRST (panel/switch view). Right-click (context menu) falls through.
-    -- Both Peek calls already removed their messages from the queue with remove=true,
-    -- so we only process one event per frame (deduped by timestamp).
-    if timestamp > 0 and timestamp ~= last_peek_time then
-        last_peek_time = timestamp
-        if l_peak then
-            -- Check if click is on the restore-full-view button
-            local btn_size = RESTORE_BTN_SIZE
-            local btn_x = cv_x + restore_btn_x
-            local btn_y = cv_y + (BAR_H - btn_size) / 2
-            if wx >= btn_x and wx <= btn_x + btn_size and wy >= btn_y and wy <= btn_y + btn_size then
+    -- Post-menu guard: ignore clicks within 200ms of the context menu being dismissed.
+    -- Otherwise the very click that dismissed the menu would also toggle the panel
+    -- or re-open the menu immediately.
+    local now = reaper.time_precise()
+    local post_menu = (now - menu_dismiss_time) < 0.2
+
+    -- Process left-click
+    local l_peak, _, l_time = reaper.JS_WindowMessage_Peek(c.transport_hwnd, "WM_LBUTTONDOWN")
+    if l_peak and l_time and l_time > 0 and l_time ~= last_l_time then
+        last_l_time = l_time
+        if is_on_bar then
+            local rel_x = wx - cv_x
+            local zone = GetCompactZone(rel_x)
+            if zone == "restore" then
+                -- Restore button always works, even during post-menu guard
                 compact.SwitchViewMode()
-            else
+            elseif zone == "content" and not post_menu then
                 TogglePanel()
             end
-        elseif r_peak then
-            compact.ShowContextMenu()
+        end
+    end
+
+    -- Process right-click (only if intercept is active, avoids stale/crossed peeks)
+    if intercept_active_r then
+        local r_peak, _, r_time = reaper.JS_WindowMessage_Peek(c.transport_hwnd, "WM_RBUTTONDOWN")
+        if r_peak and r_time and r_time > 0 and r_time ~= last_r_time then
+            last_r_time = r_time
+            if is_on_bar then
+                local rel_x = wx - cv_x
+                local zone = GetCompactZone(rel_x)
+                if zone == "restore" then
+                    -- Restore button always works, even during post-menu guard
+                    compact.SwitchViewMode()
+                elseif zone == "content" and not post_menu then
+                    -- Release right-click intercept BEFORE showing the menu so the
+                    -- dismissal click (left or right) is never swallowed by our intercept.
+                    if intercept_active_r then
+                        reaper.JS_WindowMessage_Release(c.transport_hwnd, "WM_RBUTTONDOWN")
+                        intercept_active_r = false
+                    end
+                    compact.ShowContextMenu()
+                end
+            end
         end
     end
 end
@@ -575,14 +690,29 @@ function compact.Cleanup()
     -- Cache hwnd before it could go nil; always attempt release/unlink
     local hwnd = c.transport_hwnd
     c.transport_hwnd = nil
-    if intercept_active then
+
+    -- Release left-click intercept
+    if intercept_active_l then
         if hwnd then
             reaper.JS_WindowMessage_Release(hwnd, "WM_LBUTTONDOWN")
-            reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
             reaper.JS_Composite_Unlink(hwnd, c.lice_bitmap)
         end
-        intercept_active = false; c.is_active = false
+        intercept_active_l = false
     end
+
+    -- Release right-click intercept
+    if intercept_active_r then
+        if hwnd then
+            reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
+        end
+        intercept_active_r = false
+    end
+
+    -- Reset click timestamps & menu guard
+    last_l_time = 0
+    last_r_time = 0
+    menu_dismiss_time = 0
+
     if c.lice_bitmap then reaper.JS_LICE_DestroyBitmap(c.lice_bitmap); c.lice_bitmap = nil end
     if c.lice_font then reaper.JS_LICE_DestroyFont(c.lice_font); c.lice_font = nil end
     if c.gdi_font then reaper.JS_GDI_DeleteObject(c.gdi_font); c.gdi_font = nil end
