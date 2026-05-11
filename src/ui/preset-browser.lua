@@ -522,16 +522,11 @@ function browser.DrawPresetBrowser(x, y, w, h)
     local btn_w = math.floor((w - 8) / 2)
     local btn_spacing = 4
 
-    -- Save button
+    -- Save button (rendered via DrawActionButton, action handled via click+GetUserInputs)
     local save_hover = gfx.mouse_x >= x + 4 and gfx.mouse_x <= x + 4 + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    if DrawActionButton(x + 4, btn_y, btn_w, BTN_H, "Save", save_hover) then
-        reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
-        -- Note: GetUserInputs returns ret, csv; we handle the save action
-        -- via the load button since REAPER dialogs need special handling
-    end
+    DrawActionButton(x + 4, btn_y, btn_w, BTN_H, "Save", save_hover)
 
-    -- Save button actually works via GetUserInputs
     if save_hover and ui_store.GetMouseClick() then
         local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
         if ret and csv and #csv > 0 then
@@ -547,13 +542,11 @@ function browser.DrawPresetBrowser(x, y, w, h)
         end
     end
 
-    -- Load button
+    -- Load button (rendered via DrawActionButton, action handled via click below)
     local load_x = x + 4 + btn_w + btn_spacing
     local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    if DrawActionButton(load_x, btn_y, btn_w, BTN_H, "Load", load_hover) then
-        -- Handled below
-    end
+    DrawActionButton(load_x, btn_y, btn_w, BTN_H, "Load", load_hover)
 
     if load_hover and ui_store.GetMouseClick() then
         local files = island_store.GetPresetFiles()
@@ -578,8 +571,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
         end
 
         local nav_result
-        local new_scroll, _, nav_result = DrawFolderList(x + 4, current_y, w - 8, folder_h, dirs, 0)
-        island_store.SetBrowserScroll(new_scroll)
+        _, _, nav_result = DrawFolderList(x + 4, current_y, w - 8, folder_h, dirs, 0)
 
         if nav_result then
             local action, path = nav_result:match("^(.-):(.+)$")
