@@ -569,7 +569,13 @@ function views.DrawIslandView()
     helpers.SetColor(theme.colors.bg)
     gfx.rect(0, 0, gfx.w, gfx.h, 1)
 
-    local preset_w = island_store.GetPresetPanelVisible() and config.ISLAND_PRESET_PANEL_W or 0
+    -- Preset panel width: auto-hide in very narrow docked mode (<600px, P5-02)
+    local preset_w = 0
+    if island_store.GetPresetPanelVisible() then
+        if not (ui_store.GetDockedMode() and gfx.w < 600) then
+            preset_w = config.ISLAND_PRESET_PANEL_W
+        end
+    end
     local right_x = preset_w
     local right_w = gfx.w - preset_w
 
@@ -697,6 +703,8 @@ function views.DrawIslandView()
                 island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(), island_store.GetZoomX())
             if muted then
                 click_consumed = true
+                -- Mark notes dirty so piano roll re-renders with new mute state
+                piano_roll.MarkNotesDirty()
             end
         end
     end
@@ -710,6 +718,8 @@ function views.DrawIslandView()
             island_store.GetScrollOffsetX(), island_store.GetZoomX(), click, mouse_down)
         if consumed then
             click_consumed = true
+            -- Mark notes dirty so piano roll re-renders note blocks (P5-05)
+            piano_roll.MarkNotesDirty()
         end
     end
 
@@ -721,23 +731,135 @@ function views.DrawIslandView()
         end
     end
 
-    -- Draw exit hint bottom-left (above preset panel if visible)
-    gfx.setfont(1, "Calibri", 12)
-    helpers.SetColor(theme.colors.text_dim)
-    local hint = "F12: Exit  |  Ctrl+I: Toggle"
-    local hw, hh = gfx.measurestr(hint)
-    gfx.x, gfx.y = 8, gfx.h - hh - 8
-    gfx.drawstr(hint)
+    -- =========================================
+    -- Info / Status Bar (P5-04)
+    -- =========================================
+    local bar_h = 18
+    local bar_y = gfx.h - bar_h
+    -- Background strip
+    helpers.SetColor(theme.colors.island_info_bar)
+    gfx.rect(0, bar_y, gfx.w, bar_h, 1)
 
-    -- Draw info bar: note count and zoom level at bottom-right of right area
+    -- Left: root note · scale · chord · octave
+    local root_name = config.NOTE_NAMES[config.state.root_index]
+    local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
+    local chord_name = config.CHORD_MODES[config.state.chord_mode_index].name
+    local oct_str = "C" .. math.floor(config.state.octave)
+
+    -- Selected note info (if any)
+    local sel_info = ""
+    local sel_idx = island_store.GetSelectedNoteIndex()
+    if sel_idx then
+        local notes_list = island_store.GetNotes()
+        if notes_list and notes_list[sel_idx] then
+            local n = notes_list[sel_idx]
+            local pitch_nm = config.NOTE_NAMES[(n.pitch % 12) + 1]
+            local pitch_oc = math.floor(n.pitch / 12) - 1
+            local nvel = n.velocity or 100
+            sel_info = string.format(" | %s%d v%d b%.0f", pitch_nm, pitch_oc, nvel, n.start_beat)
+        end
+    end
+
+    -- Right: note count, zoom, ISLAND indicator
     local nc = island_store.GetNoteCount()
-    local zx = island_store.GetZoomX()
-    local info = string.format("Notes: %d  |  Zoom: %d px/beat", nc, zx)
+    local zx_val = island_store.GetZoomX()
+    local right_text = string.format("Notes:%d Zoom:%d | ISLAND", nc, zx_val)
+
     gfx.setfont(1, "Calibri", 11)
+    local rr, rrh = gfx.measurestr(right_text)
+    local right_x_pos = gfx.w - rr - 8
+
+    -- Left text (state + selected)
+    local left_text = string.format("%s %s · %s · %s%s", root_name, scale_abbr, chord_name, oct_str, sel_info)
+    local lw, lh = gfx.measurestr(left_text)
+
+    -- Truncate left text if it would overlap with right section
+    local max_left_w = right_x_pos - 16
+    if lw > max_left_w then
+        left_text = left_text:sub(1, math.floor(max_left_w / 6)) .. ".."
+        lw, lh = gfx.measurestr(left_text)
+    end
+
     helpers.SetColor(theme.colors.text_dim)
-    local iw, ih = gfx.measurestr(info)
-    gfx.x, gfx.y = right_x + right_w - iw - 8, gfx.h - ih - 8
-    gfx.drawstr(info)
+    gfx.x, gfx.y = 8, bar_y + (bar_h - lh) / 2
+    gfx.drawstr(left_text)
+
+    helpers.SetColor(theme.colors.text)
+    gfx.x, gfx.y = right_x_pos, bar_y + (bar_h - rrh) / 2
+    gfx.drawstr(right_text)
+end
+
+-- =========================================================
+-- Keyboard Shortcut Handlers for Island Mode (P5-03)
+-- =========================================================
+
+--- Trigger save preset dialog from keyboard shortcut.
+function views.IslandTriggerSave()
+    local dir = island_store.GetCurrentDirectory()
+    if not dir or #dir == 0 then
+        dir = island_store.GetPresetRoot()
+    end
+    local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
+    if ret and csv and #csv > 0 then
+        local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
+        if #filename > 0 then
+            local filepath = dir .. "\\" .. filename .. ".grove"
+            preset_browser.SavePreset(filepath, filename)
+            piano_roll.MarkNotesDirty()
+        end
+    end
+end
+
+--- Trigger load preset from keyboard shortcut.
+function views.IslandTriggerLoad()
+    local files = island_store.GetPresetFiles()
+    local idx = island_store.GetSelectedPresetIdx()
+    if idx and idx >= 1 and idx <= #files then
+        preset_browser.LoadPreset(files[idx].path)
+        piano_roll.MarkNotesDirty()
+    else
+        -- Try loading the first preset if none selected
+        if files and #files > 0 then
+            preset_browser.LoadPreset(files[1].path)
+            piano_roll.MarkNotesDirty()
+        end
+    end
+end
+
+--- Delete the selected note from keyboard shortcut.
+function views.IslandDeleteNote()
+    local notes = island_store.GetNotes()
+    local idx = island_store.GetSelectedNoteIndex()
+    if idx and notes and idx >= 1 and idx <= #notes then
+        table.remove(notes, idx)
+        island_store.SetNotes(notes)
+        island_store.SetSelectedNoteIndex(nil)
+        piano_roll.MarkNotesDirty()
+    end
+end
+
+--- Select the next/previous note from keyboard shortcut.
+--- @param direction number -1 for previous (up), 1 for next (down)
+function views.IslandSelectAdjacentNote(direction)
+    local idx = island_store.GetSelectedNoteIndex()
+    local notes = island_store.GetNotes()
+    if not notes or #notes == 0 then return end
+
+    if direction == -1 then
+        -- Previous note (Arrow Up)
+        if idx and idx > 1 then
+            island_store.SetSelectedNoteIndex(idx - 1)
+        elseif not idx then
+            island_store.SetSelectedNoteIndex(#notes)
+        end
+    else
+        -- Next note (Arrow Down)
+        if idx and idx < #notes then
+            island_store.SetSelectedNoteIndex(idx + 1)
+        elseif not idx then
+            island_store.SetSelectedNoteIndex(1)
+        end
+    end
 end
 
 -- Docked Transport Bar: compact 50px horizontal strip

@@ -23,6 +23,17 @@
 --   src/ui/buttons.lua
 --   src/ui/paginator.lua
 --   src/ui/dropdown.lua
+--   src/ui/piano.lua
+--   src/ui/pads.lua
+--   src/core/slots.lua
+--   src/ui/drag.lua
+--   src/ui/lice.lua
+--   src/ui/positioning.lua
+--   src/ui/compact-bar.lua
+--   src/ui/compact-panel.lua
+--   src/ui/compact-intercept.lua
+--   src/ui/compact-menu.lua
+--   src/ui/compact-init.lua
 -- @website https://github.com/GroveWorldMusic/GROVE-Scale-Runner
 
 local info = debug.getinfo(1, 'S')
@@ -34,6 +45,18 @@ end
 package.path = package.path .. ";" .. script_path .. "?.lua"
 
 local config = require("config")
+local compact_store = require("state.compact")
+compact_store.Init(config.state)
+local drag_store = require("state.drag")
+drag_store.Init(config.state)
+local sequencer_store = require("state.sequencer")
+sequencer_store.Init(config.state)
+local midi_store = require("state.midi")
+midi_store.Init(config.state)
+local ui_store = require("state.ui")
+ui_store.Init(config.state)
+local island_store = require("state.island")
+island_store.Init(config.state)
 local theme = require("ui.theme")
 local midi = require("core.midi")
 local sequencer = require("core.sequencer")
@@ -45,20 +68,20 @@ local last_dock_state = 0
 
 -- Toggle dock state (Ctrl+D)
 local function ToggleDock()
-    if config.state.docked_mode then
+    if ui_store.GetDockedMode() then
         -- Undock: call gfx.dock(0) to float
         gfx.dock(0)
-        config.state.docked_mode = false
-        config.state.dock_id = 0
+        ui_store.SetDockedMode(false)
+        ui_store.SetDockId(0)
         -- Resize back to normal window
         gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     else
         -- Dock: call gfx.dock(1) to dock in transport bar slot
-        config.state.dock_id = gfx.dock(1)
-        if config.state.dock_id > 0 then
-            config.state.docked_mode = true
+        ui_store.SetDockId(gfx.dock(1))
+        if ui_store.GetDockId() > 0 then
+            ui_store.SetDockedMode(true)
         else
-            config.state.dock_id = 0
+            ui_store.SetDockId(0)
         end
     end
 end
@@ -74,11 +97,11 @@ local function CheckDockState()
     if current_dock ~= last_dock_state then
         last_dock_state = current_dock
         if current_dock > 0 then
-            config.state.docked_mode = true
-            config.state.dock_id = current_dock
+            ui_store.SetDockedMode(true)
+            ui_store.SetDockId(current_dock)
         else
-            config.state.docked_mode = false
-            config.state.dock_id = 0
+            ui_store.SetDockedMode(false)
+            ui_store.SetDockId(0)
         end
     end
 end
@@ -94,8 +117,8 @@ end
 
 local function MainLoop()
     -- Decrement note display timer
-    if config.state.active_note_draw_timer > 0 then
-        config.state.active_note_draw_timer = config.state.active_note_draw_timer - 1
+    if midi_store.GetActiveNoteDrawTimer() > 0 then
+        midi_store.SetActiveNoteDrawTimer(midi_store.GetActiveNoteDrawTimer() - 1)
     end
 
     -- Decrement page override timer in ALL modes (Issue 8)
@@ -107,7 +130,7 @@ local function MainLoop()
     keyboard.HandleKeyboard()
 
     -- Compact mode (no GFX window)
-    if config.state.view_mode == config.VIEW_MODES.COMPACT then
+    if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
         compact.ProcessMouseInterception()
         compact.UpdateCompactView()
         compact.HandlePanel()
@@ -116,7 +139,7 @@ local function MainLoop()
     end
 
     -- Overlay mode: compact bar visible alongside full view (auto-start)
-    if config.state.compact_overlay_active then
+    if compact_store.GetOverlayActive() then
         compact.ProcessMouseInterception()
         compact.UpdateCompactView()
         -- Si TogglePanel se disparó (clic en la barra → panel_open = true),
@@ -126,29 +149,78 @@ local function MainLoop()
         if compact.IsPanelOpen() then
             compact.SwitchViewMode()  -- overlay_active=false, view_mode=COMPACT, gfx.quit()
         end
-        if config.state.view_mode == config.VIEW_MODES.COMPACT then
+        if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
             reaper.defer(MainLoop)
             return
         end
     end
 
     -- GFX mode: mouse state + GFX calls
-    config.state.mouse_click = (gfx.mouse_cap&1)==1 and config.state.last_mouse_cap==0
-    config.state.mouse_wheel_delta = gfx.mouse_wheel
-    if config.state.mouse_wheel_delta ~= 0 then gfx.mouse_wheel = 0 end
+    local mwd = gfx.mouse_wheel
+    ui_store.SetMouseClick((gfx.mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0)
+    ui_store.SetMouseWheelDelta(mwd)
+    if mwd ~= 0 then gfx.mouse_wheel = 0 end
+
+    -- ISLAND mode routing
+    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
+        views.DrawIslandView()
+        ui_store.SetLastMouseCap(gfx.mouse_cap)
+        local char = gfx.getchar()
+
+        -- Ctrl+I (9) or F12 (123): toggle back to FULL
+        if char == 9 or char == 123 then
+            compact.ToggleIslandView()
+
+        -- Ctrl+S (19): Save preset (P5-03)
+        elseif char == 19 then
+            views.IslandTriggerSave()
+
+        -- Ctrl+O (15): Load/open preset (P5-03)
+        elseif char == 15 then
+            views.IslandTriggerLoad()
+
+        -- Delete (127) or Backspace (8): Delete selected note (P5-03)
+        elseif char == 127 or char == 8 then
+            views.IslandDeleteNote()
+
+        -- Arrow Up (273): Select previous note (P5-03)
+        elseif char == 273 then
+            views.IslandSelectAdjacentNote(-1)
+
+        -- Arrow Down (274): Select next note (P5-03)
+        elseif char == 274 then
+            views.IslandSelectAdjacentNote(1)
+        end
+
+        -- Always check for close/escape regardless of other key handling
+        if char == -1 or char == 27 then
+            if ui_store.GetDidCleanup() then return end
+            ui_store.SetDidCleanup(true)
+            CleanupAll()
+            gfx.quit()
+            return
+        end
+
+        reaper.defer(MainLoop)
+        return
+    end
 
     CheckDockState()
 
-    if config.state.docked_mode then
+    if ui_store.GetDockedMode() then
         views.DrawDockedTransportBar(gfx.w, gfx.h)
     else
         views.DrawFullView()
     end
 
-    config.state.last_mouse_cap = gfx.mouse_cap
+    ui_store.SetLastMouseCap(gfx.mouse_cap)
 
     -- Re-check: DrawFullView may have called SwitchViewMode() or midi.ToggleIsland()
-    if config.state.view_mode == config.VIEW_MODES.COMPACT then
+    if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
+        reaper.defer(MainLoop)
+        return
+    end
+    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
         reaper.defer(MainLoop)
         return
     end
@@ -163,9 +235,13 @@ local function MainLoop()
     if char == 4 then
         ToggleDock()
     end
+    -- F12 toggle ISLAND view
+    if char == 123 then  -- VK_F12
+        compact.ToggleIslandView()
+    end
     if char == -1 or char == 27 then
-        if config.state.did_cleanup then return end
-        config.state.did_cleanup = true
+        if ui_store.GetDidCleanup() then return end
+        ui_store.SetDidCleanup(true)
         CleanupAll()
         gfx.quit()
         return
@@ -180,10 +256,10 @@ local function Init()
     end
 
     -- Register cleanup for safe exit
-    config.state.did_cleanup = false
+    ui_store.SetDidCleanup(false)
     reaper.atexit(function()
-        if config.state.did_cleanup then return end
-        config.state.did_cleanup = true
+        if ui_store.GetDidCleanup() then return end
+        ui_store.SetDidCleanup(true)
         CleanupAll()
     end)
 
@@ -192,20 +268,20 @@ local function Init()
 
     -- Load persisted preferences from REAPER ExtState
     local ext_compact = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_compact")
-    if ext_compact == "1" then config.state.auto_start_compact = true end
+    if ext_compact == "1" then ui_store.SetAutoStartCompact(true) end
     local ext_reaper = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_reaper")
-    if ext_reaper == "1" then config.state.auto_start_reaper = true end
+    if ext_reaper == "1" then ui_store.SetAutoStartReaper(true) end
 
     -- Ensure clean state on startup
     keyboard.InterceptMappedKeys(false)
 
     -- Auto-start: compact bar overlay alongside full view
-    if config.state.auto_start_compact then
+    if ui_store.GetAutoStartCompact() then
         compact.InitOverlay()
     end
 
     -- Auto-start: register as REAPER startup script if enabled
-    if config.state.auto_start_reaper then
+    if ui_store.GetAutoStartReaper() then
         local resource_path = reaper.GetResourcePath()
         if resource_path and #resource_path > 0 then
             local startup_dir = resource_path .. "\\Scripts\\Startup\\"
