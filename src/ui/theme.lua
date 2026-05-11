@@ -28,6 +28,14 @@ theme.colors = {
     piano_black = hex2rgb("#0d0d0d"), -- Black keys are same as main bg in SVG
     page_inactive = hex2rgb("#1a1a1a"),
     page_active = hex2rgb("#808080"),
+    -- Island-specific colors
+    island_grid_line = hex2rgb("#3a3a3a"),   -- Subtle grid line color
+    island_note_default = hex2rgb("#3f81da"),-- Default note block fill (blue)
+    island_note_selected = hex2rgb("#5ba8c4"),-- Selected note block fill (teal)
+    island_note_muted = hex2rgb("#555555"),  -- Muted note block fill (gray)
+    island_beat_tick = hex2rgb("#4a4a4a"),   -- Beat marker color
+    island_measure_tick = hex2rgb("#6a6a6a"),-- Measure marker color
+    island_info_bar = hex2rgb("#1a1a1a"),    -- Info/status bar background
     grade_colors = {
         hex2rgb("#3f81da"),  -- I:  blue
         hex2rgb("#4a9e6b"),  -- II: green
