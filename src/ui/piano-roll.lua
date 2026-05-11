@@ -31,17 +31,54 @@ local NOTE_SELECTED_BORDER = {1, 1, 1, 0.8}
 local NOTE_MUTED = {0.4, 0.4, 0.4, 0.4}
 local GRID_BG = {0.15, 0.15, 0.15, 1}
 
--- Pre-computed: which rows are "white key" rows (pitch mod 12 is a white key)
--- White key pitch classes: 0(C), 2(D), 4(E), 5(F), 7(G), 9(A), 11(B)
-local WHITE_KEY_CLASSES = {}
-for _, pc in ipairs({0, 2, 4, 5, 7, 9, 11}) do
-    WHITE_KEY_CLASSES[pc] = true
-end
-
 -- Note color cache: pitch_class → color (reuse across frames)
 local NOTE_COLORS = {}
 
+-- Frame-cache: avoid recomputing visible ranges when scroll/zoom unchanged
+local _cache = {
+    scroll_y = nil, scroll_x = nil, zoom_x = nil, w = nil, h = nil,
+    pitch_start = 0, pitch_end = 0, beat_start = 0, beat_end = 0,
+    visible_rows = 0,
+}
+
+--- Compute visible pitch and beat ranges for the current viewport.
+--- Results are cached and reused when scroll/zoom/dimensions haven't changed.
+local function ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
+    local PITCH_ROW_H = piano_roll.PITCH_ROW_H
+    local MIN_PITCH = piano_roll.MIN_PITCH
+    local TOTAL_ROWS = piano_roll.TOTAL_ROWS
+
+    -- Invalidate cache when parameters change
+    if _cache.scroll_y == scroll_y and _cache.scroll_x == scroll_x
+       and _cache.zoom_x == zoom_x and _cache.w == w and _cache.h == h then
+        return _cache.visible_rows, _cache.pitch_start, _cache.pitch_end,
+               _cache.beat_start, _cache.beat_end
+    end
+
+    local visible_rows = math.ceil(h / PITCH_ROW_H) + 2
+    local pitch_start = MIN_PITCH + scroll_y
+    local pitch_end = math.min(pitch_start + visible_rows + piano_roll.OCTAVE_BUFFER,
+                               MIN_PITCH + TOTAL_ROWS - 1)
+    local beat_start = scroll_x - 1
+    local beat_end = scroll_x + math.ceil((w or 0) / math.max(1, zoom_x)) + 1
+
+    -- Cache for next frame
+    _cache.scroll_y = scroll_y
+    _cache.scroll_x = scroll_x
+    _cache.zoom_x = zoom_x
+    _cache.w = w
+    _cache.h = h
+    _cache.visible_rows = visible_rows
+    _cache.pitch_start = pitch_start
+    _cache.pitch_end = pitch_end
+    _cache.beat_start = beat_start
+    _cache.beat_end = beat_end
+
+    return visible_rows, pitch_start, pitch_end, beat_start, beat_end
+end
+
 --- Get a color for a given pitch class (0-11), cycling through grade_colors.
+--- Uses pre-computed NOTE_COLORS cache (Issue 13 pattern).
 local function NoteColorForPitch(pitch)
     local pc = pitch % 12
     if not NOTE_COLORS[pc] then
@@ -58,7 +95,15 @@ local function OctaveLabel(pitch)
     return note_names[(pitch % 12) + 1] .. tostring(octave)
 end
 
+--- Pre-computed set of white key pitch classes (O(1) lookup, Issue 18 pattern).
+--- Used to determine row background tint without modulo + table scan per row.
+local WHITE_KEY_SET = {}
+for _, pc in ipairs({0, 2, 4, 5, 7, 9, 11}) do
+    WHITE_KEY_SET[pc] = true
+end
+
 --- Draw the piano roll grid background, pitch rows, and beat lines.
+--- Uses pre-computed visible ranges for consistency.
 --- @param x number Left edge of the grid area (pixel)
 --- @param y number Top edge of the grid area (pixel)
 --- @param w number Width of the grid area (pixel)
@@ -66,7 +111,11 @@ end
 --- @param scroll_y number Vertical scroll offset in pitch rows
 --- @param scroll_x number Horizontal scroll offset in beats
 --- @param zoom_x number Pixels per beat
-function piano_roll.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x)
+--- @param visible_rows number Pre-computed from ComputeVisibleRanges
+--- @param pitch_start number Pre-computed from ComputeVisibleRanges
+--- @param pitch_end number Pre-computed from ComputeVisibleRanges
+function piano_roll.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
+                                       visible_rows, pitch_start, pitch_end)
     local PITCH_ROW_H = piano_roll.PITCH_ROW_H
     local LABEL_W = piano_roll.PITCH_LABEL_W
     local MIN_PITCH = piano_roll.MIN_PITCH
@@ -76,11 +125,6 @@ function piano_roll.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x)
     helpers.SetColor(GRID_BG)
     gfx.rect(x, y, w, h, 1)
 
-    -- Calculate visible pitch range (vertical)
-    local visible_rows = math.ceil(h / PITCH_ROW_H) + 2  -- +2 for partial rows at edges
-    local pitch_start = MIN_PITCH + scroll_y
-    local pitch_end = math.min(pitch_start + visible_rows, MIN_PITCH + TOTAL_ROWS - 1)
-
     -- Draw pitch row backgrounds + horizontal lines
     for row_offset = 0, pitch_end - pitch_start do
         local pitch = pitch_start + row_offset
@@ -89,7 +133,7 @@ function piano_roll.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x)
         local py = y + row_offset * PITCH_ROW_H
         if py > y + h then break end
 
-        local is_white = WHITE_KEY_CLASSES[pitch % 12] == true
+        local is_white = WHITE_KEY_SET[pitch % 12] == true
 
         -- Row background tint
         if is_white then
@@ -115,20 +159,29 @@ function piano_roll.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x)
         end
     end
 
-    -- Draw vertical beat lines
-    local beat_start = math.floor(scroll_x)
+    -- Draw vertical beat lines (batched: strong measures first, then weak beats)
+    -- This reduces gfx.set() calls by grouping same-color strokes (P5-05)
+    local beat_start = math.max(0, math.floor(scroll_x))
     local beat_end = beat_start + math.ceil(w / zoom_x) + 1
 
-    for beat = beat_start, beat_end do
+    -- Strong measure lines (every 4 beats)
+    local first_measure = math.ceil(beat_start / 4) * 4
+    helpers.SetColor(BEAT_STRONG)
+    for beat = first_measure, beat_end, 4 do
         local bx = x + (beat - scroll_x) * zoom_x
         if bx >= x and bx <= x + w then
-            local is_measure = (beat % 4) == 0
-            if is_measure then
-                helpers.SetColor(BEAT_STRONG)
-            else
-                helpers.SetColor(BEAT_WEAK)
-            end
             gfx.line(bx, y, bx, y + h)
+        end
+    end
+
+    -- Weak beat lines (non-measure beats)
+    helpers.SetColor(BEAT_WEAK)
+    for beat = beat_start, beat_end do
+        if (beat % 4) ~= 0 then
+            local bx = x + (beat - scroll_x) * zoom_x
+            if bx >= x and bx <= x + w then
+                gfx.line(bx, y, bx, y + h)
+            end
         end
     end
 end
@@ -161,7 +214,14 @@ function piano_roll.DrawNoteBlock(note, nx, ny, nw, nh, selected)
     end
 end
 
+--- Track whether notes changed since last render (avoids full iteration
+--- when nothing changed, P5-05).
+local _last_note_count = -1
+local _last_selected_idx = -1
+local _last_notes_dirty = true
+
 --- Render all visible note blocks from island store.
+--- Uses pre-computed visible ranges and skips iteration when notes unchanged.
 --- @param x number Left edge of the grid area
 --- @param y number Top edge of the grid area
 --- @param w number Width of the grid area
@@ -169,7 +229,12 @@ end
 --- @param scroll_y number Vertical scroll offset
 --- @param scroll_x number Horizontal scroll offset
 --- @param zoom_x number Pixels per beat
-function piano_roll.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x)
+--- @param pitch_start number Pre-computed visible pitch start
+--- @param pitch_end number Pre-computed visible pitch end
+--- @param beat_start number Pre-computed visible beat start
+--- @param beat_end number Pre-computed visible beat end
+function piano_roll.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
+                                    pitch_start, pitch_end, beat_start, beat_end)
     local PITCH_ROW_H = piano_roll.PITCH_ROW_H
     local MIN_PITCH = piano_roll.MIN_PITCH
 
@@ -178,15 +243,15 @@ function piano_roll.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x)
 
     local selected_idx = island_store.GetSelectedNoteIndex()
 
-    -- Calculate visible ranges
-    local visible_rows = math.ceil(h / PITCH_ROW_H) + 2
-    local pitch_start = MIN_PITCH + scroll_y
-    local pitch_end = pitch_start + visible_rows + piano_roll.OCTAVE_BUFFER
-
-    local beat_start = scroll_x - 1  -- 1 beat buffer left
-    local beat_end = scroll_x + math.ceil(w / zoom_x) + 1  -- 1 beat buffer right
-
-    local rendered = 0
+    -- Check if we can skip note redraw (nothing changed — P5-05)
+    local note_count = #notes
+    if note_count == _last_note_count and selected_idx == _last_selected_idx
+       and not _last_notes_dirty then
+        return
+    end
+    _last_note_count = note_count
+    _last_selected_idx = selected_idx
+    _last_notes_dirty = false
 
     for i, note in ipairs(notes) do
         local np = note.pitch
@@ -205,9 +270,13 @@ function piano_roll.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x)
             local nh = PITCH_ROW_H
 
             piano_roll.DrawNoteBlock(note, nx, ny, nw, nh, i == selected_idx)
-            rendered = rendered + 1
         end
     end
+end
+
+--- Mark note cache as dirty (call when notes change externally).
+function piano_roll.MarkNotesDirty()
+    _last_notes_dirty = true
 end
 
 --- Hit test: find which note index is at a given mouse position.
@@ -299,6 +368,7 @@ function piano_roll.HandleMouseWheel(delta, scroll_x, zoom_x)
 end
 
 --- Main piano roll entry point: draw grid, labels, and note blocks.
+--- Computes visible ranges ONCE and shares between grid + note rendering (P5-05).
 --- @param x number Left edge of the entire piano roll area (including label area)
 --- @param y number Top edge of the piano roll area
 --- @param w number Width of the entire piano roll area
@@ -309,6 +379,10 @@ function piano_roll.DrawPianoRoll(x, y, w, h)
     local zoom_x = island_store.GetZoomX()
     local LABEL_W = piano_roll.PITCH_LABEL_W
 
+    -- Compute visible ranges ONCE per frame (shared between grid + notes, P5-05)
+    local visible_rows, pitch_start, pitch_end, beat_start, beat_end =
+        ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
+
     -- Draw pitch label background on the left
     helpers.SetColor(theme.colors.island_bg)
     gfx.rect(x, y, LABEL_W, h, 1)
@@ -318,14 +392,15 @@ function piano_roll.DrawPianoRoll(x, y, w, h)
     local grid_w = w - LABEL_W
     if grid_w <= 0 then return end
 
-    piano_roll.DrawPianoRollGrid(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x)
+    piano_roll.DrawPianoRollGrid(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x,
+                                  visible_rows, pitch_start, pitch_end)
 
-    -- Draw note blocks
-    piano_roll.DrawNoteBlocks(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x)
+    -- Draw note blocks (uses shared pitch/beat ranges)
+    piano_roll.DrawNoteBlocks(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x,
+                               pitch_start, pitch_end, beat_start, beat_end)
 
     -- Draw vertical scrollbar indicator (right side)
     local total_rows = piano_roll.TOTAL_ROWS
-    local visible_rows = math.ceil(h / piano_roll.PITCH_ROW_H)
     local scroll_ratio = visible_rows / total_rows
     if scroll_ratio < 1 then
         local sb_x = x + w - 6
