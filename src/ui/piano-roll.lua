@@ -401,7 +401,8 @@ function piano_roll.DrawPianoRoll(x, y, w, h)
 
     -- Draw vertical scrollbar indicator (right side)
     local total_rows = piano_roll.TOTAL_ROWS
-    local scroll_ratio = visible_rows / total_rows
+    local actual_visible = math.ceil(h / piano_roll.PITCH_ROW_H)
+    local scroll_ratio = actual_visible / total_rows
     if scroll_ratio < 1 then
         local sb_x = x + w - 6
         local sb_y = y + (scroll_y / (total_rows - visible_rows)) * h
