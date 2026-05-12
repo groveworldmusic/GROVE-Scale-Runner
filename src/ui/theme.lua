@@ -36,6 +36,15 @@ theme.colors = {
     island_beat_tick = hex2rgb("#4a4a4a"),   -- Beat marker color
     island_measure_tick = hex2rgb("#6a6a6a"),-- Measure marker color
     island_info_bar = hex2rgb("#1a1a1a"),    -- Info/status bar background
+    island_panel_bg = hex2rgb("#242424"),    -- Preset browser panel background (darker than island_bg)
+    island_ruler_bg = hex2rgb("#3a3a3a"),    -- Timeline ruler background tint
+    island_velocity_bg = hex2rgb("#2a2a2a"), -- Velocity editor background tint
+
+    -- Grid hierarchy colors (4-tier: measure, beat, 1/8, 1/16)
+    grid_measure = {0.5, 0.5, 0.5, 0.60},     -- Measure lines: alpha 0.60, bold
+    grid_beat = {0.4, 0.4, 0.4, 0.35},        -- Beat lines: alpha 0.35
+    grid_sub_1_8 = {0.25, 0.25, 0.25, 0.15},  -- 1/8 subdivision: alpha 0.15
+    grid_sub_1_16 = {0.20, 0.20, 0.20, 0.08}, -- 1/16 subdivision: alpha 0.08
     grade_colors = {
         hex2rgb("#3f81da"),  -- I:  blue
         hex2rgb("#4a9e6b"),  -- II: green
