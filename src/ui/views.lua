@@ -1201,9 +1201,12 @@ function views.DrawMIDIIsland(char)
         local vsb_y = pr_y
         local vsb_w = SB_SIZE
         local vsb_h = pr_h + SB_SIZE  -- reach bottom of island; HSB draws on top if visible
-        -- visible_pitches uses SAME formula as grid.ComputeVisibleRanges:
-        -- ceil(h / PITCH_ROW_H) + 2 (buffer) to keep bar thumb in sync
-        local visible_pitches = math.ceil(vsb_h / math.max(1, pitch_row_h)) + 2
+        -- visible_pitches must use pr_h (not vsb_h) to match the grid's
+        -- ComputeVisibleRanges formula: ceil(content_h / PITCH_ROW_H) + 2.
+        -- Using vsb_h=pr_h+SB_SIZE would overcount visible rows by 1 at
+        -- certain heights, causing max_scroll_y to be smaller than the
+        -- grid's max_scroll — the thumb reaches bottom before content does.
+        local visible_pitches = math.ceil(pr_h / math.max(1, pitch_row_h)) + 2
         if visible_pitches < TOTAL_PITCHES then
             local scroll_ratio = visible_pitches / TOTAL_PITCHES
             local max_scroll_y = TOTAL_PITCHES - visible_pitches
