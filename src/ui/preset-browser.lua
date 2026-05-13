@@ -7,7 +7,9 @@ local config = require("config")
 local island_store = require("state.island")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
+local components = require("ui.components")
 local ui_store = require("state.ui")
+local seq_store = require("state.sequencer")
 
 local browser = {}
 
@@ -165,18 +167,18 @@ function browser.IsFavorite(file_path)
     return favs[file_path] == true
 end
 
---- Save current notes to a .grove file.
+--- Save current notes to a .grove file (v2 format with progression + context).
 --- @param file_path string Full path to save
 --- @param preset_name string Display name for the preset
 function browser.SavePreset(file_path, preset_name)
     local notes = island_store.GetNotes()
     if not notes then notes = {} end
 
-    -- Serialize notes to Lua table format
+    -- Serialize notes + progression + context to Lua table format
     local lines = {}
     table.insert(lines, "return {")
     table.insert(lines, string.format("    name = %q,", preset_name or "Untitled"))
-    table.insert(lines, "    version = 1,")
+    table.insert(lines, "    version = 2,")
     table.insert(lines, "    notes = {")
     for _, n in ipairs(notes) do
         table.insert(lines, string.format(
@@ -184,6 +186,34 @@ function browser.SavePreset(file_path, preset_name)
             n.pitch or 60, n.start_beat or 0, n.duration or 4, n.velocity or 100,
             n.muted and "true" or "false"
         ))
+    end
+    table.insert(lines, "    },")
+
+    -- Context fields for full restoration
+    table.insert(lines, string.format("    root_index = %d,", config.state.root_index or 1))
+    table.insert(lines, string.format("    scale_index = %d,", config.state.scale_index or 1))
+    table.insert(lines, string.format("    octave = %d,", config.state.octave or 4))
+    table.insert(lines, string.format("    chord_mode_index = %d,", config.state.chord_mode_index or 1))
+
+    -- Serialize progression entries (with optional velocity/duration)
+    local progression = seq_store.GetProgression()
+    table.insert(lines, "    progression = {")
+    for i = 1, 16 do
+        local entry = progression[i]
+        if entry then
+            local parts = {
+                "degree=" .. (entry.degree or 1),
+                "root_index=" .. (entry.root_index or 1),
+                "scale_index=" .. (entry.scale_index or 1),
+                "octave=" .. (entry.octave or 4),
+                "chord_mode_index=" .. (entry.chord_mode_index or 1),
+            }
+            if entry.velocity then table.insert(parts, "velocity=" .. entry.velocity) end
+            if entry.duration then table.insert(parts, "duration=" .. entry.duration) end
+            table.insert(lines, "        {" .. table.concat(parts, ",") .. "},")
+        else
+            table.insert(lines, "        nil,")
+        end
     end
     table.insert(lines, "    },")
     table.insert(lines, "}")
@@ -249,6 +279,65 @@ function browser.LoadPreset(file_path)
     end
 
     island_store.SetNotes(valid_notes)
+
+    -- v2 format: restore progression and context for full state reconstruction
+    if result.version and result.version >= 2 then
+        if result.root_index then config.state.root_index = result.root_index end
+        if result.scale_index then config.state.scale_index = result.scale_index end
+        if result.octave then config.state.octave = result.octave end
+        if result.chord_mode_index then config.state.chord_mode_index = result.chord_mode_index end
+        if result.progression and type(result.progression) == "table" then
+            seq_store.SetProgression(result.progression)
+        end
+    end
+
+    island_store.SetBrowserError(nil)
+    return true
+end
+
+--- Rename the currently selected preset via GetUserInputs() + os.rename().
+--- @return boolean true on success
+function browser.RenamePreset()
+    local files = island_store.GetPresetFiles()
+    local idx = island_store.GetSelectedPresetIdx()
+    if not idx or idx < 1 or idx > #files then
+        island_store.SetBrowserError("No preset selected to rename")
+        return false
+    end
+
+    local entry = files[idx]
+    local ret, new_name = reaper.GetUserInputs("Rename Preset", "New name:", 1, "", entry.name)
+    if not ret or not new_name or #new_name == 0 then
+        return false
+    end
+
+    -- Sanitize: remove invalid chars and strip .grove extension if user typed it
+    new_name = new_name:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
+    if #new_name == 0 then
+        island_store.SetBrowserError("Invalid preset name")
+        return false
+    end
+
+    local dir = island_store.GetCurrentDirectory()
+    local old_path = entry.path
+    local new_path = dir .. "\\" .. new_name .. ".grove"
+
+    -- Check if target already exists
+    local f = io.open(new_path, "r")
+    if f then
+        f:close()
+        island_store.SetBrowserError("A preset with that name already exists")
+        return false
+    end
+
+    local ok, err = os.rename(old_path, new_path)
+    if not ok then
+        island_store.SetBrowserError("Could not rename preset: " .. tostring(err or "unknown error"))
+        return false
+    end
+
+    -- Refresh the file list and clear selection
+    browser.ScanDirectory(dir)
     island_store.SetBrowserError(nil)
     return true
 end
@@ -263,7 +352,7 @@ end
 --- @return boolean clicked
 local function DrawActionButton(x, y, w, h, label, hover)
     helpers.SetColor(hover and BTN_HOVER or BTN_BG)
-    gfx.rect(x, y, w, h, 1)
+    components.DrawRoundedRect(x, y, w, h, 4, true)
 
     helpers.SetColor(theme.colors.text)
     gfx.setfont(1, "Calibri", FONT_SIZE)
@@ -489,7 +578,7 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx)
 end
 
 --- Main drawer for the preset browser panel.
---- Called from DrawIslandView for the left panel area.
+--- Called from DrawMIDIIsland for the left panel area.
 --- @param x number Left edge
 --- @param y number Top edge
 --- @param w number Panel width
@@ -516,16 +605,17 @@ function browser.DrawPresetBrowser(x, y, w, h)
     end
 
     -- ===========================
-    -- Action buttons row (Save / Load)
+    -- Action buttons row (Save / Rename / Load)
     -- ===========================
     local btn_y = current_y
-    local btn_w = math.floor((w - 8) / 2)
     local btn_spacing = 4
+    local btn_w = math.floor((w - 8 - 2 * btn_spacing) / 3)
 
-    -- Save button (rendered via DrawActionButton, action handled via click+GetUserInputs)
-    local save_hover = gfx.mouse_x >= x + 4 and gfx.mouse_x <= x + 4 + btn_w
+    -- Save button
+    local save_x = x + 4
+    local save_hover = gfx.mouse_x >= save_x and gfx.mouse_x <= save_x + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    DrawActionButton(x + 4, btn_y, btn_w, BTN_H, "Save", save_hover)
+    DrawActionButton(save_x, btn_y, btn_w, BTN_H, "Save", save_hover)
 
     if save_hover and ui_store.GetMouseClick() then
         local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
@@ -542,8 +632,18 @@ function browser.DrawPresetBrowser(x, y, w, h)
         end
     end
 
-    -- Load button (rendered via DrawActionButton, action handled via click below)
-    local load_x = x + 4 + btn_w + btn_spacing
+    -- Rename button (active only when a preset is selected)
+    local rename_x = save_x + btn_w + btn_spacing
+    local rename_hover = gfx.mouse_x >= rename_x and gfx.mouse_x <= rename_x + btn_w
+                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
+    DrawActionButton(rename_x, btn_y, btn_w, BTN_H, "Rename", rename_hover)
+
+    if rename_hover and ui_store.GetMouseClick() then
+        browser.RenamePreset()
+    end
+
+    -- Load button
+    local load_x = rename_x + btn_w + btn_spacing
     local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
     DrawActionButton(load_x, btn_y, btn_w, BTN_H, "Load", load_hover)
@@ -557,6 +657,11 @@ function browser.DrawPresetBrowser(x, y, w, h)
     end
 
     current_y = btn_y + BTN_H + 4
+
+    -- Divider line between action row and folder/preset content
+    helpers.SetColor(DIVIDER_COLOR)
+    gfx.line(x + 4, current_y, x + w - 4, current_y)
+    current_y = current_y + 2
     remaining_h = h - (current_y - y)
 
     -- ===========================

@@ -1,31 +1,45 @@
 local config = require("config")
+local seq_store = require("state.sequencer")
 local midi = require("core.midi")
+local progression = require("core.progression")
 
 local sequencer = {}
 
-function sequencer.GetLastFilledSlot()
-    for i=16, 1, -1 do 
-        if config.state.progression[i] then return i end 
+function sequencer.Stop()
+    seq_store.SetIsPlaying(false)
+    for _, n in ipairs(seq_store.GetMidiNotes()) do 
+        midi.SendMidi(n, false, nil, true)  -- force=true: bypass ref-count gate on cleanup
     end
-    return 0
+    seq_store.SetMidiNotes({})
+    seq_store.SetLastMeasure(-1)
+    seq_store.SetCurrentStep(0)
+    seq_store.SetProgress(0)
+    seq_store.SetInternalBeats(0)
+    seq_store.SetLastTime(nil)
 end
 
-function sequencer.Stop()
-    config.state.sequencer.is_playing = false
-    for _, n in ipairs(config.state.sequencer.midi_notes) do 
-        midi.SendMidi(n, false) 
+--- Resolve which chord to trigger for a given sub-step within a slot.
+--- For subdivided slots (slot.subs present), picks the sub-chord at sub_step index.
+--- For legacy slots (no subs), uses the slot's primary degree (backward compat).
+--- @param slot table Progression slot entry
+--- @param sub_step number 0-based sub-step index
+--- @return number[] MIDI note numbers sent
+local function TriggerSubChord(slot, sub_step)
+    if slot.subs and #slot.subs > 0 then
+        local sub = slot.subs[sub_step + 1]
+        if sub and sub.degree then
+            return midi.TriggerChord(sub.degree, true, slot, sub.velocity, config.state.inversion_index)
+        end
+        return {}
+    else
+        -- Legacy entry: same chord plays on each sub-step
+        return midi.TriggerChord(slot.degree, true, slot, nil, config.state.inversion_index)
     end
-    config.state.sequencer.midi_notes = {}
-    config.state.sequencer.last_measure = -1
-    config.state.sequencer.current_step = 0
-    config.state.sequencer.progress = 0
-    config.state.sequencer.internal_beats = 0
-    config.state.sequencer.last_time = nil
 end
 
 function sequencer.Run()
-    if not config.state.sequencer.is_playing then 
-        config.state.sequencer.progress = 0
+    if not seq_store.GetIsPlaying() then 
+        seq_store.SetProgress(0)
         return 
     end
     
@@ -36,65 +50,79 @@ function sequencer.Run()
         -- SYNC TO REAPER
         local _, m = reaper.TimeMap2_timeToBeats(0, reaper.GetPlayPosition2())
         measures = m
-        config.state.sequencer.last_time = nil -- Reset internal clock
+        seq_store.SetLastTime(nil) -- Reset internal clock
     else
         -- INTERNAL CLOCK MODE
         local now = reaper.time_precise()
-        if not config.state.sequencer.last_time then
-            config.state.sequencer.last_time = now
-            config.state.sequencer.internal_beats = 0
+        if not seq_store.GetLastTime() then
+            seq_store.SetLastTime(now)
+            seq_store.SetInternalBeats(0)
         end
         
-        local delta = now - config.state.sequencer.last_time
-        config.state.sequencer.last_time = now
+        local delta = now - seq_store.GetLastTime()
+        seq_store.SetLastTime(now)
         
         local bpm = reaper.Master_GetTempo()
         local beats_per_sec = bpm / 60
-        config.state.sequencer.internal_beats = (config.state.sequencer.internal_beats or 0) + (delta * beats_per_sec)
+        seq_store.SetInternalBeats((seq_store.GetInternalBeats() or 0) + (delta * beats_per_sec))
         
         -- Assume 4/4 for the internal visualizer (1 measure = 4 beats)
-        measures = config.state.sequencer.internal_beats / 4
+        measures = seq_store.GetInternalBeats() / 4
     end
     
     local cur_m = math.floor(measures)
-    config.state.sequencer.progress = measures % 1
+    local progress = measures % 1
+    seq_store.SetProgress(progress)
     
-    if cur_m ~= config.state.sequencer.last_measure then
-        -- Stop previous
-        for _, n in ipairs(config.state.sequencer.midi_notes) do midi.SendMidi(n, false) end
-        config.state.sequencer.midi_notes = {}
+    -- Cache progression.GetLastFilled() once (Issue 19)
+    local loop = progression.GetLastFilled()
+    if loop == 0 then 
+        sequencer.Stop()
+        return 
+    end
+    
+    -- Resolve current subdivision count
+    local sub_idx = config.state.subdivision_index or 1
+    local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
+    
+    -- MEASURE BOUNDARY CROSSED
+    if cur_m ~= seq_store.GetLastMeasure() then
+        -- Stop previous notes
+        for _, n in ipairs(seq_store.GetMidiNotes()) do midi.SendMidi(n, false) end
+        seq_store.SetMidiNotes({})
         
-        -- Cache GetLastFilledSlot() once (Issue 19)
-        local loop = sequencer.GetLastFilledSlot()
-        
-        -- Catch up skipped steps if frame was delayed — trigger each skipped slot
-        while config.state.sequencer.last_measure >= 0 and cur_m > config.state.sequencer.last_measure + 1 do
-            config.state.sequencer.last_measure = config.state.sequencer.last_measure + 1
-            if loop > 0 then
-                local skipped_step = (config.state.sequencer.last_measure % loop) + 1
-                local skipped_slot = config.state.progression[skipped_step]
-                if skipped_slot then
-                    local catchup_notes = midi.TriggerChord(skipped_slot.degree, true, skipped_slot)
-                    for _, n in ipairs(catchup_notes) do
-                        midi.SendMidi(n, false)
-                    end
-                end
-            end
-        end
-        if loop == 0 then 
-            sequencer.Stop()
-            return 
+        -- Catch up skipped steps if frame was delayed — state-only advance.
+        -- The skipped slot's chord never actually played, so no TriggerChord or SendMidi needed.
+        while seq_store.GetLastMeasure() >= 0 and cur_m > seq_store.GetLastMeasure() + 1 do
+            seq_store.SetLastMeasure(seq_store.GetLastMeasure() + 1)
         end
         
-        config.state.sequencer.current_step = (cur_m % loop) + 1
-        config.state.sequencer.last_measure = cur_m
+        seq_store.SetCurrentStep((cur_m % loop) + 1)
+        seq_store.SetLastMeasure(cur_m)
+        seq_store.SetCurrentSubStep(0)
         
         -- Auto-paginate
-        config.state.current_page = math.floor((config.state.sequencer.current_step - 1) / 4) + 1
+        seq_store.SetCurrentPage(math.floor((seq_store.GetCurrentStep() - 1) / 4) + 1)
         
-        local slot = config.state.progression[config.state.sequencer.current_step]
-        if slot then 
-            config.state.sequencer.midi_notes = midi.TriggerChord(slot.degree, true, slot) 
+        local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
+        if slot then
+            seq_store.SetMidiNotes(TriggerSubChord(slot, 0))
+        end
+    
+    -- SAME MEASURE: check for sub-step boundary
+    else
+        local current_sub = math.floor(progress * subdivision)
+        local prev_sub = seq_store.GetCurrentSubStep()
+        
+        if current_sub ~= prev_sub and current_sub < subdivision then
+            -- Sub-step boundary crossed: stop previous, trigger new
+            for _, n in ipairs(seq_store.GetMidiNotes()) do midi.SendMidi(n, false) end
+            
+            seq_store.SetCurrentSubStep(current_sub)
+            local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
+            if slot then
+                seq_store.SetMidiNotes(TriggerSubChord(slot, current_sub))
+            end
         end
     end
 end

@@ -1,5 +1,7 @@
 -- GROVE FL MIDI: Button UI Components (extracted from components.lua)
 local config = require("config")
+local drag_store = require("state.drag")
+local ui_store = require("state.ui")
 local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 
@@ -86,7 +88,7 @@ function m.DrawToolIcon(type, x, y, size, active)
         gfx.line(cx, y + size * 0.19, cx + size * 0.22, y + size * 0.36)
     end
     
-    return config.state.mouse_click and hover
+    return ui_store.GetMouseClick() and hover
 end
 
 function m.DrawNoteDisplay(x, y, w, h, note)
@@ -105,7 +107,7 @@ end
 function m.DrawButton(x, y, w, h, label, active, font_size)
     local components = require("ui.components")
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
-    local pressed = hover and config.state.mouse_click
+    local pressed = hover and ui_store.GetMouseClick()
 
     -- 1. Base background: btn_bg or btn_active
     helpers.SetColor(active and theme.colors.btn_active or theme.colors.btn_bg)
@@ -145,7 +147,7 @@ function m.DrawButton(x, y, w, h, label, active, font_size)
     gfx.x, gfx.y = x+(w-sw)/2, y+(h-sh)/2 + off
     gfx.drawstr(label)
 
-    return not config.state.drag.is_dragging and config.state.mouse_click and hover
+    return not drag_store.GetIsDragging() and ui_store.GetMouseClick() and hover
 end
 
 function m.DrawTransportButton(label, x, y, w, h)
@@ -161,7 +163,7 @@ function m.DrawTransportButton(label, x, y, w, h)
     gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2
     gfx.drawstr(label)
 
-    return config.state.mouse_click and hover
+    return ui_store.GetMouseClick() and hover
 end
 
 return m

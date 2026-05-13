@@ -1,5 +1,7 @@
 -- GROVE FL MIDI: Paginator UI Component (extracted from components.lua)
 local config = require("config")
+local seq_store = require("state.sequencer")
+local ui_store = require("state.ui")
 local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 
@@ -15,9 +17,9 @@ function m.DrawPaginator(x, y, total_pages)
     local start_x = x - ((total_pages - 1) * spacing) / 2
     for i = 1, total_pages do
         local cx = start_x + (i - 1) * spacing
-        helpers.SetColor(config.state.current_page == i and theme.colors.page_active or theme.colors.page_inactive)
+        helpers.SetColor(seq_store.GetCurrentPage() == i and theme.colors.page_active or theme.colors.page_inactive)
         gfx.circle(cx, y, radius, 1, 1)
-        if config.state.show_tooltips then
+        if ui_store.GetShowTooltips() then
             local dot_hover = (gfx.mouse_x - cx)^2 + (gfx.mouse_y - y)^2 <= (radius + 5)^2
             if dot_hover then
                 gfx.setfont(1, "Calibri", 11)
@@ -32,8 +34,8 @@ function m.DrawPaginator(x, y, total_pages)
                 gfx.drawstr(label)
             end
         end
-        if config.state.mouse_click and (gfx.mouse_x - cx)^2 + (gfx.mouse_y - y)^2 <= radius^2 then
-            config.state.current_page = i
+        if ui_store.GetMouseClick() and (gfx.mouse_x - cx)^2 + (gfx.mouse_y - y)^2 <= radius^2 then
+            seq_store.SetCurrentPage(i)
         end
     end
 end

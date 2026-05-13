@@ -1,5 +1,6 @@
 -- GROVE FL MIDI: Dropdown UI Component (extracted from components.lua)
 local config = require("config")
+local ui_store = require("state.ui")
 local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 
@@ -49,16 +50,16 @@ function m.DrawDropdown(x, y, w, h, label, value, options, current_index, font_s
     end
     
     -- Scroll wheel selection
-    if hover and config.state.use_scroll and config.state.mouse_wheel_delta ~= 0 then
-        local delta = config.state.mouse_wheel_delta > 0 and -1 or 1
-        config.state.mouse_wheel_delta = 0
+    if hover and ui_store.GetUseScroll() and ui_store.GetMouseWheelDelta() ~= 0 then
+        local delta = ui_store.GetMouseWheelDelta() > 0 and -1 or 1
+        ui_store.SetMouseWheelDelta(0)
         local new_idx = current_index + delta
         if new_idx < 1 then new_idx = #options end
         if new_idx > #options then new_idx = 1 end
         return new_idx
     end
     
-    if hover and config.state.mouse_click then
+    if hover and ui_store.GetMouseClick() then
         local menu_str = ""
         for i, opt in ipairs(options) do
             local safe_opt = opt:gsub("|", "·")

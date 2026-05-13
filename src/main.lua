@@ -108,14 +108,72 @@ end
 
 
 
+-- =========================================================
+-- AUTO TRACK SETUP
+-- =========================================================
+-- Every time the user selects a track, auto-arm, enable monitoring,
+-- and set MIDI input to Virtual MIDI Keyboard.
+
+--- I_RECINPUT value for Virtual MIDI Keyboard, all MIDI channels.
+--- Bit layout: 4096 (MIDI flag) | (62 << 5) (VKB physical input) | 0 (all channels)
+local VKB_RECINPUT = 6080  -- 0x17C0 = 4096 | 1984
+
+--- Track selection tracking for auto-setup.
+local last_sel_track_ptr = nil
+
+--- Track that was configured by the script, for restoration on deselection.
+local last_configured_track = nil
+
+--- Disarm and reset a previously configured track when deselected.
+local function RestorePreviousTrack()
+    if not last_configured_track then return end
+    -- Validate the track pointer (may be stale if track was deleted)
+    if not reaper.ValidatePtr(last_configured_track, "MediaTrack*") then
+        last_configured_track = nil
+        return
+    end
+    reaper.SetMediaTrackInfo_Value(last_configured_track, "I_RECARM", 0)
+    reaper.SetMediaTrackInfo_Value(last_configured_track, "I_RECMON", 0)
+    last_configured_track = nil
+end
+
+--- Apply auto-setup to a track: arm + monitoring ON + Virtual MIDI Keyboard input.
+local function ApplyTrackSetup(tr)
+    if not tr then return end
+    reaper.SetMediaTrackInfo_Value(tr, "I_RECARM", 1)
+    reaper.SetMediaTrackInfo_Value(tr, "I_RECMON", 2)
+    reaper.SetMediaTrackInfo_Value(tr, "I_RECINPUT", VKB_RECINPUT)
+    reaper.TrackList_AdjustWindows(false)  -- force UI refresh
+    last_configured_track = tr
+end
+
+--- Auto-setup: called every time the script starts.
+--- Restores any previous track, then configures the current selection.
+local function AutoSetupTrack()
+    RestorePreviousTrack()
+    local tr = reaper.GetSelectedTrack(0, 0)
+    ApplyTrackSetup(tr)
+    last_sel_track_ptr = tr
+end
+
 local function CleanupAll()
-    midi.AllNotesOff()
+    midi.AllNotesOff(true)  -- force=true: bypass ref-count gate on cleanup
     sequencer.Stop()
     keyboard.Cleanup()
     compact.Cleanup()
 end
 
 local function MainLoop()
+    -- Auto Track Setup: detect track selection change (works in ALL modes)
+    if ui_store.GetAutoTrackSetup() then
+        local sel_tr = reaper.GetSelectedTrack(0, 0)
+        if sel_tr ~= last_sel_track_ptr then
+            last_sel_track_ptr = sel_tr
+            RestorePreviousTrack()          -- restore old track to original state
+            ApplyTrackSetup(sel_tr)         -- configure new track
+        end
+    end
+
     -- Decrement note display timer
     if midi_store.GetActiveNoteDrawTimer() > 0 then
         midi_store.SetActiveNoteDrawTimer(midi_store.GetActiveNoteDrawTimer() - 1)
@@ -161,56 +219,14 @@ local function MainLoop()
     ui_store.SetMouseWheelDelta(mwd)
     if mwd ~= 0 then gfx.mouse_wheel = 0 end
 
-    -- ISLAND mode routing
-    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
-        views.DrawIslandView()
-        ui_store.SetLastMouseCap(gfx.mouse_cap)
-        local char = gfx.getchar()
-
-        -- Ctrl+I (9) or F12 (123): toggle back to FULL
-        if char == 9 or char == 123 then
-            compact.ToggleIslandView()
-
-        -- Ctrl+S (19): Save preset (P5-03)
-        elseif char == 19 then
-            views.IslandTriggerSave()
-
-        -- Ctrl+O (15): Load/open preset (P5-03)
-        elseif char == 15 then
-            views.IslandTriggerLoad()
-
-        -- Delete (127) or Backspace (8): Delete selected note (P5-03)
-        elseif char == 127 or char == 8 then
-            views.IslandDeleteNote()
-
-        -- Arrow Up (273): Select previous note (P5-03)
-        elseif char == 273 then
-            views.IslandSelectAdjacentNote(-1)
-
-        -- Arrow Down (274): Select next note (P5-03)
-        elseif char == 274 then
-            views.IslandSelectAdjacentNote(1)
-        end
-
-        -- Always check for close/escape regardless of other key handling
-        if char == -1 or char == 27 then
-            if ui_store.GetDidCleanup() then return end
-            ui_store.SetDidCleanup(true)
-            CleanupAll()
-            gfx.quit()
-            return
-        end
-
-        reaper.defer(MainLoop)
-        return
-    end
-
     CheckDockState()
+
+    local char = gfx.getchar()
 
     if ui_store.GetDockedMode() then
         views.DrawDockedTransportBar(gfx.w, gfx.h)
     else
-        views.DrawFullView()
+        views.DrawFullView(char)
     end
 
     ui_store.SetLastMouseCap(gfx.mouse_cap)
@@ -220,24 +236,15 @@ local function MainLoop()
         reaper.defer(MainLoop)
         return
     end
-    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
-        reaper.defer(MainLoop)
-        return
-    end
     if midi.midi_island_toggled then
         midi.midi_island_toggled = false
         reaper.defer(MainLoop)
         return
     end
 
-    local char = gfx.getchar()
     -- Ctrl+D toggle dock
     if char == 4 then
         ToggleDock()
-    end
-    -- F12 toggle ISLAND view
-    if char == 123 then  -- VK_F12
-        compact.ToggleIslandView()
     end
     if char == -1 or char == 27 then
         if ui_store.GetDidCleanup() then return end
@@ -271,9 +278,13 @@ local function Init()
     if ext_compact == "1" then ui_store.SetAutoStartCompact(true) end
     local ext_reaper = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_reaper")
     if ext_reaper == "1" then ui_store.SetAutoStartReaper(true) end
+    local ext_track = reaper.GetExtState("GROVE_Scale_Runner", "auto_track_setup")
+    if ext_track == "0" then ui_store.SetAutoTrackSetup(false) end
 
-    -- Ensure clean state on startup
-    keyboard.InterceptMappedKeys(false)
+    -- Auto Track Setup: configure selected track (only if enabled in settings)
+    if ui_store.GetAutoTrackSetup() then
+        AutoSetupTrack()
+    end
 
     -- Auto-start: compact bar overlay alongside full view
     if ui_store.GetAutoStartCompact() then

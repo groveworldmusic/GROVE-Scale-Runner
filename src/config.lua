@@ -36,6 +36,11 @@ config.CHORD_MODES = {
     {name="9na", offsets={0, 2, 4, 6, 8}}
 }
 
+config.INVERSION_MODES = {"Base", "1st", "2nd", "3rd"}
+
+config.SUBDIVISION_MODES = {1, 2, 3, 4, 8, 16}
+config.SUBDIVISION_LABELS = {"1/1", "1/2", "1/3", "1/4", "1/8", "1/16"}
+
 config.VIEW_MODES = { FULL = 1, COMPACT = 2 }
 
 -- Docked Transport Bar dimensions
@@ -44,7 +49,7 @@ config.DOCK_MIN_W, config.DOCK_MIN_H = 400, 50
 -- Expanded state for Pagination (16 slots, 4 pages)
 config.state = {
     view_mode = config.VIEW_MODES.FULL,
-    root_index = 1, scale_index = 1, octave = 4, chord_mode_index = 1,
+    root_index = 1, scale_index = 1, octave = 4, chord_mode_index = 1, inversion_index = 1, inversion_direction = 0, subdivision_index = 1,
     use_velocity = true,
     use_scroll = true,
     show_tooltips = false,
@@ -67,14 +72,12 @@ config.state = {
     -- Auto-start configuration
     auto_start_compact = false,  -- Start compact bar overlay alongside full view
     auto_start_reaper = false,   -- Auto-launch this script when REAPER starts
+    auto_track_setup = true,     -- Auto-arm + monitor + MIDI input on track selection
     compact_overlay_active = false,  -- Compact bar visible alongside full view
     -- Docked transport bar state
     docked_mode = false,
     dock_id = 0,
-    -- MIDI Island
-    midi_island_expanded = false,
-    midi_channel = 1,
-    midi_island_toggled = false,
+    -- (MIDI Island state moved to core/midi.lua)
     -- Compact composite state (for JS_Composite transport bar view)
     last_gfx_state = {dock=0, x=100, y=100, w=720, h=500},
     -- Compact composite resources (managed by ui/compact.lua)
