@@ -463,8 +463,10 @@ end
 --- @param scroll_y number Current vertical scroll offset
 --- @return number New vertical scroll offset
 function m.HandleMouseWheelVertical(delta, scroll_y)
-    -- Factor 0.25: ~4px per delta unit (at PITCH_ROW_H=16) for smooth scrolling
-    local new_scroll = scroll_y - delta * 0.25
+    -- Factor 0.08: ~1.3px per delta unit (at PITCH_ROW_H=16).
+    -- REAPER gfx.mouse_wheel: ±1 (smooth), ±3 (mechanical notch), ±6+ (fast).
+    -- With sub-pixel positioning, each frame moves < 5px for true fluid scroll.
+    local new_scroll = scroll_y - delta * 0.08
     return math.max(0, new_scroll)
 end
 
