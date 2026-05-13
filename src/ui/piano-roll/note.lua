@@ -1,0 +1,290 @@
+-- GROVE FL MIDI: Piano Roll Note Blocks
+-- Renders note blocks with gradient strips and velocity-based opacity.
+-- Handles hit testing, rect selection, and dirty cache.
+-- Extracted from piano-roll.lua monolith (PR1a).
+
+local config = require("config")
+local island_store = require("state.island")
+local theme = require("ui.theme")
+local helpers = require("ui.helpers")
+local components = require("ui.components")
+local grid = require("ui.piano-roll.grid")
+
+local m = {}
+
+-- =========================================================
+-- Color constants
+-- =========================================================
+local NOTE_SELECTED_BORDER = {1, 1, 1, 0.8}
+local NOTE_MUTED = {0.4, 0.4, 0.4, 0.4}
+local NOTE_MUTED_OPAQUE = {0.4, 0.4, 0.4, 1.0}
+
+local WHITE_KEY_PCS = {[0]=true, [2]=true, [4]=true, [5]=true, [7]=true, [9]=true, [11]=true}
+local NOTE_WHITE = {0.55, 0.72, 0.88, 0.92}  -- light blue-gray for white keys
+local NOTE_BLACK = {0.22, 0.38, 0.55, 0.92}  -- deeper blue for black keys
+
+-- =========================================================
+-- Internal helpers
+-- =========================================================
+
+--- Note block color: white keys get a lighter shade, black keys a darker shade.
+local function NoteColorForPitch(pitch)
+    local pc = pitch % 12
+    if WHITE_KEY_PCS[pc] then
+        return NOTE_WHITE
+    else
+        return NOTE_BLACK
+    end
+end
+
+--- Get the octave name for a pitch number.
+local function OctaveLabel(pitch)
+    local octave = math.floor(pitch / 12) - 1
+    local note_names = config.NOTE_NAMES
+    return note_names[(pitch % 12) + 1] .. tostring(octave)
+end
+
+-- =========================================================
+-- Note block gradient rendering
+-- =========================================================
+
+--- Draw a note block with vertical gradient strips and velocity-based opacity.
+--- Muted notes: full alpha, flat fill using NOTE_MUTED color, no gradient.
+--- Non-muted: 3-4 vertical strips (top lighter → bottom darker), velocity→alpha.
+--- @param nx number Pixel x
+--- @param ny number Pixel y
+--- @param nw number Pixel width
+--- @param nh number Pixel height (row height)
+--- @param pitch number MIDI pitch (for white/black key color selection)
+--- @param velocity number 0-127
+--- @param muted boolean
+local function DrawNoteWithGradient(nx, ny, nw, nh, pitch, velocity, muted)
+    if muted then
+        -- Muted: flat fill at full alpha, NOTE_MUTED_RGB, no gradient
+        helpers.SetColor(NOTE_MUTED_OPAQUE)
+        components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
+        return
+    end
+
+    local base_color = NoteColorForPitch(pitch)
+    local vel_alpha = 0.35 + (velocity / 127) * 0.65
+    local strips = math.max(1, math.floor(nh / 4))
+
+    for i = 0, strips - 1 do
+        local t = i / strips
+        local darken = 1 - t * 0.3  -- top=1.0, bottom≈0.7
+        local sy = ny + math.floor(i * nh / strips)
+        local ey = ny + math.floor((i + 1) * nh / strips)
+
+        helpers.SetColor({
+            base_color[1] * darken,
+            base_color[2] * darken,
+            base_color[3] * darken,
+            vel_alpha,
+        })
+        -- Horizontal inset only, NO vertical inset: strips must tile without gaps
+        components.DrawRoundedRect(nx + 1, sy, math.max(1, nw - 2), ey - sy, math.min(3, math.floor((ey - sy) / 2)), true)
+    end
+end
+
+-- =========================================================
+-- Exported Functions
+-- =========================================================
+
+--- Draw a single note block with gradient and velocity opacity.
+--- @param note table {pitch, start_beat, duration, velocity, muted}
+--- @param nx number Pixel x (already computed)
+--- @param ny number Pixel y (already computed)
+--- @param nw number Pixel width (already computed)
+--- @param nh number Pixel height (row height)
+--- @param selected boolean Whether this note is selected
+function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
+    if nw < 1 or nh < 1 then return end
+
+    -- Draw gradient note (handles muted internally)
+    DrawNoteWithGradient(nx, ny, nw, nh, note.pitch, note.velocity or 100, note.muted)
+
+    -- Selected note: draw a bright border
+    if selected then
+        helpers.SetColor(NOTE_SELECTED_BORDER)
+        gfx.roundrect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, 0)
+    end
+
+    -- Note label (only when wide enough)
+    if nw > 30 then
+        local label = OctaveLabel(note.pitch)
+        gfx.setfont(1, "Calibri", 10)
+        local lw, lh = gfx.measurestr(label)
+        helpers.SetColor(theme.colors.text_dark)
+        gfx.x, gfx.y = nx + (nw - lw) / 2, ny + (nh - lh) / 2
+        gfx.drawstr(label)
+    end
+end
+
+-- =========================================================
+-- Note dirty cache (P5-05)
+-- =========================================================
+local _last_note_count = -1
+local _last_sel_count = -1
+local _last_notes_dirty = true
+
+--- Mark note cache as dirty (call when notes change externally).
+function m.MarkNotesDirty()
+    _last_notes_dirty = true
+end
+
+--- Render all visible note blocks from island store.
+--- Uses pre-computed visible ranges and skips iteration when notes unchanged.
+--- @param x number Left edge of the grid area
+--- @param y number Top edge of the grid area
+--- @param w number Width of the grid area
+--- @param h number Height of the grid area
+--- @param scroll_y number Vertical scroll offset
+--- @param scroll_x number Horizontal scroll offset
+--- @param zoom_x number Pixels per beat
+--- @param pitch_start number Pre-computed visible pitch start
+--- @param pitch_end number Pre-computed visible pitch end
+--- @param beat_start number Pre-computed visible beat start
+--- @param beat_end number Pre-computed visible beat end
+--- @param top_pitch number Pre-computed visible top pitch
+function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
+                          pitch_start, pitch_end, beat_start, beat_end, top_pitch)
+    local PITCH_ROW_H = grid.PITCH_ROW_H
+    local MIN_PITCH = grid.MIN_PITCH
+
+    local notes = island_store.GetNotes()
+    if not notes or #notes == 0 then return end
+
+    local sel_count = island_store.GetSelectionCount()
+
+    -- Check if we can skip note redraw (nothing changed — P5-05)
+    local note_count = #notes
+    if note_count == _last_note_count and sel_count == _last_sel_count
+       and not _last_notes_dirty then
+        return
+    end
+    _last_note_count = note_count
+    _last_sel_count = sel_count
+    _last_notes_dirty = false
+
+    for i, note in ipairs(notes) do
+        local np = note.pitch
+        local ns = note.start_beat
+        local nd = note.duration or 1
+
+        local in_pitch_range = np >= pitch_start and np <= pitch_end
+        local in_time_range = ns <= beat_end and (ns + nd) >= beat_start
+
+        if in_pitch_range and in_time_range then
+            local nx = x + (ns - scroll_x) * zoom_x
+            local ny = y + (top_pitch - np) * PITCH_ROW_H
+            local nw = nd * zoom_x
+            local nh = PITCH_ROW_H
+
+            m.DrawNoteBlock(note, nx, ny, nw, nh, island_store.IsNoteSelected(i))
+        end
+    end
+end
+
+-- =========================================================
+-- Hit testing
+-- =========================================================
+
+--- Hit test: find which note index is at a given mouse position.
+--- Uses inverted Y: high pitch at top (low y), low pitch at bottom (high y).
+--- @param mx number Mouse pixel x (relative to grid)
+--- @param my number Mouse pixel y (relative to grid)
+--- @param notes table Array of notes from island_store
+--- @param scroll_y number Vertical scroll offset (rows from MAX_PITCH)
+--- @param scroll_x number Horizontal scroll offset
+--- @param zoom_x number Pixels per beat
+--- @param grid_x number Grid left edge pixel
+--- @param grid_y number Grid top edge pixel
+--- @return number|nil Index of clicked note, or nil
+function m.NoteBlockHitTest(mx, my, notes, scroll_y, scroll_x, zoom_x, grid_x, grid_y)
+    local PITCH_ROW_H = grid.PITCH_ROW_H
+    local MAX_PITCH = grid.MAX_PITCH
+    local MIN_PITCH = grid.MIN_PITCH
+
+    if not notes then return nil end
+
+    -- Convert mouse position to beat/pitch space (inverted Y)
+    local beat = (mx - grid_x) / zoom_x + scroll_x
+    local pitch_row = math.floor((my - grid_y) / PITCH_ROW_H)
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
+    local click_pitch = math.max(MIN_PITCH, top_pitch - pitch_row)
+
+    -- Search from end to start (topmost first in render order)
+    for i = #notes, 1, -1 do
+        local note = notes[i]
+        if note.pitch == click_pitch then
+            local note_start = note.start_beat
+            local note_end = note_start + (note.duration or 1)
+            if beat >= note_start and beat <= note_end then
+                return i
+            end
+        end
+    end
+
+    return nil
+end
+
+-- =========================================================
+-- Rect hit-test (lasso selection)
+-- =========================================================
+
+--- Find all note indices whose note blocks fall within the given pixel rectangle.
+--- Used by lasso on mouseup to populate selected_indices.
+--- @param x1 number Pixel x of first corner
+--- @param y1 number Pixel y of first corner
+--- @param x2 number Pixel x of second corner
+--- @param y2 number Pixel y of second corner
+--- @param grid_x number Grid left edge (pixel)
+--- @param grid_y number Grid top edge (pixel)
+--- @param scroll_y number Vertical scroll offset
+--- @param scroll_x number Horizontal scroll offset
+--- @param zoom_x number Pixels per beat
+--- @return table Array of note indices within the rect
+function m.GetNotesInRect(x1, y1, x2, y2, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
+    -- Normalize rect
+    local rx1, ry1 = math.min(x1, x2), math.min(y1, y2)
+    local rx2, ry2 = math.max(x1, x2), math.max(y1, y2)
+
+    -- Ignore tiny clicks (anti-flicker)
+    if math.abs(x2 - x1) < 3 and math.abs(y2 - y1) < 3 then
+        return {}
+    end
+
+    local PITCH_ROW_H = grid.PITCH_ROW_H
+    local MIN_PITCH = grid.MIN_PITCH
+    local MAX_PITCH = grid.MAX_PITCH
+
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
+
+    -- Convert pixel rect to pitch/beat space (inverted Y)
+    local pitch_row_top = math.floor((ry1 - grid_y) / PITCH_ROW_H)
+    local pitch_row_bot = math.floor((ry2 - grid_y) / PITCH_ROW_H)
+    local pitch_high = math.max(MIN_PITCH, top_pitch - pitch_row_top)
+    local pitch_low  = math.max(MIN_PITCH, top_pitch - pitch_row_bot)
+
+    local beat_start = (rx1 - grid_x) / zoom_x + scroll_x
+    local beat_end   = (rx2 - grid_x) / zoom_x + scroll_x
+
+    local results = {}
+    local notes = island_store.GetNotes()
+    if not notes then return results end
+
+    for i, note in ipairs(notes) do
+        local np = note.pitch
+        local ns = note.start_beat
+        local nd = note.duration or 1
+        if np >= pitch_low and np <= pitch_high
+           and ns <= beat_end and (ns + nd) >= beat_start then
+            table.insert(results, i)
+        end
+    end
+
+    return results
+end
+
+return m
