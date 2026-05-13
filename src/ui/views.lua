@@ -1154,7 +1154,8 @@ function views.DrawMIDIIsland(char)
 
                 local bar_w = math.max(20, sb_w * scroll_ratio)
                 local track_w = sb_w - bar_w
-                local bar_x = right_x + piano_roll.PITCH_LABEL_W + (scroll_x / max_scroll_x) * track_w
+                local clamped_sx = math.min(scroll_x, max_scroll_x)
+                local bar_x = right_x + piano_roll.PITCH_LABEL_W + (clamped_sx / max_scroll_x) * track_w
 
                 -- Thumb hit test
                 local mx, my = gfx.mouse_x, gfx.mouse_y
@@ -1166,7 +1167,7 @@ function views.DrawMIDIIsland(char)
                 if click and thumb_hover then
                     _sb_dragging = true
                     _sb_drag_start_x = mx
-                    _sb_scroll_at_drag_start = scroll_x
+                    _sb_scroll_at_drag_start = math.min(scroll_x, max_scroll_x)
                 end
 
                 -- Continue drag while held
@@ -1213,7 +1214,12 @@ function views.DrawMIDIIsland(char)
 
                 local bar_h = math.max(14, vsb_h * scroll_ratio)
                 local track_h = vsb_h - bar_h
-                local bar_y = vsb_y + (scroll_y / max_scroll_y) * track_h
+                -- Clamp scroll_y to max_scroll_y: prevents overflow when SetScrollOffsetY
+                -- (which allows up to TOTAL_PITCHES=108) exceeds the actual max_scroll_y
+                -- computed from visible viewport. ComputeVisibleRanges clamps internally,
+                -- but the VSB drawing must also stay in bounds.
+                local clamped_sy = math.min(scroll_y, max_scroll_y)
+                local bar_y = vsb_y + (clamped_sy / max_scroll_y) * track_h
 
                 -- Thumb hit test
                 local mx, my = gfx.mouse_x, gfx.mouse_y
@@ -1225,7 +1231,9 @@ function views.DrawMIDIIsland(char)
                 if click and thumb_hover then
                     _vsb_dragging = true
                     _vsb_drag_start_y = my
-                    _vsb_scroll_at_drag_start = scroll_y
+                    -- Clamp drag start to max_scroll_y so the FIRST drag frame
+                    -- doesn't jump if scroll_y exceeds the visible range.
+                    _vsb_scroll_at_drag_start = math.min(scroll_y, max_scroll_y)
                 end
 
                 -- Continue drag while held
