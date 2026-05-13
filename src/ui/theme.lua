@@ -45,6 +45,15 @@ theme.colors = {
     grid_beat = {0.4, 0.4, 0.4, 0.35},        -- Beat lines: alpha 0.35
     grid_sub_1_8 = {0.25, 0.25, 0.25, 0.15},  -- 1/8 subdivision: alpha 0.15
     grid_sub_1_16 = {0.20, 0.20, 0.20, 0.08}, -- 1/16 subdivision: alpha 0.08
+
+    -- Snap indicator colors (PR2)
+    snap_active = hex2rgb("#4CAF50"),          -- Green: snap is ON
+    snap_inactive = hex2rgb("#555555"),        -- Gray: snap is OFF
+    snap_grid = {0.30, 0.70, 0.30, 0.25},     -- Subtle green tint for snap-aligned grid lines
+
+    -- Lasso selection rect (Phase 4)
+    lasso_fill = {0.25, 0.50, 1.0, 0.15},     -- Semi-transparent blue fill
+    lasso_border = {0.25, 0.50, 1.0, 0.50},   -- Blue border
     grade_colors = {
         hex2rgb("#3f81da"),  -- I:  blue
         hex2rgb("#4a9e6b"),  -- II: green

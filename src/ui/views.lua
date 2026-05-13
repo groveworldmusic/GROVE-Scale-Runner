@@ -11,7 +11,9 @@ local midi = require("core.midi")
 local compact = require("ui.compact")
 local layout = require("ui.layout")
 local progression = require("core.progression")
+local sequencer = require("core.sequencer")
 local piano_roll = require("ui.piano-roll")
+local snap = require("core.snap")
 local timeline = require("ui.timeline")
 local velocity = require("ui.velocity")
 local preset_browser = require("ui.preset-browser")
@@ -79,8 +81,7 @@ function views.DrawHeader()
     local icon_size = layout.US(1700)
     local icon_gap = layout.US(420)
     local right_edge = layout.UX(39914)
-    local island_x = right_edge - icon_size - icon_gap
-    local view_x = island_x - icon_size - icon_gap
+    local view_x = right_edge - icon_size - icon_gap
     local settings_x = view_x - icon_size - icon_gap
     local help_x = settings_x - icon_size - icon_gap
 
@@ -108,7 +109,8 @@ function views.DrawHeader()
         local scroll_label = (ui_store.GetUseScroll() and "✓ " or "") .. "Activar Scroll en Dropdowns"
         local compact_label = (ui_store.GetAutoStartCompact() and "✓ " or "") .. "Iniciar en Vista Mini"
         local reaper_label = (ui_store.GetAutoStartReaper() and "✓ " or "") .. "Iniciar con REAPER"
-        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label
+        local track_label = (ui_store.GetAutoTrackSetup() and "✓ " or "") .. "Auto armar pista al seleccionar"
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
@@ -143,14 +145,15 @@ function views.DrawHeader()
             ui_store.SetAutoStartReaper(not ui_store.GetAutoStartReaper())
             reaper.SetExtState("GROVE_Scale_Runner", "auto_start_reaper",
                 ui_store.GetAutoStartReaper() and "1" or "0", true)
+        elseif choice == 7 then
+            ui_store.SetAutoTrackSetup(not ui_store.GetAutoTrackSetup())
+            reaper.SetExtState("GROVE_Scale_Runner", "auto_track_setup",
+                ui_store.GetAutoTrackSetup() and "1" or "0", true)
         end
     end
     
     if components.DrawToolIcon("view", view_x, (h - icon_size) / 2, icon_size) then
         compact.SwitchViewMode()
-    end
-    if components.DrawToolIcon("island", island_x, (h - icon_size) / 2, icon_size) then
-        compact.ToggleIslandView()
     end
 end
 
@@ -161,6 +164,7 @@ function views.DrawIslands()
     local std_btn_w = layout.US(4400)
     local std_btn_h = layout.US(1980)
     local title_font_size = layout.US(1250)
+    local sub_font_size = layout.US(1193)
     local btn_font_size = layout.US(1100)
     
     ---------------------------------------------------------------------------
@@ -172,63 +176,143 @@ function views.DrawIslands()
     local piano_w, piano_h = layout.US(21056), layout.US(7875)
     components.DrawPianoKeyboard(piano_x, piano_y, piano_w, piano_h, layout.US(1400))
     
-    local drop_h = layout.US(1677)
-    local drop_y = layout.UY(11653)
+    local row_h = layout.US(1548)
+    local row_y = layout.UY(11700)
     local modo_lbl_x = layout.UX(1000)
-    local drop_x = layout.UX(4800)
-    local drop_w = layout.US(7187)
     
+    -- MODO label (misma posición)
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", title_font_size) 
     local mw, mh = gfx.measurestr("MODO")
-    gfx.x, gfx.y = modo_lbl_x, drop_y + (drop_h - mh)/2
+    gfx.x, gfx.y = modo_lbl_x, row_y + (row_h - mh)/2
     gfx.drawstr("MODO")
     
-    -- Using the smart abbreviation strategy
+    -- MODO dropdown (más cerca del label, altura reducida)
+    local modo_drop_x = modo_lbl_x + mw + layout.US(400)
+    local modo_drop_w = layout.US(7000)
     local modo_val = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
-    local choice = components.DrawDropdown(drop_x, drop_y, drop_w, drop_h, nil, modo_val, 
+    local choice = components.DrawDropdown(modo_drop_x, row_y, modo_drop_w, row_h, nil, modo_val, 
                                           SCALE_OPTIONS, config.state.scale_index, btn_font_size)
     if choice then config.state.scale_index = choice end
     
-    local note_x, note_y = layout.UX(17450), layout.UY(11707)
-    local note_w, note_h = layout.US(4042), layout.US(1548)
-    local note_lbl_x = layout.UX(14000)
+    -- Grid label + dropdown (entre MODO y NOTE display)
+    local note_x = layout.UX(18826)
+    local grid_lbl_x = modo_drop_x + modo_drop_w + layout.US(1026)
+    
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", title_font_size)
-    local nw, nh = gfx.measurestr("NOTE")
-    gfx.x, gfx.y = note_lbl_x, note_y + (note_h - nh)/2
-    gfx.drawstr("NOTE")
-    components.DrawNoteDisplay(note_x, note_y, note_w, note_h, midi_store.GetLastNotePlayed())
+    local gw, gh = gfx.measurestr("GRID")
+    gfx.x, gfx.y = grid_lbl_x, row_y + (row_h - gh)/2
+    gfx.drawstr("GRID")
+    
+    local grid_drop_x = grid_lbl_x + gw + layout.US(400)
+    local grid_drop_w = note_x - grid_drop_x - layout.US(400)
+    local grid_choice = components.DrawDropdown(grid_drop_x, row_y, grid_drop_w, row_h,
+        nil, config.SUBDIVISION_LABELS[config.state.subdivision_index],
+        config.SUBDIVISION_LABELS, config.state.subdivision_index, btn_font_size)
+    if grid_choice then config.state.subdivision_index = grid_choice end
+    
+    -- NOTE display (sin label, misma posición)
+    components.DrawNoteDisplay(note_x, row_y, layout.US(2800), row_h, midi_store.GetLastNotePlayed())
     
     ---------------------------------------------------------------------------
-    -- Island 2: Octava
+    -- Island 2: Octava (144px height, content fits inside)
     ---------------------------------------------------------------------------
     local i2_x = layout.UX(23066)
-    components.DrawIsland(i2_x, y_start, std_island_w, island_h, "OCTAVA", title_font_size)
+    local short_island_h = layout.US(8708)
+    local short_btn_h = layout.US(1700)
+    components.DrawIsland(i2_x, y_start, std_island_w, short_island_h, nil, nil)
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", sub_font_size)
+    local oct_tw, oct_th = gfx.measurestr("OCTAVA")
+    gfx.x, gfx.y = i2_x + (std_island_w - oct_tw)/2, y_start
+    gfx.drawstr("OCTAVA")
     local btn_x = i2_x + (std_island_w - std_btn_w)/2
     local oct_open_up = y_start > gfx.h / 2
-    local oct_choice = components.DrawDropdown(btn_x, layout.UY(4545), std_btn_w, std_btn_h, nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, oct_open_up)  -- Issue 9
+    local oct_content_h = short_btn_h * 4 + layout.US(171) * 3
+    local oct_content_y = y_start + math.floor((short_island_h - oct_content_h) / 2) + layout.US(398)
+    local oct_gap = layout.US(171)
+    local oct_choice = components.DrawDropdown(btn_x, oct_content_y, std_btn_w, short_btn_h,
+        nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, oct_open_up)  -- Issue 9
     if oct_choice then config.state.octave = math.floor(oct_choice - 1) end
-    if components.DrawButton(btn_x, layout.UY(6823), std_btn_w, std_btn_h, "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
-    if components.DrawButton(btn_x, layout.UY(9075), std_btn_w, std_btn_h, "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
-    if components.DrawButton(btn_x, layout.UY(11343), std_btn_w, std_btn_h, "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3 end
-    
+    if components.DrawButton(btn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
+                             "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
+    if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
+                             "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
+    if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
+                             "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3 end
+
     ---------------------------------------------------------------------------
-    -- Island 3: Chord
+    -- Island 3: Chord (144px height, content fits inside)
     ---------------------------------------------------------------------------
     local i3_x = layout.UX(28832)
-    components.DrawIsland(i3_x, y_start, std_island_w, island_h, "CHORD", title_font_size)
+    components.DrawIsland(i3_x, y_start, std_island_w, short_island_h, nil, nil)
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", sub_font_size)
+    local ch_tw, ch_th = gfx.measurestr("CHORD")
+    gfx.x, gfx.y = i3_x + (std_island_w - ch_tw)/2, y_start
+    gfx.drawstr("CHORD")
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
-    if components.DrawButton(cbtn_x, layout.UY(4640), std_btn_w, std_btn_h, "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4 end
-    if components.DrawButton(cbtn_x, layout.UY(6893), std_btn_w, std_btn_h, "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3 end
-    if components.DrawButton(cbtn_x, layout.UY(9122), std_btn_w, std_btn_h, "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2 end
-    if components.DrawButton(cbtn_x, layout.UY(11365), std_btn_w, std_btn_h, "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1 end
-    
+    if components.DrawButton(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
+                             "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4 end
+    if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
+                             "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3 end
+    if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
+                             "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2 end
+    if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
+                             "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1 end
+
+    ---------------------------------------------------------------------------
+    -- Island: ISLA INVERSIONES (192×52px, below Octava + Chord, spans both)
+    ---------------------------------------------------------------------------
+    local inv_y = y_start + short_island_h + layout.US(512)
+    local inv_w = (i3_x + std_island_w) - i2_x
+    local inv_h = layout.US(2561)
+    components.DrawIsland(i2_x, inv_y, inv_w, inv_h, nil, nil)
+
+    local inv_font = btn_font_size
+    local inv_item_h = layout.US(1707)  -- 30px alto común
+    local inv_pad = layout.US(300)
+    local inv_text_gap = layout.US(400)
+    local inv_btn_gap = layout.US(171)  -- 3px entre botones
+    local inv_item_y = inv_y + (inv_h - inv_item_h) / 2
+
+    -- INV label (mismo tamaño que OCTAVA/CHORD)
+    gfx.setfont(1, "Calibri", sub_font_size)
+    local ilw, ilh = gfx.measurestr("INV")
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.x, gfx.y = i2_x + inv_pad + layout.US(57), inv_item_y + (inv_item_h - ilh) / 2
+    gfx.drawstr("INV")
+
+    -- UP/DN toggle + 1st/2nd/3rd buttons (rellenan el espacio restante con margen simétrico)
+    local inv_btn_area_start = i2_x + inv_pad + ilw + inv_text_gap
+    local inv_btn_area_end = i2_x + inv_w - inv_pad
+    local inv_btn_area_w = inv_btn_area_end - inv_btn_area_start
+    local inv_btn_w = math.floor((inv_btn_area_w - inv_btn_gap * 3) / 4)
+
+    -- Button 1: UP/DN direction toggle (always selected, shows current direction)
+    local bx1 = inv_btn_area_start
+    local dir_text = config.state.inversion_direction == 0 and "UP" or "DN"
+    if components.DrawButton(bx1, inv_item_y, inv_btn_w, inv_item_h, dir_text, true, inv_font) then
+        config.state.inversion_direction = config.state.inversion_direction == 0 and 1 or 0
+    end
+
+    -- Buttons 2-4: 1st, 2nd, 3rd inversion (click active → root; click another → select)
+    local inv_labels = {"1st", "2nd", "3rd"}
+    for i = 1, 3 do
+        local bx = inv_btn_area_start + i * (inv_btn_w + inv_btn_gap)
+        local inv_idx = i + 1  -- maps to config indices 2, 3, 4
+        if components.DrawButton(bx, inv_item_y, inv_btn_w, inv_item_h,
+                                 inv_labels[i], config.state.inversion_index == inv_idx, inv_font) then
+            config.state.inversion_index = (config.state.inversion_index == inv_idx) and 1 or inv_idx
+        end
+    end
+
     ---------------------------------------------------------------------------
     -- Island 4: Command Vertical Stack (Alineación Exacta)
     ---------------------------------------------------------------------------
-    local i4_x = layout.UX(34598)
-    local b_w = std_island_w
+    local i4_x = layout.UX(34541)
+    local b_w = std_island_w + layout.US(57)
     local b_h = layout.US(1980)
     -- Padding calculado dinámicamente para alinear el borde inferior
     local b_gap = (island_h - (b_h * 5)) / 4
@@ -256,7 +340,7 @@ function views.DrawIslands()
     if ui_store.GetMouseClick() and v_hover and not drag_store.GetIsDragging() then midi_store.SetUseVelocity(not midi_store.GetUseVelocity()) end
     
     -- 2. PLAY/STOP Island
-    local p_y = v_y + b_h + b_gap
+    local p_y = v_y + b_h + b_gap - layout.US(57)
     local p_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= p_y and gfx.mouse_y <= p_y + b_h
     local is_playing = seq_store.GetIsPlaying()
     local p_bg = is_playing and theme.colors.slot_playing or (p_hover and theme.colors.btn_hover or theme.colors.island_bg)
@@ -275,10 +359,12 @@ function views.DrawIslands()
     if p_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip("Play/Stop progression", layout.US(700))
     end
-    if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then seq_store.SetIsPlaying(not is_playing) end
+    if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then
+        if is_playing then sequencer.Stop() else seq_store.SetIsPlaying(true) end
+    end
     
     -- 3. CLEAR + EXPORT (side by side, same row)
-    local c_y = p_y + b_h + b_gap
+    local c_y = p_y + b_h + b_gap - layout.US(57)
     local split_gap = layout.US(500)  -- gap entre CLEAR y EXPORT
     local half_w = math.floor((b_w - split_gap) / 2)
     local clear_x = i4_x
@@ -312,7 +398,7 @@ function views.DrawIslands()
     end
 
     -- 4. MIDI TOGGLE (replaces old EXPORT)
-    local e_y = c_y + b_h + b_gap
+    local e_y = c_y + b_h + b_gap - layout.US(57)
     local e_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= e_y and gfx.mouse_y <= e_y + b_h
     local midi_expanded = midi.midi_island_expanded
     local e_bg = midi_expanded and theme.colors.btn_active or (e_hover and theme.colors.btn_hover or theme.colors.island_bg)
@@ -330,20 +416,21 @@ function views.DrawIslands()
     if ui_store.GetMouseClick() and e_hover and not drag_store.GetIsDragging() then midi.ToggleIsland() end
 
     -- 5. VOLUME SLIDER
-    local s_y = e_y + b_h + b_gap
-    local s_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= s_y and gfx.mouse_y <= s_y + b_h
+    local s_y = e_y + b_h + layout.US(398) + layout.US(57) + layout.US(57)
+    local vol_h = (v_y + island_h) - s_y
+    local s_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= s_y and gfx.mouse_y <= s_y + vol_h
     local volume = seq_store.GetVolume() or 100
 
     -- Track (mismo island_bg que los botones para que coincida visualmente)
     helpers.SetColor(theme.colors.island_bg)
-    components.DrawRoundedRect(i4_x, s_y, b_w, b_h, 10, true)
+    components.DrawRoundedRect(i4_x, s_y, b_w, vol_h, 10, true)
 
     -- Fill (barra activa con padding interno de layout.US(180))
     local fill_pad = layout.US(180)
     local fill_w = (volume / 100) * (b_w - fill_pad * 2)
     if fill_w > 0 then
         helpers.SetColor(theme.colors.btn_active)
-        components.DrawRoundedRect(i4_x + fill_pad, s_y + fill_pad, fill_w, b_h - fill_pad * 2, 10, true)
+        components.DrawRoundedRect(i4_x + fill_pad, s_y + fill_pad, fill_w, vol_h - fill_pad * 2, 10, true)
     end
 
     -- Label
@@ -351,7 +438,7 @@ function views.DrawIslands()
     gfx.setfont(1, "Calibri", layout.US(1100))
     local label = string.format("VOL %d%%", volume)
     local lw, lh = gfx.measurestr(label)
-    gfx.x, gfx.y = i4_x + (b_w - lw)/2, s_y + (b_h - lh)/2
+    gfx.x, gfx.y = i4_x + (b_w - lw)/2, s_y + (vol_h - lh)/2
     gfx.drawstr(label)
 
     -- Interaction
@@ -480,273 +567,603 @@ function views.DrawPerformanceArea()
     components.DrawDragPreview(slot_w, slot_h)
 end
 
-function views.DrawMIDIIsland()
-    if not midi.midi_island_expanded then return end
+-- Track progression revision to reload notes when progression changes
+local _island_progression_revision = -1
 
-    -- MIDI CH button centrado entre performance area y MIDI island
-    -- Gap total = VEL height (1980) + b_gap (~1389) = ~3369 virtual
-    -- perf_end = fin visual del área de performance (14375 + 13363)
+-- Horizontal scrollbar thumb drag state (task 3.1)
+local _sb_dragging = false
+local _sb_drag_start_x = 0
+local _sb_scroll_at_drag_start = 0
+
+function views.DrawMIDIIsland(char)
+    if not midi.midi_island_expanded then
+        _island_progression_revision = -1
+        _sb_dragging = false  -- reset scrollbar drag state on collapse (H7)
+        return
+    end
+
+    -- Reload notes from progression whenever it changes (drag to slots, etc.)
+    local cur_rev = seq_store.GetProgressionRevision()
+    if cur_rev ~= _island_progression_revision then
+        island_store.LoadNotesFromProgression(seq_store)
+        piano_roll.MarkNotesDirty()
+        _island_progression_revision = cur_rev
+        -- Notes now live-update: piano roll renders them next frame
+    end
+
+    -- =========================================
+    -- Keyboard Shortcut Dispatch (PR3)
+    -- Uses `char` passed from MainLoop via DrawFullView.
+    -- Single gfx.getchar() per frame — avoids double-read crash (regression PR3).
+    -- Ctrl+Z/Y/X/C/V, Delete, arrows, Shift+arrows.
+    -- Unhandled keys fall through to REAPER.
+    -- Escape: Cancel note drag/resize (PR2).
+    -- =========================================
+    local tool_mode = island_store.GetToolMode()
+    local keyboard_consumed = false
+
+    -- Handle Escape for cancel drag first (always active)
+    if char == 27 and island_store.GetNoteDragActive() then
+        piano_roll.CancelNoteDrag()
+        keyboard_consumed = true
+    end
+
+    -- Handle piano roll keyboard shortcuts (pointer/eraser mode)
+    if not keyboard_consumed and (tool_mode == "pointer" or tool_mode == "eraser") then
+        local scroll_beat = island_store.GetScrollOffsetX()
+        keyboard_consumed = piano_roll.HandleKeyboardShortcut(char, scroll_beat)
+    end
+
+    -- Island header: CH + PRESETS buttons side by side, centered
     local perf_end = 27738
     local vel_h_v = 1980
-    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)  -- b_gap en virtual; +1422 (~25px) para 49px de gap perf area→MIDI island
-    local total_gap = vel_h_v + gap_v
-    local top_pad = 428  -- padding arriba del botón (~7px); bottom pad queda ~942 (~16.6px)
-    local btn_y_v = perf_end + top_pad                       -- ~29856
-    local b_w = layout.US(5347)  -- ~94px
+    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)
+    local top_pad = 428
+    local btn_y_v = perf_end + top_pad
+    local b_w = layout.US(5347)
+    local b_h = layout.US(vel_h_v)
     local content_w = layout.US(39914)
-    local btn_x = layout.UX(0) + math.floor((content_w - b_w) / 2)  -- centrado
-    local btn_y = layout.UY(btn_y_v)
-    local btn_h = layout.US(vel_h_v)
+    local btn_gap = 8
+    local total_w = b_w * 2 + btn_gap
+    local header_y = layout.UY(btn_y_v)
 
-    -- MIDI CH button (mismo tamaño y estilo que VEL)
+    -- CH button (left of center)
+    local ch_x = layout.UX(0) + math.floor((content_w - total_w) / 2)
+    local presets_x = ch_x + b_w + btn_gap
+
+    -- MIDI CH button
     local ch = midi.midi_channel
-    local hover = gfx.mouse_x >= btn_x and gfx.mouse_x <= btn_x + b_w and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
-    helpers.SetColor(hover and theme.colors.btn_hover or theme.colors.island_bg)
-    components.DrawRoundedRect(btn_x, btn_y, b_w, btn_h, 10, true)
-    if ui_store.GetMouseClick() and hover and not drag_store.GetIsDragging() then
+    local ch_hover = gfx.mouse_x >= ch_x and gfx.mouse_x <= ch_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    helpers.SetColor(ch_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(ch_x, header_y, b_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and ch_hover and not drag_store.GetIsDragging() then
         local menu = ""
         for i = 1, 16 do
             menu = menu .. (i == ch and "!" or "") .. tostring(i) .. "|"
         end
-        gfx.x, gfx.y = btn_x, btn_y + btn_h
+        gfx.x, gfx.y = ch_x, header_y + b_h
         local choice = gfx.showmenu(menu:sub(1, -2))
         if choice and choice > 0 then midi.midi_channel = choice end
     end
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", layout.US(1500))
-    local label = "CH " .. tostring(ch)
-    local lw, lh = gfx.measurestr(label)
-    gfx.x, gfx.y = btn_x + (b_w - lw)/2, btn_y + (btn_h - lh)/2
-    gfx.drawstr(label)
-    if hover and not drag_store.GetIsDragging() then
+    local ch_label = "CH " .. tostring(ch)
+    local ch_lw, ch_lh = gfx.measurestr(ch_label)
+    gfx.x, gfx.y = ch_x + (b_w - ch_lw)/2, header_y + (b_h - ch_lh)/2
+    gfx.drawstr(ch_label)
+    if ch_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip("MIDI Channel: " .. ch, layout.US(700))
     end
 
-    -- Island background debajo del gap
-    local island_y_v = btn_y_v + btn_h + gap_v - top_pad  -- ~32531
+    -- PRESETS button (right of CH, same size and style)
+    local ps_hover = gfx.mouse_x >= presets_x and gfx.mouse_x <= presets_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local ps_active = island_store.GetPresetPanelVisible()
+    helpers.SetColor(ps_hover and theme.colors.btn_hover or (ps_active and theme.colors.btn_active or theme.colors.island_bg))
+    components.DrawRoundedRect(presets_x, header_y, b_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and ps_hover and not drag_store.GetIsDragging() then
+        island_store.SetPresetPanelVisible(not ps_active)
+    end
+    helpers.SetColor(ps_active and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1500))
+    local ps_label = "PRESETS"
+    local ps_lw, ps_lh = gfx.measurestr(ps_label)
+    gfx.x, gfx.y = presets_x + (b_w - ps_lw)/2, header_y + (b_h - ps_lh)/2
+    gfx.drawstr(ps_label)
+    if ps_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(ps_active and "Hide preset panel" or "Show preset panel", layout.US(700))
+    end
+
+    -- =========================================
+    -- Snap Controls (PR2) — right of PRESETS
+    -- =========================================
+    local snap_toggle_w = math.floor(b_w * 0.65)
+    local snap_res_w = math.floor(b_w * 0.50)
+    local snap_trip_w = math.floor(b_w * 0.35)
+    local snap_gap = 4
+    local snap_x = presets_x + b_w + 8  -- right of PRESETS
+    local snap_enabled = island_store.GetSnapEnabled()
+    local snap_res = island_store.GetSnapResolution()
+    local snap_trip = island_store.GetSnapTriplet()
+
+    -- Snap toggle button
+    local st_hover = gfx.mouse_x >= snap_x and gfx.mouse_x <= snap_x + snap_toggle_w
+                  and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local st_bg = snap_enabled and theme.colors.btn_active or (st_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    helpers.SetColor(st_bg)
+    components.DrawRoundedRect(snap_x, header_y, snap_toggle_w, b_h, 10, true)
+    helpers.SetColor(snap_enabled and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1300))
+    local snap_label = snap_enabled and "SNAP" or "SNP-"
+    local slw, slh = gfx.measurestr(snap_label)
+    gfx.x, gfx.y = snap_x + (snap_toggle_w - slw) / 2, header_y + (b_h - slh) / 2
+    gfx.drawstr(snap_label)
+    if ui_store.GetMouseClick() and st_hover and not drag_store.GetIsDragging() then
+        island_store.SetSnapEnabled(not snap_enabled)
+    end
+    if st_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(snap_enabled and "Snap: ON" or "Snap: OFF", layout.US(700))
+    end
+
+    -- Snap resolution button (click to open menu)
+    local sr_x = snap_x + snap_toggle_w + snap_gap
+    local sr_hover = gfx.mouse_x >= sr_x and gfx.mouse_x <= sr_x + snap_res_w
+                 and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    helpers.SetColor(sr_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(sr_x, header_y, snap_res_w, b_h, 10, true)
+    helpers.SetColor(snap_enabled and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1300))
+    -- Resolution label: 1=1/1, 2=1/2, 4=1/4, 8=1/8, 16=1/16, 32=1/32
+    local snap_res_label = "1/" .. tostring(snap_res)
+    if snap_res <= 0 then snap_res_label = "OFF" end
+    local rlw, rlh = gfx.measurestr(snap_res_label)
+    gfx.x, gfx.y = sr_x + (snap_res_w - rlw) / 2, header_y + (b_h - rlh) / 2
+    gfx.drawstr(snap_res_label)
+    if ui_store.GetMouseClick() and sr_hover and not drag_store.GetIsDragging() then
+        local res_menu = "1/1|1/2|1/4|1/8|1/16|1/32"
+        gfx.x, gfx.y = sr_x, header_y + b_h
+        local choice = gfx.showmenu(res_menu)
+        if choice and choice > 0 then
+            local res_values = {1, 2, 4, 8, 16, 32}
+            island_store.SetSnapResolution(res_values[choice])
+            if not island_store.GetSnapEnabled() then
+                island_store.SetSnapEnabled(true)
+            end
+        end
+    end
+    if sr_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip("Snap resolution: " .. snap_res_label, layout.US(700))
+    end
+
+    -- Triplet toggle button
+    local stp_x = sr_x + snap_res_w + snap_gap
+    local stp_hover = gfx.mouse_x >= stp_x and gfx.mouse_x <= stp_x + snap_trip_w
+                  and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local stp_bg = snap_trip and theme.colors.btn_active or (stp_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    helpers.SetColor(stp_bg)
+    components.DrawRoundedRect(stp_x, header_y, snap_trip_w, b_h, 10, true)
+    helpers.SetColor(snap_trip and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1300))
+    local trip_label = snap_trip and "3" or "·"
+    local tlw2, tlh2 = gfx.measurestr(trip_label)
+    gfx.x, gfx.y = stp_x + (snap_trip_w - tlw2) / 2, header_y + (b_h - tlh2) / 2
+    gfx.drawstr(trip_label)
+    if ui_store.GetMouseClick() and stp_hover and not drag_store.GetIsDragging() then
+        island_store.SetSnapTriplet(not snap_trip)
+    end
+    if stp_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(snap_trip and "Triplet: ON" or "Triplet: OFF", layout.US(700))
+    end
+
+    -- =========================================
+    -- Tool mode buttons (Phase 4) — left of CH
+    -- =========================================
+    local tool_btn_w = math.floor(b_w * 0.55)
+    local tool_btn_gap = 4
+    local tools_total_w = tool_btn_w * 3 + tool_btn_gap * 2
+    local tool_x = ch_x - tools_total_w - 8
+    local tool_labels = {"→", "✎", "✕"}
+    local tool_hints = {"Pointer (select)", "Pencil (draw notes)", "Eraser (delete notes)"}
+    local cur_tool = island_store.GetToolMode()
+    local tool_modes = {"pointer", "pencil", "eraser"}
+
+    for ti = 1, 3 do
+        local t_active = cur_tool == tool_modes[ti]
+        local tx = tool_x + (ti - 1) * (tool_btn_w + tool_btn_gap)
+        local t_hover = gfx.mouse_x >= tx and gfx.mouse_x <= tx + tool_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+        local t_bg = t_active and theme.colors.btn_active or (t_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(t_bg)
+        components.DrawRoundedRect(tx, header_y, tool_btn_w, b_h, 10, true)
+
+        -- Icon/label
+        helpers.SetColor(t_active and theme.colors.text or theme.colors.text_dim)
+        gfx.setfont(1, "Calibri", layout.US(1500))
+        local tlw, tlh = gfx.measurestr(tool_labels[ti])
+        gfx.x, gfx.y = tx + (tool_btn_w - tlw) / 2, header_y + (b_h - tlh) / 2
+        gfx.drawstr(tool_labels[ti])
+
+        -- Click handler
+        if ui_store.GetMouseClick() and t_hover and not drag_store.GetIsDragging() then
+            island_store.SetToolMode(tool_modes[ti])
+            velocity.ResetDrag()
+        end
+
+        -- Tooltip
+        if t_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip(tool_hints[ti], layout.US(700))
+        end
+    end
+
+    -- Island background below the gap
+    local island_y_v = btn_y_v + b_h + gap_v - top_pad
     local y = layout.UY(island_y_v)
     local w = layout.US(39914)
-    local h = layout.US(14000)
+    local h = layout.US(15400)
 
     helpers.SetColor(theme.colors.island_bg)
     components.DrawRoundedRect(layout.UX(0), y, w, h, 15, true)
-end
-
-function views.DrawFullView()
-    -- Scale es CONSTANTE: se calcula contra la altura BASE de diseño (500px)
-    -- para que el contenido NO se deforme al expandir/colapsar la MIDI island.
-    -- Expandir solo agrega canvas abajo para la isla, no cambia el zoom.
-    local s = math.min(gfx.w / 39914, 500 / 29162) * 1.025
-    local ox = (gfx.w - 39914 * s) / 2
-    local oy = 600 * s - 10
-    layout.SetScale(s, ox, oy)
-    helpers.SetColor(theme.colors.bg)
-    gfx.rect(0, 0, gfx.w, gfx.h, 1)
-    views.DrawHeader()
-    views.DrawIslands()
-    views.DrawPerformanceArea()
-    views.DrawMIDIIsland()
-end
-
--- Island Piano Roll View: piano roll grid + timeline ruler + preset panel
-function views.DrawIslandView()
-    -- Guard: minimum window size required
-    if gfx.w < 800 or gfx.h < 550 then
-        helpers.SetColor(theme.colors.bg)
-        gfx.rect(0, 0, gfx.w, gfx.h, 1)
-        gfx.setfont(1, "Calibri", 16)
-        helpers.SetColor(theme.colors.text_dim)
-        local msg = "Window too small — resize to at least 800×550"
-        local mw, mh = gfx.measurestr(msg)
-        gfx.x, gfx.y = (gfx.w - mw) / 2, (gfx.h - mh) / 2
-        gfx.drawstr(msg)
-        return
-    end
 
     -- Synch playback position from sequencer
     timeline.SyncPlaybackPosition()
 
-    helpers.SetColor(theme.colors.bg)
-    gfx.rect(0, 0, gfx.w, gfx.h, 1)
+    -- Layout within the island area (pixel coords)
+    local island_x = layout.UX(0)
+    local island_w = w
 
-    -- Preset panel width: auto-hide in very narrow docked mode (<600px, P5-02)
+    -- Left: preset browser panel (collapsible, ~220px)
     local preset_w = 0
     if island_store.GetPresetPanelVisible() then
-        if not (ui_store.GetDockedMode() and gfx.w < 600) then
-            preset_w = config.ISLAND_PRESET_PANEL_W
-        end
+        preset_w = 220
     end
-    local right_x = preset_w
-    local right_w = gfx.w - preset_w
+
+    local right_x = island_x + preset_w
+    local right_w = island_w - preset_w
+
+    -- Timeline ruler (top)
+    local tl_h = timeline.TIMELINE_H
+    local info_h = 18
+
+    -- Determine velocity editor height BEFORE layout math (task 3.4)
+    local ve_h = velocity.EDITOR_H
+    if not island_store.GetVelocityPanelExpanded() then
+        ve_h = velocity.COLLAPSED_H
+    end
+
+    -- Piano roll (center, fills remaining space)
+    local pr_y = y + tl_h
+    local pr_h = h - tl_h - ve_h - info_h
+
+    -- Velocity editor (below piano roll)
+    local ve_y = pr_y + pr_h
+
+    -- Info bar at bottom of island
+    local info_y = ve_y + ve_h
 
     -- =========================================
-    -- Preset Panel (left, collapsible)
+    -- Preset Panel (left, collapsible) — darker bg to differentiate from main content
     -- =========================================
     if preset_w > 0 then
+        local content_h = h - info_h
+        local p_radius = 10
+        helpers.SetColor(theme.colors.island_panel_bg)
+        components.DrawRoundedRectEx(island_x, y, preset_w, content_h, p_radius, {tl=true})
+
+        -- Draw the preset browser content
+        local browser_y = y + 4
+        local browser_h = content_h - 4
+        local root = island_store.GetPresetRoot()
+        if not root or #root == 0 then
+            preset_browser.Init()
+        end
+        preset_browser.DrawPresetBrowser(island_x, browser_y, preset_w, browser_h)
+    end
+
+    -- =========================================
+    -- Right Area: Timeline + Piano Roll + Velocity
+    -- =========================================
+    if right_w > 0 then
+        -- Nested panel background with only bottom corners (top corners handled by timeline ruler)
+        local content_radius = 10
+        local content_h = h - info_h
         helpers.SetColor(theme.colors.island_bg)
-        gfx.rect(0, 0, preset_w, gfx.h, 1)
+        components.DrawRoundedRectEx(right_x, y, right_w, content_h, content_radius, {bl=true, br=true})
 
-        -- Collapse button (◄) at top-right of panel
-        local btn_size = 18
-        local btn_x = preset_w - btn_size - 4
-        local btn_y = 4
-        local collapse_hover = gfx.mouse_x >= btn_x and gfx.mouse_x <= btn_x + btn_size
-                            and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_size
-        helpers.SetColor(collapse_hover and theme.colors.btn_hover or {0.3, 0.3, 0.3, 0.5})
-        components.DrawRoundedRect(btn_x, btn_y, btn_size, btn_size, 4, true)
-        helpers.SetColor(theme.colors.text)
-        gfx.setfont(1, "Calibri", 12)
-        local sym = "◄"
-        local sw_, sh_ = gfx.measurestr(sym)
-        gfx.x, gfx.y = btn_x + (btn_size - sw_) / 2, btn_y + (btn_size - sh_) / 2
-        gfx.drawstr(sym)
-        if ui_store.GetMouseClick() and collapse_hover then
-            island_store.SetPresetPanelVisible(false)
-        end
+        -- Timeline Ruler
+        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h)
 
-        -- Draw the actual preset browser content
-        local browser_y = btn_y + btn_size + 6
-        local browser_h = gfx.h - browser_y
-        if browser_h > 20 then
-            -- Init preset browser on first draw
-            local root = island_store.GetPresetRoot()
-            if not root or #root == 0 then
-                preset_browser.Init()
-            end
-            preset_browser.DrawPresetBrowser(0, browser_y, preset_w, browser_h)
-        end
-    else
-        -- Collapsed panel: draw a thin expand handle (►) on the left edge
-        local handle_w = 12
-        local handle_h = 60
-        local handle_x = 0
-        local handle_y = (gfx.h - handle_h) / 2
-        local handle_hover = gfx.mouse_x >= handle_x and gfx.mouse_x <= handle_x + handle_w
-                            and gfx.mouse_y >= handle_y and gfx.mouse_y <= handle_y + handle_h
-        helpers.SetColor(handle_hover and theme.colors.btn_hover or {0.25, 0.25, 0.25, 0.4})
-        components.DrawRoundedRect(handle_x, handle_y, handle_w, handle_h, 3, true)
-        if handle_hover then
-            helpers.SetColor(theme.colors.text_dim)
-            gfx.setfont(1, "Calibri", 10)
-            local sym2 = "►"
-            local sw2_, sh2_ = gfx.measurestr(sym2)
-            gfx.x, gfx.y = (handle_w - sw2_) / 2, handle_y + (handle_h - sh2_) / 2
-            gfx.drawstr(sym2)
-        end
-        if ui_store.GetMouseClick() and handle_hover then
-            island_store.SetPresetPanelVisible(true)
-        end
-    end
+        -- Piano Roll
+        piano_roll.DrawPianoRoll(right_x, pr_y, right_w, pr_h)
 
-    -- =========================================
-    -- Timeline Ruler (top of right area)
-    -- =========================================
-    local tl_h = timeline.TIMELINE_H
-    local ve_h = velocity.EDITOR_H
-    local pr_y = tl_h
-    local pr_h = gfx.h - tl_h - ve_h
+        -- Velocity Editor
+        local notes = island_store.GetNotes()
+        velocity.DrawVelocityEditor(right_x, ve_y, right_w, ve_h, notes,
+            island_store.GetScrollOffsetX(), island_store.GetZoomX(),
+            island_store.GetSelectedNoteIndex())
 
-    timeline.DrawTimelineRuler(right_x, 0, right_w, tl_h, pr_h)
+        -- Mouse Event Handling within the right area
+        local mx, my = gfx.mouse_x, gfx.mouse_y
+        local click = ui_store.GetMouseClick()
+        local last_cap = ui_store.GetLastMouseCap()
+        local right_click = (gfx.mouse_cap & 2) == 2 and (last_cap & 2) == 0
+        local mwd = ui_store.ConsumeMouseWheelDelta()
+        local click_consumed = false
 
-    -- =========================================
-    -- Piano Roll Grid (below timeline)
-    -- =========================================
-    piano_roll.DrawPianoRoll(right_x, pr_y, right_w, pr_h)
-
-    -- =========================================
-    -- Velocity Editor (below piano roll)
-    -- =========================================
-    local ve_y = pr_y + pr_h
-    local notes = island_store.GetNotes()
-    velocity.DrawVelocityEditor(right_x, ve_y, right_w, ve_h, notes,
-        island_store.GetScrollOffsetX(), island_store.GetZoomX(),
-        island_store.GetSelectedNoteIndex())
-
-    -- =========================================
-    -- Mouse Event Handling
-    -- =========================================
-    local mx, my = gfx.mouse_x, gfx.mouse_y
-    local click = ui_store.GetMouseClick()
-    local last_cap = ui_store.GetLastMouseCap()
-    local right_click = (gfx.mouse_cap & 2) == 2 and (last_cap & 2) == 0
-    local wheel = ui_store.ConsumeMouseWheelDelta()
-    local click_consumed = false
-
-    -- Timeline ruler click → seek
-    if not click_consumed and mx >= right_x and mx < right_x + right_w
-       and my >= 0 and my < tl_h then
-        if click then
-            local grid_x = right_x + timeline.PITCH_LABEL_W
-            local beat = timeline.TimelineHitTest(mx, grid_x, island_store.GetScrollOffsetX(), island_store.GetZoomX())
-            island_store.SetPlaybackPos(beat)
-            click_consumed = true
-        end
-    end
-
-    -- Piano roll left-click → select note
-    if not click_consumed and mx >= right_x and mx < right_x + right_w
-       and my >= pr_y and my < pr_y + pr_h then
-        if click then
-            local grid_x = right_x + piano_roll.PITCH_LABEL_W
-            piano_roll.HandleMouseClick(mx, my, grid_x, pr_y,
-                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(), island_store.GetZoomX())
-            click_consumed = true
-        end
-    end
-
-    -- Piano roll right-click → toggle mute on note block
-    if not click_consumed and mx >= right_x and mx < right_x + right_w
-       and my >= pr_y and my < pr_y + pr_h then
-        if right_click then
-            local grid_x = right_x + piano_roll.PITCH_LABEL_W
-            local muted = piano_roll.HandleRightClickMute(mx, my, grid_x, pr_y,
-                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(), island_store.GetZoomX())
-            if muted then
+        -- Timeline ruler click -> seek
+        if not click_consumed and mx >= right_x and mx < right_x + right_w
+           and my >= y and my < y + tl_h then
+            if click then
+                local grid_x = right_x + timeline.PITCH_LABEL_W
+                local beat = timeline.TimelineHitTest(mx, grid_x, island_store.GetScrollOffsetX(), island_store.GetZoomX())
+                island_store.SetPlaybackPos(beat)
                 click_consumed = true
-                -- Mark notes dirty so piano roll re-renders with new mute state
+            end
+        end
+
+        -- Piano roll left-click -> route by tool mode (Phase 4)
+        if not click_consumed and mx >= right_x and mx < right_x + right_w
+           and my >= pr_y and my < pr_y + pr_h then
+            local grid_x = right_x + piano_roll.PITCH_LABEL_W
+            -- tool_mode declared above in Delete Key section
+            local in_grid = mx >= grid_x  -- only route clicks in the actual grid, not label strip
+
+            if tool_mode == "pointer" then
+                if click then
+                    if in_grid then
+                        local notes = island_store.GetNotes()
+                        local hit_idx = piano_roll.NoteBlockHitTest(mx, my, notes,
+                            island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                            island_store.GetZoomX(), grid_x, pr_y)
+                        if hit_idx then
+                            -- Check for resize edge first (right-edge 4px hotzone)
+                            if piano_roll.IsNoteRightEdge(mx, my, notes, hit_idx, grid_x, pr_y,
+                                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                island_store.GetZoomX()) then
+                                piano_roll.StartNoteResize(mx, my, grid_x, pr_y,
+                                    island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                    island_store.GetZoomX(), hit_idx)
+                            else
+                                -- Click on note body: select then arm potential drag
+                                piano_roll.HandleMouseClick(mx, my, grid_x, pr_y,
+                                    island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                    island_store.GetZoomX())
+                                piano_roll.ArmNoteDrag(hit_idx, mx, my)
+                            end
+                        else
+                            -- Start lasso on empty grid area
+                            island_store.SetLassoActive(true)
+                            island_store.SetLassoStartX(mx)
+                            island_store.SetLassoStartY(my)
+                            island_store.SetLassoEndX(mx)
+                            island_store.SetLassoEndY(my)
+                        end
+                    end
+                    click_consumed = true
+                end
+
+                -- Check armed drag threshold (mouse moved >8px since click)
+                if not island_store.GetNoteDragActive() and (gfx.mouse_cap & 1) == 1 then
+                    if piano_roll.CheckAndStartDrag(mx, my, grid_x, pr_y,
+                        island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                        island_store.GetZoomX()) then
+                        click_consumed = true
+                        piano_roll.MarkNotesDirty()
+                    end
+                elseif not island_store.GetNoteDragActive() and (gfx.mouse_cap & 1) == 0 then
+                    -- Mouse released while armed → disarm (was a simple click)
+                    piano_roll.DisarmNoteDrag()
+                end
+
+                -- Active note drag/resize: update each frame, commit on mouse up
+                if island_store.GetNoteDragActive() then
+                    local mouse_down = (gfx.mouse_cap & 1) == 1
+                    if mouse_down then
+                        if island_store.GetNoteResizeEdge() then
+                            piano_roll.UpdateNoteResize(mx, my, grid_x, pr_y,
+                                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                island_store.GetZoomX())
+                        else
+                            piano_roll.UpdateNoteDrag(mx, my, grid_x, pr_y,
+                                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                island_store.GetZoomX())
+                        end
+                    else
+                        -- Mouse up → commit
+                        if island_store.GetNoteResizeEdge() then
+                            piano_roll.CommitNoteResize(mx, my, grid_x, pr_y,
+                                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                island_store.GetZoomX())
+                        else
+                            piano_roll.CommitNoteDrag(mx, my, grid_x, pr_y,
+                                island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                                island_store.GetZoomX())
+                        end
+                        piano_roll.MarkNotesDirty()
+                    end
+                    click_consumed = true
+                end
+
+                -- If lasso is active, this zone is consumed until release
+                if island_store.GetLassoActive() then click_consumed = true end
+
+            elseif tool_mode == "pencil" then
+                if click and in_grid then
+                    piano_roll.HandlePencilClick(mx, my, grid_x, pr_y,
+                        island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                        island_store.GetZoomX())
+                    piano_roll.MarkNotesDirty()
+                    click_consumed = true
+                end
+
+            elseif tool_mode == "eraser" then
+                if click and in_grid then
+                    piano_roll.HandleEraserClick(mx, my, grid_x, pr_y,
+                        island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                        island_store.GetZoomX())
+                    piano_roll.MarkNotesDirty()
+                    click_consumed = true
+                end
+            end
+        end
+
+        -- Piano roll right-click -> toggle mute
+        if not click_consumed and mx >= right_x and mx < right_x + right_w
+           and my >= pr_y and my < pr_y + pr_h then
+            if right_click then
+                local grid_x = right_x + piano_roll.PITCH_LABEL_W
+                local muted = piano_roll.HandleRightClickMute(mx, my, grid_x, pr_y,
+                    island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(), island_store.GetZoomX())
+                if muted then
+                    click_consumed = true
+                    piano_roll.MarkNotesDirty()
+                end
+            end
+        end
+
+        -- Velocity editor click-drag
+        if not click_consumed and mx >= right_x and mx < right_x + right_w
+           and my >= ve_y and my < ve_y + ve_h then
+            local grid_x = right_x + piano_roll.PITCH_LABEL_W
+            local mouse_down = (gfx.mouse_cap & 1) == 1
+            local consumed = velocity.HandleVelocityMouse(mx, my, grid_x, ve_y, ve_h,
+                island_store.GetScrollOffsetX(), island_store.GetZoomX(), click, mouse_down)
+            if consumed then
+                click_consumed = true
                 piano_roll.MarkNotesDirty()
             end
         end
-    end
 
-    -- Velocity editor click-drag
-    if not click_consumed and mx >= right_x and mx < right_x + right_w
-       and my >= ve_y and my < ve_y + ve_h then
-        local grid_x = right_x + piano_roll.PITCH_LABEL_W
-        local mouse_down = (gfx.mouse_cap & 1) == 1
-        local consumed = velocity.HandleVelocityMouse(mx, my, grid_x, ve_y, ve_h,
-            island_store.GetScrollOffsetX(), island_store.GetZoomX(), click, mouse_down)
-        if consumed then
-            click_consumed = true
-            -- Mark notes dirty so piano roll re-renders note blocks (P5-05)
-            piano_roll.MarkNotesDirty()
+        -- =========================================
+        -- Lasso finalization / update (Phase 4)
+        -- =========================================
+        if island_store.GetLassoActive() then
+            local mouse_down = (gfx.mouse_cap & 1) == 1
+            if not mouse_down then
+                -- Mouse released: finalize selection
+                local x1 = island_store.GetLassoStartX()
+                local y1 = island_store.GetLassoStartY()
+                local x2 = island_store.GetLassoEndX()
+                local y2 = island_store.GetLassoEndY()
+                local grid_x = right_x + piano_roll.PITCH_LABEL_W
+                local indices = piano_roll.GetNotesInRect(x1, y1, x2, y2,
+                    grid_x, pr_y,
+                    island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                    island_store.GetZoomX())
+                local sel = {}
+                for _, idx in ipairs(indices) do
+                    sel[idx] = true
+                end
+                island_store.SetSelectedIndices(sel)
+                island_store.SetLassoActive(false)
+            else
+                -- Mouse still held: update end position
+                island_store.SetLassoEndX(gfx.mouse_x)
+                island_store.SetLassoEndY(gfx.mouse_y)
+            end
         end
-    end
 
-    -- Mouse wheel over right area → horizontal scroll (only when not over velocity editor)
-    if wheel ~= 0 and mx >= right_x and mx < right_x + right_w then
-        if my >= 0 and my < tl_h + pr_h then
-            local new_scroll = piano_roll.HandleMouseWheel(wheel, island_store.GetScrollOffsetX(), island_store.GetZoomX())
-            island_store.SetScrollOffsetX(new_scroll)
+        -- Mouse wheel handling (split by zone)
+        if mwd ~= 0 and mx >= right_x and mx < right_x + right_w then
+            local grid_edge = right_x + piano_roll.PITCH_LABEL_W
+            if my >= y and my < y + tl_h then
+                -- Timeline ruler: horizontal zoom
+                local new_zoom = piano_roll.HandleZoomX(mwd, island_store.GetZoomX())
+                island_store.SetZoomX(new_zoom)
+            elseif my >= pr_y and my < pr_y + pr_h then
+                if mx >= grid_edge then
+                    -- Note grid: normal = vertical scroll, Alt+wheel = vertical zoom, Ctrl+wheel = horizontal zoom
+                    if (gfx.mouse_cap & 4) == 4 then  -- Ctrl held
+                        local new_zoom = piano_roll.HandleZoomX(mwd, island_store.GetZoomX())
+                        island_store.SetZoomX(new_zoom)
+                    elseif (gfx.mouse_cap & 16) == 16 then  -- Alt held
+                        local new_h = piano_roll.HandleZoomVertical(mwd, piano_roll.PITCH_ROW_H)
+                        piano_roll.SetPitchRowH(new_h)
+                    else
+                        local new_y = piano_roll.HandleMouseWheelVertical(mwd, island_store.GetScrollOffsetY())
+                        island_store.SetScrollOffsetY(new_y)
+                    end
+                else
+                    -- Piano roll key strip: always vertical scroll (pitch rows)
+                    local new_y = piano_roll.HandleMouseWheelVertical(mwd, island_store.GetScrollOffsetY())
+                    island_store.SetScrollOffsetY(new_y)
+                end
+            end
         end
     end
 
     -- =========================================
-    -- Info / Status Bar (P5-04)
+    -- Horizontal Scrollbar with thumb drag interaction (task 3.1)
     -- =========================================
-    local bar_h = 18
-    local bar_y = gfx.h - bar_h
-    -- Background strip
+    if right_w > 0 then
+        local notes = island_store.GetNotes()
+        local total_beats = 64
+        if notes and #notes > 0 then
+            local max_beat = 0
+            for _, n in ipairs(notes) do
+                local end_beat = (n.start_beat or 0) + (n.duration or 4)
+                if end_beat > max_beat then max_beat = end_beat end
+            end
+            if max_beat > 0 then total_beats = math.max(64, max_beat + 4) end
+        end
+        local scroll_x = island_store.GetScrollOffsetX()
+        local zoom_x = island_store.GetZoomX()
+        local sb_h = 6
+        local sb_y = info_y - sb_h
+        local sb_w = right_w - piano_roll.PITCH_LABEL_W
+        local visible_beats = math.ceil(sb_w / math.max(1, zoom_x))
+        if visible_beats < total_beats then
+            local scroll_ratio = visible_beats / total_beats
+            local max_scroll_x = total_beats - visible_beats
+            if max_scroll_x > 0 then
+                -- Track background (H12)
+                helpers.SetColor({0.15, 0.15, 0.15, 0.25})
+                gfx.rect(right_x + piano_roll.PITCH_LABEL_W, sb_y, sb_w, sb_h, 1)
+
+                local bar_x = right_x + piano_roll.PITCH_LABEL_W + (scroll_x / max_scroll_x) * sb_w
+                local bar_w = math.max(20, sb_w * scroll_ratio)
+
+                -- Thumb hit test
+                local mx, my = gfx.mouse_x, gfx.mouse_y
+                local click = ui_store.GetMouseClick()
+                local thumb_hover = mx >= bar_x and mx <= bar_x + bar_w
+                                and my >= sb_y and my <= sb_y + sb_h
+
+                -- Start drag on thumb click
+                if click and thumb_hover then
+                    _sb_dragging = true
+                    _sb_drag_start_x = mx
+                    _sb_scroll_at_drag_start = scroll_x
+                end
+
+                -- Continue drag while held
+                if _sb_dragging then
+                    if (gfx.mouse_cap & 1) == 0 then
+                        _sb_dragging = false
+                    else
+                        local delta_px = mx - _sb_drag_start_x
+                        local total_avail = sb_w
+                        local delta_beats = (delta_px / total_avail) * total_beats
+                        local new_scroll = math.max(0, math.min(max_scroll_x,
+                            _sb_scroll_at_drag_start + delta_beats))
+                        island_store.SetScrollOffsetX(new_scroll)
+                    end
+                end
+
+                helpers.SetColor({0.4, 0.4, 0.4, 0.35})
+                gfx.rect(bar_x, sb_y, bar_w, sb_h, 1)
+            end
+        end
+    end
+
+    -- =========================================
+    -- Info / Status Bar (bottom of island, rounded)
+    -- =========================================
     helpers.SetColor(theme.colors.island_info_bar)
-    gfx.rect(0, bar_y, gfx.w, bar_h, 1)
+    components.DrawRoundedRectEx(island_x, info_y, island_w, info_h, 4, {bl=true, br=true})
 
-    -- Left: root note · scale · chord · octave
     local root_name = config.NOTE_NAMES[config.state.root_index]
     local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
     local chord_name = config.CHORD_MODES[config.state.chord_mode_index].name
     local oct_str = "C" .. math.floor(config.state.octave)
 
-    -- Selected note info (if any)
     local sel_info = ""
     local sel_idx = island_store.GetSelectedNoteIndex()
     if sel_idx then
@@ -760,106 +1177,52 @@ function views.DrawIslandView()
         end
     end
 
-    -- Right: note count, zoom, ISLAND indicator
     local nc = island_store.GetNoteCount()
     local zx_val = island_store.GetZoomX()
-    local right_text = string.format("Notes:%d Zoom:%d | ISLAND", nc, zx_val)
+    local right_text = string.format("Notes:%d Zoom:%d", nc, zx_val)
 
     gfx.setfont(1, "Calibri", 11)
     local rr, rrh = gfx.measurestr(right_text)
-    local right_x_pos = gfx.w - rr - 8
+    local right_x_pos = island_x + island_w - rr - 9
 
-    -- Left text (state + selected)
     local left_text = string.format("%s %s · %s · %s%s", root_name, scale_abbr, chord_name, oct_str, sel_info)
     local lw, lh = gfx.measurestr(left_text)
-
-    -- Truncate left text if it would overlap with right section
     local max_left_w = right_x_pos - 16
     if lw > max_left_w then
-        left_text = left_text:sub(1, math.floor(max_left_w / 6)) .. ".."
+        -- Truncate with proper measurestr loop instead of 6px heuristic (H10)
+        local trunc_len = 0
+        for i = 1, #left_text do
+            local cw, _ = gfx.measurestr(left_text:sub(1, i) .. "..")
+            if cw > max_left_w then break end
+            trunc_len = i
+        end
+        left_text = left_text:sub(1, trunc_len) .. ".."
         lw, lh = gfx.measurestr(left_text)
     end
 
     helpers.SetColor(theme.colors.text_dim)
-    gfx.x, gfx.y = 8, bar_y + (bar_h - lh) / 2
+    gfx.x, gfx.y = 8, info_y + (info_h - lh) / 2
     gfx.drawstr(left_text)
 
     helpers.SetColor(theme.colors.text)
-    gfx.x, gfx.y = right_x_pos, bar_y + (bar_h - rrh) / 2
+    gfx.x, gfx.y = right_x_pos, info_y + (info_h - rrh) / 2
     gfx.drawstr(right_text)
 end
 
--- =========================================================
--- Keyboard Shortcut Handlers for Island Mode (P5-03)
--- =========================================================
-
---- Trigger save preset dialog from keyboard shortcut.
-function views.IslandTriggerSave()
-    local dir = island_store.GetCurrentDirectory()
-    if not dir or #dir == 0 then
-        dir = island_store.GetPresetRoot()
-    end
-    local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
-    if ret and csv and #csv > 0 then
-        local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
-        if #filename > 0 then
-            local filepath = dir .. "\\" .. filename .. ".grove"
-            preset_browser.SavePreset(filepath, filename)
-            piano_roll.MarkNotesDirty()
-        end
-    end
-end
-
---- Trigger load preset from keyboard shortcut.
-function views.IslandTriggerLoad()
-    local files = island_store.GetPresetFiles()
-    local idx = island_store.GetSelectedPresetIdx()
-    if idx and idx >= 1 and idx <= #files then
-        preset_browser.LoadPreset(files[idx].path)
-        piano_roll.MarkNotesDirty()
-    else
-        -- Try loading the first preset if none selected
-        if files and #files > 0 then
-            preset_browser.LoadPreset(files[1].path)
-            piano_roll.MarkNotesDirty()
-        end
-    end
-end
-
---- Delete the selected note from keyboard shortcut.
-function views.IslandDeleteNote()
-    local notes = island_store.GetNotes()
-    local idx = island_store.GetSelectedNoteIndex()
-    if idx and notes and idx >= 1 and idx <= #notes then
-        table.remove(notes, idx)
-        island_store.SetNotes(notes)
-        island_store.SetSelectedNoteIndex(nil)
-        piano_roll.MarkNotesDirty()
-    end
-end
-
---- Select the next/previous note from keyboard shortcut.
---- @param direction number -1 for previous (up), 1 for next (down)
-function views.IslandSelectAdjacentNote(direction)
-    local idx = island_store.GetSelectedNoteIndex()
-    local notes = island_store.GetNotes()
-    if not notes or #notes == 0 then return end
-
-    if direction == -1 then
-        -- Previous note (Arrow Up)
-        if idx and idx > 1 then
-            island_store.SetSelectedNoteIndex(idx - 1)
-        elseif not idx then
-            island_store.SetSelectedNoteIndex(#notes)
-        end
-    else
-        -- Next note (Arrow Down)
-        if idx and idx < #notes then
-            island_store.SetSelectedNoteIndex(idx + 1)
-        elseif not idx then
-            island_store.SetSelectedNoteIndex(1)
-        end
-    end
+function views.DrawFullView(char)
+    -- Scale es CONSTANTE: se calcula contra la altura BASE de diseño (500px)
+    -- para que el contenido NO se deforme al expandir/colapsar la MIDI island.
+    -- Expandir solo agrega canvas abajo para la isla, no cambia el zoom.
+    local s = math.min(gfx.w / 39914, 500 / 29162) * 1.025
+    local ox = (gfx.w - 39914 * s) / 2
+    local oy = 600 * s - 10
+    layout.SetScale(s, ox, oy)
+    helpers.SetColor(theme.colors.bg)
+    gfx.rect(0, 0, gfx.w, gfx.h, 1)
+    views.DrawHeader()
+    views.DrawIslands()
+    views.DrawPerformanceArea()
+    views.DrawMIDIIsland(char)
 end
 
 -- Docked Transport Bar: compact 50px horizontal strip
@@ -936,7 +1299,7 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
         gfx.triangle(cx - s / 2, cy - s / 2, cx - s / 2, cy + s / 2, cx + s / 2, cy)
     end
     if ui_store.GetMouseClick() and play_hover then
-        seq_store.SetIsPlaying(not is_playing)
+        if is_playing then sequencer.Stop() else seq_store.SetIsPlaying(true) end
     end
     x_pos = x_pos + btn_w + gap
 
