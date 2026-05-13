@@ -121,20 +121,18 @@ function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
     end
 end
 
--- =========================================================
--- Note dirty cache (P5-05)
--- =========================================================
-local _last_note_count = -1
-local _last_sel_count = -1
-local _last_notes_dirty = true
-
 --- Mark note cache as dirty (call when notes change externally).
+--- Kept for external callers; internal drawing always renders each frame
+--- because the framebuffer is cleared by DrawFullView's background fill.
 function m.MarkNotesDirty()
-    _last_notes_dirty = true
+    -- Intentionally empty — notes always redraw.
+    -- Cache was removed in PR1a refactor because background fill clears
+    -- the framebuffer every frame, causing notes to "disappear" on frame 2.
 end
 
 --- Render all visible note blocks from island store.
---- Uses pre-computed visible ranges and skips iteration when notes unchanged.
+--- Uses pre-computed visible ranges. Always redraws because the framebuffer
+--- is cleared each frame by DrawFullView's opaque background fill.
 --- @param x number Left edge of the grid area
 --- @param y number Top edge of the grid area
 --- @param w number Width of the grid area
@@ -154,18 +152,6 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
 
     local notes = island_store.GetNotes()
     if not notes or #notes == 0 then return end
-
-    local sel_count = island_store.GetSelectionCount()
-
-    -- Check if we can skip note redraw (nothing changed — P5-05)
-    local note_count = #notes
-    if note_count == _last_note_count and sel_count == _last_sel_count
-       and not _last_notes_dirty then
-        return
-    end
-    _last_note_count = note_count
-    _last_sel_count = sel_count
-    _last_notes_dirty = false
 
     for i, note in ipairs(notes) do
         local np = note.pitch

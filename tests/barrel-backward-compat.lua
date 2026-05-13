@@ -1,13 +1,15 @@
--- Tests: Barrel Backward Compatibility (PR1a)
+-- Tests: Barrel Backward Compatibility (PR1a + PR1b + PR2 + PR3)
 -- Validates that piano-roll.lua (now a barrel) exports the same public API
--- as the original monolith. Run from a REPL or REAPER context.
+-- as the original monolith. PR1b adds interaction + view sub-module re-exports.
+-- PR2 adds note move/resize functions. PR3 adds undo/redo + keyboard shortcuts.
+-- Run from a REPL or REAPER context.
 --
 -- Usage: require("tests.barrel-backward-compat") -- prints pass/fail
 -- Or: lua -l tests.barrel-backward-compat (if test harness available)
 --
 -- Since there is no Lua CLI for REAPER GFX scripts, these are STATIC
 -- validations: they check that all expected exports exist and that
--- grid/note sub-modules provide the expected functions.
+-- sub-modules provide the expected functions.
 --
 -- Manual visual verification is required for pixel-identical rendering.
 
@@ -60,6 +62,34 @@ local EXPECTED_EXPORTS = {
     -- Lasso function (lines 904-924)
     DrawLassoRect = "function",
 
+    -- Ctrl+A (PR1b new function)
+    CtrlA = "function",
+
+    -- Note drag/resize functions (PR2)
+    IsNoteRightEdge = "function",
+    ArmNoteDrag = "function",
+    CheckAndStartDrag = "function",
+    DisarmNoteDrag = "function",
+    StartNoteDrag = "function",
+    UpdateNoteDrag = "function",
+    CommitNoteDrag = "function",
+    CancelNoteDrag = "function",
+    StartNoteResize = "function",
+    UpdateNoteResize = "function",
+    CommitNoteResize = "function",
+
+    -- Undo/Redo / Keyboard Shortcuts (PR3)
+    RestoreUndo = "function",
+    RestoreRedo = "function",
+    HandleUndo = "function",
+    HandleRedo = "function",
+    HandleDeleteSelected = "function",
+    HandleNudge = "function",
+    HandleCut = "function",
+    HandleCopy = "function",
+    HandlePaste = "function",
+    HandleKeyboardShortcut = "function",
+
     -- Scroll/Zoom functions (lines 931-972)
     HandleMouseWheel = "function",
     HandleZoomX = "function",
@@ -76,7 +106,7 @@ local EXPECTED_EXPORTS = {
 -- =========================================================
 
 print("")
-print("=== PR1a Barrel Backward Compatibility ===")
+print("=== PR1a + PR1b + PR2 + PR3 Barrel Backward Compatibility ===")
 print("")
 
 local ok, piano_roll = pcall(require, "ui.piano-roll")
@@ -191,6 +221,88 @@ else
         local actual_type = type(note_mod[name])
         verify(actual_type == expected_type,
                string.format("note.%s exists with type '%s' (expected '%s')",
+                              name, actual_type, expected_type))
+    end
+end
+
+-- =========================================================
+-- Test 5: Interaction sub-module exports correctly (PR1b + PR2 + PR3)
+-- =========================================================
+
+print("")
+print("--- Interaction Sub-Module Exports ---")
+
+local ok_int, int_mod = pcall(require, "ui.piano-roll.interaction")
+if not ok_int then
+    print("[FAIL] require('ui.piano-roll.interaction') failed: " .. tostring(int_mod))
+    all_pass = false
+else
+    verify(true, "require('ui.piano-roll.interaction') loads without error")
+
+    local INT_EXPORTS = {
+        HandleMouseClick = "function",
+        HandleRightClickMute = "function",
+        HandlePencilClick = "function",
+        HandleEraserClick = "function",
+        DrawLassoRect = "function",
+        CtrlA = "function",
+
+        -- PR2: Note drag/resize
+        IsNoteRightEdge = "function",
+        ArmNoteDrag = "function",
+        CheckAndStartDrag = "function",
+        DisarmNoteDrag = "function",
+        StartNoteDrag = "function",
+        UpdateNoteDrag = "function",
+        CommitNoteDrag = "function",
+        CancelNoteDrag = "function",
+        StartNoteResize = "function",
+        UpdateNoteResize = "function",
+        CommitNoteResize = "function",
+
+        -- PR3: Undo/Redo + Keyboard Shortcuts
+        RestoreUndo = "function",
+        RestoreRedo = "function",
+        HandleUndo = "function",
+        HandleRedo = "function",
+        HandleDeleteSelected = "function",
+        HandleNudge = "function",
+        HandleCut = "function",
+        HandleCopy = "function",
+        HandlePaste = "function",
+        HandleKeyboardShortcut = "function",
+    }
+
+    for name, expected_type in pairs(INT_EXPORTS) do
+        local actual_type = type(int_mod[name])
+        verify(actual_type == expected_type,
+               string.format("interaction.%s exists with type '%s' (expected '%s')",
+                              name, actual_type, expected_type))
+    end
+end
+
+-- =========================================================
+-- Test 6: View sub-module exports correctly (PR1b)
+-- =========================================================
+
+print("")
+print("--- View Sub-Module Exports ---")
+
+local ok_view, view_mod = pcall(require, "ui.piano-roll.view")
+if not ok_view then
+    print("[FAIL] require('ui.piano-roll.view') failed: " .. tostring(view_mod))
+    all_pass = false
+else
+    verify(true, "require('ui.piano-roll.view') loads without error")
+
+    local VIEW_EXPORTS = {
+        DrawPianoRoll = "function",
+    }
+
+    for name, expected_type in pairs(VIEW_EXPORTS) do
+        local actual_type = type(view_mod[name])
+        verify(actual_type == expected_type,
+               string.format("view.%s exists with type '%s' (expected '%s')",
                               name, actual_type, expected_type))
     end
 end
