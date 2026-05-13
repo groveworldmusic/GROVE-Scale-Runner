@@ -19,6 +19,7 @@ local island_state = {
     zoom_x = 40,
     tool_mode = "pointer",               -- "pointer"|"pencil"|"eraser"
     selected_indices = {},               -- {[idx]=true} replaces selected_note_index
+    _last_selected_idx = nil,            -- tracks last-selected index for GetPrimarySelectedIndex
     note_count = 0,
 
     -- Lasso state (Phase 4)
@@ -84,6 +85,7 @@ function m.Init(defaults)
     -- Phase 4: map legacy selected_note_index to selected_indices
     if defaults.selected_note_index ~= nil then
         island_state.selected_indices = {[defaults.selected_note_index] = true}
+        island_state._last_selected_idx = defaults.selected_note_index
     end
     if defaults.current_directory ~= nil then island_state.current_directory = defaults.current_directory end
     if defaults.preset_root ~= nil then island_state.preset_root = defaults.preset_root end
@@ -146,19 +148,32 @@ function m.SetToolMode(v) island_state.tool_mode = v or "pointer" end
 -- Multi-Selection (Phase 4: replaces single selected_note_index)
 -- =========================================================
 function m.GetSelectedIndices() return island_state.selected_indices end
-function m.SetSelectedIndices(t) island_state.selected_indices = t or {} end
-function m.ClearSelection() island_state.selected_indices = {} end
+function m.SetSelectedIndices(t)
+    island_state.selected_indices = t or {}
+    -- Track the largest index as last-selected (lasso and bulk operations)
+    local last = nil
+    for k in pairs(island_state.selected_indices) do
+        local kn = tonumber(k)
+        if kn and (last == nil or kn > last) then last = kn end
+    end
+    island_state._last_selected_idx = last
+end
+function m.ClearSelection() island_state.selected_indices = {}; island_state._last_selected_idx = nil end
 function m.IsNoteSelected(idx) return island_state.selected_indices[idx] == true end
 function m.ToggleNoteSelected(idx)
     if island_state.selected_indices[idx] then
         island_state.selected_indices[idx] = nil
+        if island_state._last_selected_idx == idx then
+            island_state._last_selected_idx = next(island_state.selected_indices)
+        end
     else
         island_state.selected_indices[idx] = true
+        island_state._last_selected_idx = idx
     end
 end
 function m.GetPrimarySelectedIndex()
-    -- Returns the first key in selected_indices, or nil
-    return next(island_state.selected_indices)
+    -- Returns the last-selected index, or nil if nothing selected
+    return island_state._last_selected_idx
 end
 function m.GetSelectionCount()
     local count = 0
@@ -174,7 +189,10 @@ end
 function m.GetSelectedNoteIndex() return m.GetPrimarySelectedIndex() end
 function m.SetSelectedNoteIndex(v)
     m.ClearSelection()
-    if v ~= nil then island_state.selected_indices[v] = true end
+    if v ~= nil then
+        island_state.selected_indices[v] = true
+        island_state._last_selected_idx = v
+    end
 end
 
 -- =========================================================
@@ -228,6 +246,12 @@ function m.RemoveNoteAtIndex(idx)
         end
     end
     island_state.selected_indices = new_selected
+    -- Fix up _last_selected_idx
+    if island_state._last_selected_idx == idx then
+        island_state._last_selected_idx = next(new_selected)
+    elseif island_state._last_selected_idx and island_state._last_selected_idx > idx then
+        island_state._last_selected_idx = island_state._last_selected_idx - 1
+    end
 end
 
 -- Preset browser state
