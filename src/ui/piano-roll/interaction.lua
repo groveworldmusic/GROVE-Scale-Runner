@@ -155,8 +155,10 @@ function m.HandlePencilClick(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     end
 
     -- Convert mouse to pitch (inverted Y: high pitch at top)
-    local pitch_row = math.floor((my - grid_y) / PITCH_ROW_H)
-    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
+    -- Account for sub-pixel smooth scroll offset
+    local scroll_px_off = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
+    local pitch_row = math.floor((my - grid_y + scroll_px_off) / PITCH_ROW_H)
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - math.floor(scroll_y))
     local pitch = math.max(MIN_PITCH, math.min(MAX_PITCH, top_pitch - pitch_row))
 
     local new_note = {
@@ -344,13 +346,14 @@ function m.IsNoteRightEdge(mx, my, notes, hit_idx, grid_x, grid_y, scroll_y, scr
     local PITCH_ROW_H = grid.PITCH_ROW_H
     local MAX_PITCH = grid.MAX_PITCH
     local MIN_PITCH = grid.MIN_PITCH
-    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
-    local pitch_row = math.floor((my - grid_y) / PITCH_ROW_H)
+    local scroll_px_off = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - math.floor(scroll_y))
+    local pitch_row = math.floor((my - grid_y + scroll_px_off) / PITCH_ROW_H)
     local click_pitch = math.max(MIN_PITCH, top_pitch - pitch_row)
     if n.pitch ~= click_pitch then return false end
 
     local right_edge = grid_x + (n.start_beat + (n.duration or 1) - scroll_x) * zoom_x
-    local note_top = grid_y + (top_pitch - n.pitch) * PITCH_ROW_H
+    local note_top = grid_y + (top_pitch - n.pitch) * PITCH_ROW_H - scroll_px_off
     local note_bot = note_top + PITCH_ROW_H
     if my >= note_top and my <= note_bot then
         return mx >= right_edge - RESIZE_HOTZONE_PX and mx <= right_edge

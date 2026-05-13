@@ -153,6 +153,9 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
     local PITCH_ROW_H = grid.PITCH_ROW_H
     local MIN_PITCH = grid.MIN_PITCH
 
+    -- Sub-pixel offset for smooth scrolling (same formula as grid)
+    local scroll_px_offset = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
+
     local notes = island_store.GetNotes()
     if not notes or #notes == 0 then return end
 
@@ -166,7 +169,7 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
 
         if in_pitch_range and in_time_range then
             local nx = x + (ns - scroll_x) * zoom_x
-            local ny = y + (top_pitch - np) * PITCH_ROW_H
+            local ny = y + (top_pitch - np) * PITCH_ROW_H - scroll_px_offset
             local nw = nd * zoom_x
             local nh = PITCH_ROW_H
 
@@ -203,9 +206,12 @@ function m.NoteBlockHitTest(mx, my, notes, scroll_y, scroll_x, zoom_x, grid_x, g
     if not notes then return nil end
 
     -- Convert mouse position to beat/pitch space (inverted Y)
+    -- Account for sub-pixel smooth scroll offset: add back the fractional px
+    -- so hit testing aligns with the actual drawn note positions.
+    local scroll_px_offset = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
     local beat = (mx - grid_x) / zoom_x + scroll_x
-    local pitch_row = math.floor((my - grid_y) / PITCH_ROW_H)
-    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
+    local pitch_row = math.floor((my - grid_y + scroll_px_offset) / PITCH_ROW_H)
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - math.floor(scroll_y))
     local click_pitch = math.max(MIN_PITCH, top_pitch - pitch_row)
 
     -- Search from end to start (topmost first in render order)
@@ -253,11 +259,13 @@ function m.GetNotesInRect(x1, y1, x2, y2, grid_x, grid_y, scroll_y, scroll_x, zo
     local MIN_PITCH = grid.MIN_PITCH
     local MAX_PITCH = grid.MAX_PITCH
 
-    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - scroll_y)
+    local scroll_px_offset = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
+    local top_pitch = math.max(MIN_PITCH, MAX_PITCH - math.floor(scroll_y))
 
     -- Convert pixel rect to pitch/beat space (inverted Y)
-    local pitch_row_top = math.floor((ry1 - grid_y) / PITCH_ROW_H)
-    local pitch_row_bot = math.floor((ry2 - grid_y) / PITCH_ROW_H)
+    -- Adjust for sub-pixel smooth scroll offset
+    local pitch_row_top = math.floor((ry1 - grid_y + scroll_px_offset) / PITCH_ROW_H)
+    local pitch_row_bot = math.floor((ry2 - grid_y + scroll_px_offset) / PITCH_ROW_H)
     local pitch_high = math.min(MAX_PITCH, math.max(MIN_PITCH, top_pitch - pitch_row_top))
     local pitch_low  = math.max(MIN_PITCH, top_pitch - pitch_row_bot)
 

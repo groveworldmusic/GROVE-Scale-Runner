@@ -85,7 +85,8 @@ function m.ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
     local visible_rows = math.ceil(h / m.PITCH_ROW_H) + 2
     local max_scroll = m.TOTAL_ROWS - visible_rows
     local clamped_scroll = math.max(0, math.min(max_scroll, scroll_y or 0))
-    local top_pitch = math.max(m.MIN_PITCH, m.MAX_PITCH - clamped_scroll)
+    -- Floor clamped_scroll so top_pitch is always an integer pitch
+    local top_pitch = math.max(m.MIN_PITCH, m.MAX_PITCH - math.floor(clamped_scroll))
     local pitch_start = math.max(m.MIN_PITCH, top_pitch - visible_rows - m.OCTAVE_BUFFER)
     local pitch_end = math.min(m.MAX_PITCH, top_pitch + m.OCTAVE_BUFFER)
     local beat_start = scroll_x - 1
@@ -132,6 +133,10 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     local RH = m.PITCH_ROW_H
     local MIN = m.MIN_PITCH
 
+    -- Compute sub-pixel offset for smooth scrolling
+    local scroll_int = math.floor(scroll_y)
+    local scroll_px_offset = (scroll_y - scroll_int) * RH
+
     -- Refresh scale cache (Issue 13 pattern)
     if _vpk_scale_root ~= config.state.root_index or _vpk_scale_idx ~= config.state.scale_index then
         _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(config.state.root_index, config.state.scale_index)
@@ -160,7 +165,7 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     for row = 0, visible_rows do
         local pitch = top_pitch - row
         if pitch < MIN then break end
-        local py = ky + row * RH
+        local py = ky + row * RH - scroll_px_offset
         if py >= ky + kh then break end
 
         -- Clip row height to viewport bottom (prevents overflow into scrollbar area)
@@ -186,7 +191,7 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     for row = 0, visible_rows do
         local pitch = top_pitch - row
         if pitch < MIN then break end
-        local py = ky + row * RH
+        local py = ky + row * RH - scroll_px_offset
         if py >= ky + kh then break end
 
         -- Clip row height to viewport bottom (same as PASS 1)
@@ -234,13 +239,95 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     for row = 0, visible_rows do
         local pitch = top_pitch - row
         if pitch < MIN then break end
-        local py = ky + row * RH
+        local py = ky + row * RH - scroll_px_offset
         if py + RH < ky + kh then
             helpers.SetColor({0.1, 0.1, 0.1, 0.35})
             gfx.line(kx, py + RH, kx + kw, py + RH)
         end
     end
 
+    helpers.SetColor({0.15, 0.15, 0.15, 0.6})
+    gfx.line(kx + kw, ky, kx + kw, ky + kh)
+end
+
+    -- Active note pitch-class O(1) lookup (Issue 18)
+    local am12 = {}
+    for mn, _ in pairs(midi_store.GetActiveNotes()) do
+        am12[(mn % 12) + 1] = true
+    end
+
+    local col = require("ui.colors")
+
+    -- Strip background
+    helpers.SetColor({0.06, 0.06, 0.06, 0.95})
+    gfx.rect(kx, ky, kw, kh, 1)
+
+    local visible_rows = math.ceil(kh / RH) + 2
+    local fs = math.min(18, math.max(14, math.floor(RH / 1.2)))
+
+    -- Set font ONCE before the loop (same size for all rows)
+    gfx.setfont(1, "Calibri", fs)
+
+    -- Single pass: fill row background, separator, scale indicator, active glow, label
+    for row = 0, visible_rows do
+        local pitch = top_pitch - row
+        if pitch < MIN then break end
+        local py = ky + row * RH
+        if py >= ky + kh then break end
+
+        -- Clip row height to viewport bottom
+        local row_h = math.min(RH, ky + kh - py)
+        if row_h <= 0 then break end
+
+        local pc = (pitch % 12) + 1
+        local is_white = WHITE_KEY_SET[pitch % 12]
+        local sc = _vpk_scale_notes[pc]
+        local am = am12[pc]
+        local root = config.state.root_index == pc
+
+        -- 1) Row background fill
+        if is_white then
+            helpers.SetColor(root and theme.colors.btn_active or theme.colors.piano_white)
+        else
+            helpers.SetColor(root and theme.colors.btn_active or theme.colors.piano_black)
+        end
+        gfx.rect(kx, py, kw, row_h, 1)
+
+        -- 2) Separator line at row boundary
+        if py + row_h < ky + kh then
+            helpers.SetColor({0.1, 0.1, 0.1, 0.35})
+            gfx.line(kx, py + row_h, kx + kw, py + row_h)
+        end
+
+        -- 3) Scale indicator (right edge)
+        if not root and sc then
+            helpers.SetColor(col.DegreeColor(_vpk_note_to_degree[pc]), 0.7)
+            gfx.rect(kx + kw - 5, py + 1, 3, row_h - 2, 1)
+        end
+
+        -- 4) Active note glow
+        if not root and am then
+            local dg = _vpk_note_to_degree[pc]
+            local gl = dg and col.DegreeColor(dg) or {1,1,1,0.3}
+            helpers.SetColor(gl, 0.25)
+            gfx.rect(kx, py, kw, row_h, 1)
+        end
+
+        -- 5) Label
+        if row_h >= 8 then
+            if is_white then
+                helpers.SetColor(root and theme.colors.text or theme.colors.text_dark)
+            else
+                helpers.SetColor(theme.colors.text)
+            end
+            local lb = KeyboardNoteLabel(pitch)
+            local _, lh = gfx.measurestr(lb)
+            gfx.x, gfx.y = kx + 2, py + math.floor((row_h - lh) / 2)
+            gfx.drawstr(lb)
+        end
+    end
+
+    -- Right-edge separator line
     helpers.SetColor({0.15, 0.15, 0.15, 0.6})
     gfx.line(kx + kw, ky, kx + kw, ky + kh)
 end
@@ -266,7 +353,12 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
                              visible_rows, pitch_start, pitch_end, top_pitch)
     local LABEL_W = m.PITCH_LABEL_W
     local MIN_PITCH = m.MIN_PITCH
+    local RH = m.PITCH_ROW_H
     local has_key_strip = (x - LABEL_W) >= 0
+
+    -- Compute sub-pixel offset for smooth scrolling
+    local scroll_int = math.floor(scroll_y)
+    local scroll_px_offset = (scroll_y - scroll_int) * RH
 
     -- Draw piano keyboard strip
     if has_key_strip then
@@ -279,13 +371,13 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
         local pitch = top_pitch - row_offset
         if pitch < MIN_PITCH then break end
 
-        local py = y + row_offset * m.PITCH_ROW_H
+        local py = y + row_offset * RH - scroll_px_offset
         if py >= y + h then break end
 
         local is_white = WHITE_KEY_SET[pitch % 12] == true
 
         -- Row background tint (clamped to remaining height)
-        local row_h = math.min(m.PITCH_ROW_H, y + h - py)
+        local row_h = math.min(RH, y + h - py)
         helpers.SetColor(is_white and PITCH_ROW_WHITE or PITCH_ROW_DARK)
         gfx.rect(x, py, w, row_h, 1)
 
@@ -453,7 +545,8 @@ end
 --- @param scroll_y number Current vertical scroll offset
 --- @return number New vertical scroll offset
 function m.HandleMouseWheelVertical(delta, scroll_y)
-    local new_scroll = scroll_y - delta
+    -- Factor 0.25: ~4px per delta unit (at PITCH_ROW_H=16) for smooth scrolling
+    local new_scroll = scroll_y - delta * 0.25
     return math.max(0, new_scroll)
 end
 
