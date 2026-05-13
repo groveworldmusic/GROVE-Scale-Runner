@@ -4,6 +4,7 @@ thumbs.db
 Desktop.ini
 *.swp
 *.bak
+*.bak~
 
 # macOS
 .DS_Store

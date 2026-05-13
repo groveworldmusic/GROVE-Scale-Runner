@@ -56,18 +56,6 @@ end
 -- =========================================================
 
 function m.SwitchViewMode()
-    -- ISLAND → FULL: restore previous window size
-    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
-        local saved_w = ui_store.GetLastWindowW() or 720
-        local saved_h = ui_store.GetLastWindowH() or 497
-        ui_store.SetViewMode(config.VIEW_MODES.FULL)
-        island_store.SetIslandActive(false)
-        gfx.quit()
-        gfx.init(config.script_title, saved_w, saved_h, 0, config.state.view_offset_x, config.state.view_offset_y)
-        gfx.setfont(1, "Calibri", 16)
-        return
-    end
-
     if ui_store.GetViewMode() == config.VIEW_MODES.FULL then
         -- FULL → COMPACT: close full view, end overlay
         compact_store.SetOverlayActive(false)
@@ -97,91 +85,6 @@ function m.SwitchViewMode()
         local gs = compact_store.GetLastGfxState()
         gfx.init(config.script_title, gs.w, gs.h, gs.dock, gs.x, gs.y)
         gfx.setfont(1, "Calibri", 16)
-    end
-end
-
--- =========================================================
--- TOGGLE ISLAND VIEW (FULL ↔ ISLAND)
--- =========================================================
-
-function m.ToggleIslandView()
-    -- Note: docked mode IS supported (P5-02). No guard here.
-
-    if ui_store.GetViewMode() == config.VIEW_MODES.ISLAND then
-        -- ISLAND → FULL: restore previous window size
-        local saved_w = ui_store.GetLastWindowW()
-        local saved_h = ui_store.GetLastWindowH()
-
-        -- Validate saved dimensions before gfx.init() (P5-01)
-        if not saved_w or saved_w <= 0 then saved_w = 720 end
-        if not saved_h or saved_h <= 0 then saved_h = 497 end
-
-        ui_store.SetViewMode(config.VIEW_MODES.FULL)
-        island_store.SetIslandActive(false)
-
-        -- Reset velocity editor drag state
-        require("ui.velocity").ResetDrag()
-
-        if ui_store.GetDockedMode() then
-            -- Docked: no GFX context change needed, just switch mode
-            return
-        end
-
-        local ok, err = pcall(gfx.quit)
-        if not ok then
-            -- gfx.quit failed — window may not exist; reset mode and continue
-            compact_store.SetOverlayActive(false)
-            return
-        end
-
-        ok, err = pcall(gfx.init, config.script_title, saved_w, saved_h, 0,
-                       config.state.view_offset_x, config.state.view_offset_y)
-        if not ok then
-            -- gfx.init failed — revert to previous mode
-            ui_store.SetViewMode(config.VIEW_MODES.ISLAND)
-            island_store.SetIslandActive(true)
-            -- Try to restore island window
-            pcall(gfx.init, "MIDI Island", config.ISLAND_WINDOW_W, config.ISLAND_WINDOW_H, 0,
-                  config.state.view_offset_x, config.state.view_offset_y)
-            return
-        end
-        gfx.setfont(1, "Calibri", 16)
-        -- Draw background immediately to prevent flicker
-        helpers.SetColor(theme.colors.bg)
-        gfx.rect(0, 0, saved_w, saved_h, 1)
-
-    elseif ui_store.GetViewMode() == config.VIEW_MODES.FULL then
-        -- FULL → ISLAND: save current window dimensions, then switch
-        if gfx.w and gfx.w > 0 then
-            ui_store.SetLastWindowW(gfx.w)
-            ui_store.SetLastWindowH(gfx.h)
-        end
-
-        ui_store.SetViewMode(config.VIEW_MODES.ISLAND)
-        island_store.SetIslandActive(true)
-        island_store.LoadNotesFromProgression(seq_store)
-
-        if ui_store.GetDockedMode() then
-            -- Docked: use current GFX context dimensions, no quit/init (P5-02)
-            return
-        end
-
-        gfx.quit()
-        local ok, err = pcall(gfx.init, "MIDI Island", config.ISLAND_WINDOW_W,
-                            config.ISLAND_WINDOW_H, 0,
-                            config.state.view_offset_x, config.state.view_offset_y)
-        if not ok then
-            -- gfx.init failed — revert to FULL
-            ui_store.SetViewMode(config.VIEW_MODES.FULL)
-            island_store.SetIslandActive(false)
-            pcall(gfx.init, config.script_title, 720, 497, 0,
-                  config.state.view_offset_x, config.state.view_offset_y)
-            return
-        end
-        gfx.setfont(1, "Calibri", 16)
-        -- Draw background immediately to prevent flicker (P5-01)
-        helpers.SetColor(theme.colors.bg)
-        gfx.rect(0, 0, config.ISLAND_WINDOW_W, config.ISLAND_WINDOW_H, 1)
     end
 end
 

@@ -30,8 +30,19 @@ None.
 
 ## Project Standards (auto-resolved)
 - **Lua 5.x**: Use `local m = {}` + `return m` module pattern. No ES modules.
-- **Reaper GFX API**: Use `gfx.init`, `gfx.rect`, `gfx.circle`, etc. Avoid direct API calls outside modules.
+- **Reaper GFX API**: Use `gfx.init`, `gfx.rect`, `gfx.circle`, etc. Code organized into ui/* modules (components, views, compact, layout, helpers, format, colors, theme).
+- **GFX Dual-Context Pattern**: `main.lua` and `compact.lua` each have their own GFX context. Each must independently read `gfx.mouse_wheel` AND zero it (`gfx.mouse_wheel = 0`) after reading. Missing zeroing causes scroll to repeat every frame.
+- **Delta Lifecycle**: GFX-level zeroing clears `gfx.mouse_wheel` per frame. Widget-level zeroing clears `config.state.mouse_wheel_delta` per widget. Both layers are required for scroll features.
+- **Scroll Direction Convention**: `mouse_wheel_delta > 0` maps to -1 (decrement index) for navigation widgets (pagination, dropdowns). Maps to +value for non-index controls (volume). Established by pagination at `views.lua:389`.
 - **MIDI via Reaper**: `reaper.StuffMIDIMessage` for note on/off; no external MIDI libraries.
 - **Package path**: `package.path` extended at runtime via `debug.getinfo(1, 'S')` for relative requires.
-- **State management**: Global `config.state` object; no external state libraries.
-- **Testing**: Custom mock-based tests in `tests/test_midi.lua` (standalone, no REAPER dep). No `lua` CLI available — tests verified via static analysis only. SDD verification uses manual + static review.
+- **Module naming**: PascalCase filenames under `src/` (e.g., `core/midi.lua`, `ui/components.lua`).
+- **Function naming**: snake_case function names (e.g., `GetMidiNote`, `SendMidi`, `ToggleDock`).
+- **State management**: Global `config.state` object holds all mutable state (view mode, root/scale/octave/chord indices, sequencer state, flash timers, active notes, key states, scroll/mouse state). No external state libraries.
+- **State initialization**: `config.state` table defined in `src/config.lua` with default values for all fields. State is nil-safe (field is always defined, no lazy init).
+- **Active notes pattern**: ref-counted table `config.state.active_notes[note] = count` for managing concurrent note-on/off, not a simple toggle.
+- **Circular dependency warning**: `core/sequencer.lua` does NOT require `core/midi.lua` to avoid circular dep. `midi.lua` explicitly documents this constraint.
+- **Testing**: Custom mock-based tests in `tests/test_midi.lua` (standalone, no REAPER dep). No `lua` CLI available on dev machine — tests verified via static analysis only. SDD verification uses manual + static review. No CI/CD, no automation.
+- **Validation approach**: Hand-rolled assert-pass/fail counters in test scripts. `os.exit(1)` on failure.
+- **Config entry**: `-- @description Scale Runner — QWERTY to MIDI Controller for REAPER` header in `main.lua`.
+- **Module requires**: Uses `require("config")`, `require("core.midi")`, `require("ui.components")` — package.path extended at runtime from script location.
