@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Piano Roll Interaction
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Piano Roll Interaction
 -- Mouse event handlers, lasso rendering, Ctrl+A, keyboard shortcuts, undo/redo (PR3).
 -- Extracted from piano-roll.lua barrel (PR1b).
 -- Depends on note (hit test) and grid (constants).
@@ -149,7 +151,7 @@ function m.HandlePencilClick(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     if snap_res > 0 then
         snapped_beat = snap.SnapBeat(beat, snap_res, snap_trip)
     else
-        snapped_beat = math.floor(beat * 2 + 0.5) / 2  -- fallback to half-beat
+        snapped_beat = beat  -- no snap: use exact beat
     end
 
     -- Convert mouse to pitch (inverted Y: high pitch at top)

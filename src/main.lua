@@ -1,39 +1,75 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
 -- @description Scale Runner — QWERTY to MIDI Controller for REAPER
 -- @version 1.0.0
 -- @author GROVE WORLD MUSIC
 -- @about
---   Scale Runner: QWERTY to MIDI Controller
---   Multi-module architecture with REAPER integration.
---   Maps keyboard keys to scale degrees and chord modes.
---   Includes sequencer, piano keyboard, performance pads,
---   progression slots, docked transport bar, and compact mode via JS_Composite.
+--   Scale Runner is a QWERTY-to-MIDI controller for REAPER.
+--   Maps keyboard keys to scale degrees and chord modes for
+--   intuitive music performance and composition.
+--   Features include:
+--     • Sequencer with step-by-step playback
+--     • Piano keyboard UI with scale highlighting
+--     • Performance pads with drag-to-slot interaction
+--     • Progression slots with page navigation
+--     • Dockable transport bar and compact overlay mode
+--     • MIDI Island for advanced editing
+--     • Preset browser, velocity editor, piano roll
+--     • Snap grid and velocity humanization
 -- @provides
 --   [main] src/main.lua
 --   src/config.lua
+--   -- core/
+--   src/core/api-guard.lua
+--   src/core/keyboard.lua
 --   src/core/midi.lua
---   src/core/sequencer.lua
 --   src/core/progression.lua
---   src/ui/theme.lua
---   src/ui/helpers.lua
---   src/ui/components.lua
---   src/ui/views.lua
---   src/ui/compact.lua
---   src/ui/colors.lua
---   src/ui/format.lua
---   src/ui/buttons.lua
---   src/ui/paginator.lua
---   src/ui/dropdown.lua
---   src/ui/piano.lua
---   src/ui/pads.lua
+--   src/core/sequencer.lua
 --   src/core/slots.lua
---   src/ui/drag.lua
---   src/ui/lice.lua
---   src/ui/positioning.lua
+--   src/core/snap.lua
+--   -- state/
+--   src/state/compact.lua
+--   src/state/drag.lua
+--   src/state/island.lua
+--   src/state/midi.lua
+--   src/state/persist.lua
+--   src/state/sequencer.lua
+--   src/state/ui.lua
+--   -- ui/
+--   src/ui/buttons.lua
+--   src/ui/colors.lua
+--   src/ui/compact.lua
 --   src/ui/compact-bar.lua
---   src/ui/compact-panel.lua
+--   src/ui/compact-init.lua
 --   src/ui/compact-intercept.lua
 --   src/ui/compact-menu.lua
---   src/ui/compact-init.lua
+--   src/ui/compact-panel.lua
+--   src/ui/components.lua
+--   src/ui/drag.lua
+--   src/ui/dropdown.lua
+--   src/ui/format.lua
+--   src/ui/gfx-safe.lua
+--   src/ui/helpers.lua
+--   src/ui/layout.lua
+--   src/ui/lice.lua
+--   src/ui/pads.lua
+--   src/ui/paginator.lua
+--   src/ui/piano.lua
+--   src/ui/piano-roll.lua
+--   src/ui/piano-roll/grid.lua
+--   src/ui/piano-roll/interaction.lua
+--   src/ui/piano-roll/note.lua
+--   src/ui/piano-roll/view.lua
+--   src/ui/positioning.lua
+--   src/ui/preset-browser.lua
+--   src/ui/theme.lua
+--   src/ui/timeline.lua
+--   src/ui/velocity.lua
+--   src/ui/views.lua
+-- @changelog
+--   v1.0.0 2026-05-13
+--     + Professional polish: license headers, API guards, ReaPack metadata
+--     + Production-ready polish: naming standardization, documentation
 -- @website https://github.com/GroveWorldMusic/GROVE-Scale-Runner
 
 local info = debug.getinfo(1, 'S')
@@ -45,6 +81,7 @@ end
 package.path = package.path .. ";" .. script_path .. "?.lua"
 
 local config = require("config")
+local api_guard = require("core.api-guard")
 local compact_store = require("state.compact")
 compact_store.Init(config.state)
 local drag_store = require("state.drag")
@@ -63,8 +100,11 @@ local sequencer = require("core.sequencer")
 local views = require("ui.views")
 local compact = require("ui.compact")
 local keyboard = require("core.keyboard")
+local persist = require("state.persist")
+local gfx_safe = require("ui.gfx-safe")
 
 local last_dock_state = 0
+local gfx_needs_redraw = true  -- dirty flag: skip GFX redraw when nothing visual changed
 
 -- Toggle dock state (Ctrl+D)
 local function ToggleDock()
@@ -74,7 +114,7 @@ local function ToggleDock()
         ui_store.SetDockedMode(false)
         ui_store.SetDockId(0)
         -- Resize back to normal window
-        gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
+        gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     else
         -- Dock: call gfx.dock(1) to dock in transport bar slot
         ui_store.SetDockId(gfx.dock(1))
@@ -215,18 +255,32 @@ local function MainLoop()
 
     -- GFX mode: mouse state + GFX calls
     local mwd = gfx.mouse_wheel
-    ui_store.SetMouseClick((gfx.mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0)
+    local fresh_click = (gfx.mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0
+    ui_store.SetMouseClick(fresh_click)
     ui_store.SetMouseWheelDelta(mwd)
     if mwd ~= 0 then gfx.mouse_wheel = 0 end
 
+    -- Dirty-flag: set to true when any visual state changes
+    if mwd ~= 0 or fresh_click then gfx_needs_redraw = true end
+    -- Always redraw while sequencer is running or timers are active (state changes every frame)
+    if sequencer_store.GetIsPlaying() then gfx_needs_redraw = true end
+    if midi_store.GetActiveNoteDrawTimer() > 0 then gfx_needs_redraw = true end
+    if sequencer_store.GetPageOverrideTimer() > 0 then gfx_needs_redraw = true end
+
+    local prev_dock = last_dock_state
     CheckDockState()
+    if prev_dock ~= last_dock_state then gfx_needs_redraw = true end
 
     local char = gfx.getchar()
 
-    if ui_store.GetDockedMode() then
-        views.DrawDockedTransportBar(gfx.w, gfx.h)
-    else
-        views.DrawFullView(char)
+    -- Only redraw GFX when something visual changed, but always call gfx.getchar() for responsiveness
+    if gfx_needs_redraw then
+        if ui_store.GetDockedMode() then
+            views.DrawDockedTransportBar(gfx.w, gfx.h)
+        else
+            views.DrawFullView(char)
+        end
+        gfx_needs_redraw = false
     end
 
     ui_store.SetLastMouseCap(gfx.mouse_cap)
@@ -238,6 +292,7 @@ local function MainLoop()
     end
     if midi.midi_island_toggled then
         midi.midi_island_toggled = false
+        gfx_needs_redraw = true  -- window was recreated by gfx.quit()+gfx.init()
         reaper.defer(MainLoop)
         return
     end
@@ -250,17 +305,23 @@ local function MainLoop()
         if ui_store.GetDidCleanup() then return end
         ui_store.SetDidCleanup(true)
         CleanupAll()
-        gfx.quit()
+        gfx_safe.SafeGfxQuit()
         return
     end
     reaper.defer(MainLoop)
 end
 
 local function Init()
-    if not reaper.JS_VKeys_GetState then
-        reaper.MB("Por favor instala js_ReaScriptAPI via ReaPack.", "Error de Dependencia", 0)
-        return
-    end
+    -- Verify required JS_ReaScriptAPI extension
+    if not api_guard.AssertAPIs({
+        JS_Window_Find = "JS_Window_Find — required for window management",
+        JS_VKeys_GetState = "JS_VKeys_GetState — required for keyboard interception",
+        JS_VKeys_Intercept = "JS_VKeys_Intercept — required for keyboard interception",
+        JS_Window_GetRect = "JS_Window_GetRect — required for window positioning",
+        JS_Window_GetClientSize = "JS_Window_GetClientSize — required for window sizing",
+        JS_LICE_CreateBitmap = "JS_LICE_CreateBitmap — required for compact view rendering",
+        JS_Composite = "JS_Composite — required for compact view overlay",
+    }) then return end
 
     -- Register cleanup for safe exit
     ui_store.SetDidCleanup(false)
@@ -270,10 +331,13 @@ local function Init()
         CleanupAll()
     end)
 
-    gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
+    -- Load persisted preferences from REAPER ExtState (canonical with legacy fallback)
+    persist.Load(config.state)
+
+    gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)
 
-    -- Load persisted preferences from REAPER ExtState
+    -- Load extra auto-start preferences from REAPER ExtState
     local ext_compact = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_compact")
     if ext_compact == "1" then ui_store.SetAutoStartCompact(true) end
     local ext_reaper = reaper.GetExtState("GROVE_Scale_Runner", "auto_start_reaper")

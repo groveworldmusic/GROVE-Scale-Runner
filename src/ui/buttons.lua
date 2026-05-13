@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Button UI Components (extracted from components.lua)
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Button UI Components (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
 local ui_store = require("state.ui")

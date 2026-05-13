@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Velocity Editor
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Velocity Editor
 -- Per-note velocity bars rendered below the piano roll grid.
 -- Supports click-and-drag to edit velocity values in real-time.
 
@@ -11,7 +13,8 @@ local velocity = {}
 
 -- Configuration
 velocity.EDITOR_H = 80                 -- Height of the velocity editor area in pixels
-velocity.COLLAPSED_H = 14              -- Height when velocity panel is collapsed
+velocity.COLLAPSED_H = 22              -- Height when velocity panel is collapsed
+velocity.COLLAPSE_HANDLE_H = 16        -- Height of the collapse handle (tall enough for text)
 velocity.VELOCITY_MIN_H = 2            -- Minimum bar height (even for velocity=0)
 velocity.VELOCITY_MAX_H = 60           -- Maximum bar height (for velocity=127)
 
@@ -78,6 +81,8 @@ function velocity.DrawVelocityBar(x, y, w, h, velocity_val, selected, muted)
 end
 
 --- Draw the full velocity editor below the piano roll.
+--- When collapsed: shows a centered "▶ VELOCITY" bar — click anywhere to expand.
+--- When expanded: shows velocity bars, grid, and a bottom handle to collapse.
 --- @param x number Left edge of the grid area (pixel)
 --- @param y number Top edge of the velocity editor (pixel)
 --- @param w number Width of the grid area (pixel)
@@ -89,16 +94,31 @@ end
 function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, selected_idx)
     if w <= 0 or h <= 0 then return end
 
+    local expanded = island_store.GetVelocityPanelExpanded()
     local LABEL_W = 48  -- must match piano-roll PITCH_LABEL_W
     local grid_x = x + LABEL_W
     local grid_w = w - LABEL_W
     if grid_w <= 0 then return end
 
-    -- Velocity editor background (distinct from piano roll)
+    -- Velocity editor background
     helpers.SetColor(theme.colors.island_velocity_bg)
     gfx.rect(x, y, w, h, 1)
 
-    -- "VEL" label
+    if not expanded then
+        -- ===== COLLAPSED: centered expand hint, entire bar is clickable =====
+        helpers.SetColor(theme.colors.text_dim)
+        local fs = math.min(12, math.max(9, h - 8))
+        gfx.setfont(1, "Calibri", fs)
+        local label = "▶  VELOCITY"
+        local lw, lh = gfx.measurestr(label)
+        gfx.x, gfx.y = x + (w - lw) / 2, y + math.floor((h - lh) / 2)
+        gfx.drawstr(label)
+        return
+    end
+
+    -- ===== EXPANDED: velocity bars + grid + bottom collapse handle =====
+
+    -- "VEL" label in label strip (left)
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", 9)
     local lw, lh = gfx.measurestr("VEL")
@@ -106,7 +126,6 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
     gfx.drawstr("VEL")
 
     -- Vertical beat grid lines (matching piano roll)
-    -- No background fill — parent DrawMIDIIsland provides rounded bg
     local beat_start = math.floor(scroll_x)
     local beat_end = beat_start + math.ceil(grid_w / zoom_x) + 1
     for beat = beat_start, beat_end do
@@ -118,7 +137,7 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
     end
 
     -- Reserve room for collapsible handle at the bottom
-    local handle_h = 6
+    local handle_h = velocity.COLLAPSE_HANDLE_H
     local content_h = h - handle_h
 
     -- Draw bars for each visible note
@@ -168,26 +187,18 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
         end
     end
 
-    -- Collapsible drag handle at bottom (task 3.3)
+    -- Collapse handle at bottom (taller, with text label)
     local handle_y = y + h - handle_h
-    helpers.SetColor({0.3, 0.3, 0.3, 0.4})
+    helpers.SetColor({0.25, 0.25, 0.25, 0.5})
     gfx.rect(x, handle_y, w, handle_h, 1)
 
-    -- Grip lines
-    helpers.SetColor({0.5, 0.5, 0.5, 0.3})
-    local grip_y = handle_y + 2
-    for gx = x + 8, x + w - 8, 8 do
-        gfx.line(gx, grip_y, gx, grip_y + 1)
-    end
-
-    -- Collapse/expand arrow indicator
-    local expanded = island_store.GetVelocityPanelExpanded()
-    local arrow = expanded and "▼" or "▲"
-    helpers.SetColor({0.6, 0.6, 0.6, 0.5})
-    gfx.setfont(1, "Calibri", 7)
-    local aw, ah = gfx.measurestr(arrow)
-    gfx.x, gfx.y = x + w - aw - 4, handle_y + (handle_h - ah) / 2
-    gfx.drawstr(arrow)
+    -- "▼  COLLAPSE" label centered in handle
+    helpers.SetColor({0.7, 0.7, 0.7, 0.6})
+    gfx.setfont(1, "Calibri", 10)
+    local label = "▼  COLLAPSE"
+    local lw, lh = gfx.measurestr(label)
+    gfx.x, gfx.y = x + (w - lw) / 2, handle_y + (handle_h - lh) / 2
+    gfx.drawstr(label)
 end
 
 --- Hit test: find which note index is under a mouse position in the velocity editor.
@@ -249,6 +260,8 @@ end
 
 --- Handle click and drag in the velocity editor area.
 --- Called each frame from DrawMIDIIsland mouse handling.
+--- Collapsed: click anywhere to expand.
+--- Expanded: click bottom handle to collapse, or drag bars to edit velocity.
 --- When multiple notes are selected, drag applies a relative delta to ALL selected notes.
 --- @param mx number Mouse pixel x
 --- @param my number Mouse pixel y
@@ -262,11 +275,21 @@ end
 --- @return boolean true if event was consumed
 function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom_x, click, mouse_down)
     local notes = island_store.GetNotes()
+    local expanded = island_store.GetVelocityPanelExpanded()
 
-    -- Check collapsible handle click (bottom 6px) first
-    local handle_h = 6
+    if not expanded then
+        -- COLLAPSED: any click in the velocity area toggles expand
+        if click and mouse_down and my >= ed_y and my <= ed_y + ed_h then
+            island_store.SetVelocityPanelExpanded(true)
+            return true
+        end
+        return false
+    end
+
+    -- EXPANDED: check collapse handle at bottom first
+    local handle_h = velocity.COLLAPSE_HANDLE_H
     if click and mouse_down and my >= ed_y + ed_h - handle_h and my <= ed_y + ed_h then
-        island_store.SetVelocityPanelExpanded(not island_store.GetVelocityPanelExpanded())
+        island_store.SetVelocityPanelExpanded(false)
         return true
     end
 
@@ -327,7 +350,6 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
             if sel_count > 1 and drag_initial_vel ~= nil then
                 -- Bulk: capture all selected notes
                 local delta = (notes[drag_note_index].velocity or 100) - drag_initial_vel
-                local base_initial_vel = drag_initial_vel
                 for sel_idx in pairs(selected) do
                     if notes[sel_idx] then
                         table.insert(undo_uuids, notes[sel_idx].uuid)

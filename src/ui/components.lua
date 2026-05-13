@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local buttons = require("ui.buttons")

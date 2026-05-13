@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Piano Roll View Coordinator
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Piano Roll View Coordinator
 -- DrawPianoRoll entry point: computes visible ranges, calls grid/note/lasso.
 -- Extracted from piano-roll.lua barrel (PR1b).
 
@@ -45,23 +47,7 @@ function m.DrawPianoRoll(x, y, w, h)
     note.DrawNoteBlocks(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x,
                         pitch_start, pitch_end, beat_start, beat_end, top_pitch)
 
-    -- Draw vertical scrollbar indicator (right side)
-    local total_rows = grid.TOTAL_ROWS
-    local actual_visible = math.ceil(h / grid.PITCH_ROW_H)
-    local max_scroll_y = total_rows - actual_visible
-    local clamped_scroll_y = math.min(scroll_y, math.max(0, max_scroll_y))
-    local scroll_ratio_y = actual_visible / total_rows
-    if scroll_ratio_y < 1 and max_scroll_y > 0 then
-        local sb_x = x + w - 6
-        local sb_h = math.max(20, h * scroll_ratio_y)
-        -- Track background (H12)
-        helpers.SetColor({0.15, 0.15, 0.15, 0.25})
-        gfx.rect(sb_x, y, 6, h, 1)
-        -- Thumb
-        local sb_y = y + (clamped_scroll_y / max_scroll_y) * h
-        helpers.SetColor({0.4, 0.4, 0.4, 0.35})
-        gfx.rect(sb_x, sb_y, 6, sb_h, 1)
-    end
+    -- (VSB is drawn by views.lua in the 7px right margin)
 
     -- Draw lasso selection rect
     interaction.DrawLassoRect()

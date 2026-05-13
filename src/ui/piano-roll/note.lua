@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Piano Roll Note Blocks
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Piano Roll Note Blocks
 -- Renders note blocks with gradient strips and velocity-based opacity.
 -- Handles hit testing, rect selection, and dirty cache.
 -- Extracted from piano-roll.lua monolith (PR1a).
@@ -113,7 +115,8 @@ function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
     -- Note label (only when wide enough)
     if nw > 30 then
         local label = OctaveLabel(note.pitch)
-        gfx.setfont(1, "Calibri", 10)
+        local fs = math.min(20, math.max(16, nh - 1))
+        gfx.setfont(1, "Calibri", fs)
         local lw, lh = gfx.measurestr(label)
         helpers.SetColor(theme.colors.text_dark)
         gfx.x, gfx.y = nx + (nw - lw) / 2, ny + (nh - lh) / 2
@@ -167,7 +170,12 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
             local nw = nd * zoom_x
             local nh = PITCH_ROW_H
 
-            m.DrawNoteBlock(note, nx, ny, nw, nh, island_store.IsNoteSelected(i))
+            -- Clip note height to viewport bottom (prevents overflow
+            -- into scrollbar margin or island container edge).
+            if ny < y + h and ny + nh > y then
+                local clipped_nh = math.min(nh, y + h - ny)
+                m.DrawNoteBlock(note, nx, ny, nw, clipped_nh, island_store.IsNoteSelected(i))
+            end
         end
     end
 end
@@ -250,7 +258,7 @@ function m.GetNotesInRect(x1, y1, x2, y2, grid_x, grid_y, scroll_y, scroll_x, zo
     -- Convert pixel rect to pitch/beat space (inverted Y)
     local pitch_row_top = math.floor((ry1 - grid_y) / PITCH_ROW_H)
     local pitch_row_bot = math.floor((ry2 - grid_y) / PITCH_ROW_H)
-    local pitch_high = math.max(MIN_PITCH, top_pitch - pitch_row_top)
+    local pitch_high = math.min(MAX_PITCH, math.max(MIN_PITCH, top_pitch - pitch_row_top))
     local pitch_low  = math.max(MIN_PITCH, top_pitch - pitch_row_bot)
 
     local beat_start = (rx1 - grid_x) / zoom_x + scroll_x

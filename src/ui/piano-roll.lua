@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Piano Roll — Barrel Module
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Piano Roll — Barrel Module
 -- Re-exports grid.lua + note.lua + interaction.lua + view.lua
 -- All original public functions remain accessible via require("ui.piano-roll").
 

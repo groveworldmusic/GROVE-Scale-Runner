@@ -1,7 +1,10 @@
--- GROVE FL MIDI: Shared UI Helpers
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Shared UI Helpers
 local config = require("config")
 local ui_store = require("state.ui")
 local theme = require("ui.theme")
+local api_guard = require("core.api-guard")
 local helpers = {}
 
 -- Set GFX color from {r,g,b,a} table with optional alpha multiplier
@@ -91,7 +94,8 @@ local COMPACT_ABBREV = {
 function helpers.ComputeScaleNotes(root_idx, scale_idx)
     local scale_notes = {}
     local note_to_degree = {}
-    local intervals = config.SCALES[scale_idx].intervals
+    local si = api_guard.ClampIndex(scale_idx, 1, #config.SCALES)
+    local intervals = config.SCALES[si].intervals
     for degree, interval in ipairs(intervals) do
         local note_idx = ((root_idx - 1 + interval) % 12) + 1
         scale_notes[note_idx] = true

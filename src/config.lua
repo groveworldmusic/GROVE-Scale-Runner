@@ -1,6 +1,10 @@
--- GROVE FL MIDI: Global Configuration and State
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Global Configuration and State
 local config = {}
 
+config.APP_NAME = "GROVE Scale Runner"
+config.EXTSTATE_NS = "GROVE_Scale_Runner"
 config.script_title = "Scale Runner"
 
 config.NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
@@ -45,6 +49,18 @@ config.VIEW_MODES = { FULL = 1, COMPACT = 2 }
 
 -- Docked Transport Bar dimensions
 config.DOCK_MIN_W, config.DOCK_MIN_H = 400, 50
+
+-- Preference keys persisted via reaper.SetExtState/GetExtState.
+-- These must match the key registry in state/persist.lua.
+config.PREF_KEYS = {
+    "root_index",
+    "scale_index",
+    "octave",
+    "chord_mode_index",
+    "inversion_index",
+    "volume",
+    "color_mode",
+}
 
 -- Expanded state for Pagination (16 slots, 4 pages)
 config.state = {

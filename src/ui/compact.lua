@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Compact View — Barrel Module
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Compact View — Barrel Module
 -- Re-exports all sub-modules so consumers use compact.*
 -- No inline state or function definitions — all logic is in sub-modules.
 local compact_init = require("ui.compact-init")

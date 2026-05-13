@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Theme extracted from SVGs
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Theme extracted from SVGs
 local theme = {}
 
 -- Helper to convert hex to 0-1 scale needed by Reaper GFX

@@ -1,9 +1,12 @@
--- GROVE FL MIDI: Compact View Life-cycle Orchestration
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Compact View Life-cycle Orchestration
 -- Central coordinator that wires together all compact sub-modules.
 -- Exports the functions that compact.lua re-exports to consumers.
 -- Uses top-level requires for all sub-modules (no circular deps:
 -- sub-modules only require compact-init at function call time via lazy requires).
 local config = require("config")
+local api_guard = require("core.api-guard")
 local compact_store = require("state.compact")
 local midi_store = require("state.midi")
 local ui_store = require("state.ui")
@@ -18,6 +21,7 @@ local compact_bar = require("ui.compact-bar")
 local panel = require("ui.compact-panel")
 local intercept = require("ui.compact-intercept")
 local menu = require("ui.compact-menu")
+local gfx_safe = require("ui.gfx-safe")
 
 local m = {}
 
@@ -26,6 +30,7 @@ local m = {}
 -- =========================================================
 
 function m.FindTransportWindow()
+    if not api_guard.CheckAPI("JS_Window_Find") then return nil end
     local hwnd = reaper.JS_Window_Find("Transport", true)
     if not hwnd then hwnd = reaper.JS_Window_Find("Transporte", false) end
     if not hwnd then hwnd = reaper.JS_Window_Find("Transport", false) end
@@ -71,7 +76,7 @@ function m.SwitchViewMode()
             compact_store.SetLastGfxState({dock=dock, x=wx, y=wy, w=gfx.w, h=gfx.h})
         end
         ui_store.SetViewMode(config.VIEW_MODES.COMPACT)
-        gfx.quit()
+        gfx_safe.SafeGfxQuit()
         compact_store.SetTransportHwnd(m.FindTransportWindow())
     else
         -- COMPACT → FULL: open full view AND activate overlay
@@ -83,7 +88,7 @@ function m.SwitchViewMode()
         end
         lice.EnsureLICE()
         local gs = compact_store.GetLastGfxState()
-        gfx.init(config.script_title, gs.w, gs.h, gs.dock, gs.x, gs.y)
+        gfx_safe.SafeGfxInit(config.script_title, gs.w, gs.h, gs.dock, gs.x, gs.y)
         gfx.setfont(1, "Calibri", 16)
     end
 end
@@ -119,7 +124,7 @@ end
 function m.HandlePanel()
     if not panel.panel_state.open then
         if panel.panel_state.inited then
-            gfx.quit()
+            gfx_safe.SafeGfxQuit()
             panel.panel_state.inited = false
             panel.panel_state.hwnd = nil
         end
@@ -128,17 +133,17 @@ function m.HandlePanel()
 
     -- First call: init GFX window
     if not panel.panel_state.inited then
-        gfx.init("Scale Runner", panel.PANEL_PW, panel.PANEL_PH, 0,
+        gfx_safe.SafeGfxInit("GROVE Scale Runner (Compact)", panel.PANEL_PW, panel.PANEL_PH, 0,
             panel.panel_state.init_x, panel.panel_state.init_y)
         panel.panel_state.inited = true
         -- Find window handle for later use (e.g. closing via system X)
-        panel.panel_state.hwnd = reaper.JS_Window_Find("Scale Runner", true)
+        panel.panel_state.hwnd = reaper.JS_Window_Find("GROVE Scale Runner (Compact)", true)
         -- No early return — fall through to gfx.getchar + draw so no frame is empty
     end
 
     -- Find window handle if not yet found
     if not panel.panel_state.hwnd then
-        panel.panel_state.hwnd = reaper.JS_Window_Find("Scale Runner", true)
+        panel.panel_state.hwnd = reaper.JS_Window_Find("GROVE Scale Runner (Compact)", true)
     end
 
     local char = gfx.getchar()
@@ -162,7 +167,7 @@ function m.HandlePanel()
         panel.panel_state.opened_bar_y = rect.bar_screen_y
 
         -- Cerrar ventana actual; se recreara en el proximo frame con nueva posicion
-        gfx.quit()
+        gfx_safe.SafeGfxQuit()
         panel.panel_state.inited = false
         panel.panel_state.hwnd = nil
         panel.panel_state.first_frame = true
@@ -200,9 +205,10 @@ function m.HandlePanel()
     local open_up = panel.panel_state.open_up
 
     -- Scale dropdown
+    local si = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
     local r = components.DrawDropdown(piano_key_left, cy, scale_w, ch, nil,
-        helpers.CompactAbbreviateScale(config.SCALES[config.state.scale_index].name),
-        panel.SCALE_FULL, config.state.scale_index, 16, open_up)
+        helpers.CompactAbbreviateScale(config.SCALES[si].name),
+        panel.SCALE_FULL, si, 16, open_up)
     if r then config.state.scale_index = r end
 
     -- Octave dropdown
@@ -212,9 +218,10 @@ function m.HandlePanel()
     if r then config.state.octave = math.floor(r - 1) end
 
     -- Chord dropdown
+    local ci = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap, cy, chord_w, ch, nil,
-        config.CHORD_MODES[config.state.chord_mode_index].name,
-        panel.CHORD_OPTIONS, config.state.chord_mode_index, 16, open_up)
+        config.CHORD_MODES[ci].name,
+        panel.CHORD_OPTIONS, ci, 16, open_up)
     if r then config.state.chord_mode_index = r end
 
     -- VEL toggle

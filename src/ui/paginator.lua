@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Paginator UI Component (extracted from components.lua)
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Paginator UI Component (extracted from components.lua)
 local config = require("config")
 local seq_store = require("state.sequencer")
 local ui_store = require("state.ui")

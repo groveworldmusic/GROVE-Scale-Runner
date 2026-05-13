@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Preset Browser
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Preset Browser
 -- Filesystem-based preset browser for saving/loading island note configurations.
 -- Uses io.* for file I/O and reaper.GetResourcePath() for base directory.
 -- Supports folder tree, preset list, favorites, and save/load.
@@ -115,7 +117,7 @@ end
 
 --- Load favorites from REAPER persistent storage.
 function browser.LoadFavorites()
-    local ok, str = pcall(reaper.GetExtState, "GROVE_FL_MIDI", "preset_favorites")
+    local ok, str = pcall(reaper.GetExtState, "GROVE_Scale_Runner", "preset_favorites")
     if ok and str and #str > 0 then
         local ok2, t = pcall(load("return " .. str))
         if ok2 and type(t) == "table" then
@@ -141,7 +143,7 @@ function browser.SaveFavorites()
         table.insert(parts, string.format("%q", p))
     end
     local str = "{" .. table.concat(parts, ",") .. "}"
-    pcall(reaper.SetExtState, "GROVE_FL_MIDI", "preset_favorites", str, true)
+    pcall(reaper.SetExtState, "GROVE_Scale_Runner", "preset_favorites", str, true)
 end
 
 --- Toggle favorite status for a given file path.
@@ -269,6 +271,7 @@ function browser.LoadPreset(file_path)
                 duration = n.duration or 4,
                 velocity = n.velocity or 100,
                 muted = n.muted == true,
+                uuid = island_store.AllocNoteUUID(),
             })
         end
     end
@@ -279,6 +282,7 @@ function browser.LoadPreset(file_path)
     end
 
     island_store.SetNotes(valid_notes)
+    island_store.ClearUndoStacks()
 
     -- v2 format: restore progression and context for full state reconstruction
     if result.version and result.version >= 2 then
@@ -497,24 +501,12 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx)
         return scroll_offset, nil
     end
 
-    -- Draw divider between folder area and file list
-    helpers.SetColor(DIVIDER_COLOR)
-    gfx.line(x, y, x + w, y)
-
-    local list_y = y + 2
-    local list_h = h - 2
+    local list_y = y + 1
+    local list_h = h - 1
     local max_visible = math.floor(list_h / ITEM_H)
     local scroll = math.max(0, math.min(scroll_offset, math.max(0, #files - max_visible)))
     local start_idx = scroll + 1
     local end_idx = math.min(#files, scroll + max_visible)
-
-    -- Header label
-    gfx.setfont(1, "Calibri", 9)
-    helpers.SetColor(theme.colors.text_dim)
-    local hdr = "PRESETS (" .. #files .. ")"
-    local hw, hh = gfx.measurestr(hdr)
-    gfx.x, gfx.y = x + 4, y - 12
-    gfx.drawstr(hdr)
 
     for i = start_idx, end_idx do
         local item_y = list_y + (i - start_idx) * ITEM_H
@@ -658,68 +650,90 @@ function browser.DrawPresetBrowser(x, y, w, h)
 
     current_y = btn_y + BTN_H + 4
 
-    -- Divider line between action row and folder/preset content
+    -- Preset count label (below Rename, above divider — clearly separated)
+    local files = island_store.GetPresetFiles()
+    gfx.setfont(1, "Calibri", 9)
+    helpers.SetColor(theme.colors.text_dim)
+    local hdr = "PRESETS (" .. tostring(#(files or {})) .. ")"
+    local hw, hh = gfx.measurestr(hdr)
+    gfx.x, gfx.y = x + 4, current_y
+    gfx.drawstr(hdr)
+    current_y = current_y + hh + 4
+
+    -- Divider line between action row + count label and folder/preset content
     helpers.SetColor(DIVIDER_COLOR)
     gfx.line(x + 4, current_y, x + w - 4, current_y)
     current_y = current_y + 2
     remaining_h = h - (current_y - y)
 
-    -- ===========================
-    -- Folder list (directory navigation)
-    -- ===========================
-    if remaining_h > 20 then
-        local folder_h = math.min(remaining_h * 0.35, 150)
-        local dirs = {}
-        local tree = island_store.GetPresetTree()
-        if tree and tree.dirs then
-            dirs = tree.dirs
-        end
-
-        local nav_result
-        _, _, nav_result = DrawFolderList(x + 4, current_y, w - 8, folder_h, dirs, 0)
-
-        if nav_result then
-            local action, path = nav_result:match("^(.-):(.+)$")
-            if action == "navigate" and path then
-                island_store.SetCurrentDirectory(path)
-                browser.ScanDirectory(path)
-            end
-        end
-
-        current_y = current_y + folder_h
-        remaining_h = h - (current_y - y)
-    end
-
-    -- ===========================
-    -- Preset list
-    -- ===========================
+    -- ============================================
+    -- Split remaining area: folders LEFT, presets RIGHT
+    -- Vertical divider in the middle
+    -- ============================================
     if remaining_h > 30 then
-        local files = island_store.GetPresetFiles()
-        local scroll = island_store.GetBrowserScroll()
-        local sel_idx = island_store.GetSelectedPresetIdx()
+        local mid_x = x + math.floor(w / 2)
+        local left_w = mid_x - x - 4
+        local right_x = mid_x + 4
+        local right_w = x + w - right_x - 4
+        local content_h = remaining_h
 
-        local _, list_result = DrawPresetList(x + 4, current_y, w - 8, remaining_h, files, scroll, sel_idx)
+        -- Vertical divider line
+        helpers.SetColor(DIVIDER_COLOR)
+        gfx.line(mid_x, current_y, mid_x, current_y + content_h)
 
-        if list_result then
-            local action, value = list_result:match("^(.-):(.+)$")
-            if action == "select" and value then
-                island_store.SetSelectedPresetIdx(tonumber(value))
-            elseif action == "fav" and value then
-                browser.ToggleFavorite(value)
+        -- ===========================
+        -- Folder list (LEFT side)
+        -- ===========================
+        if left_w > 40 then
+            local dirs = {}
+            local tree = island_store.GetPresetTree()
+            if tree and tree.dirs then
+                dirs = tree.dirs
+            end
+
+            local nav_result
+            local folder_scroll
+            folder_scroll, _, nav_result = DrawFolderList(x + 2, current_y, left_w - 2, content_h, dirs, island_store.GetFolderScroll())
+            island_store.SetFolderScroll(folder_scroll)
+
+            if nav_result then
+                local action, path = nav_result:match("^(.-):(.+)$")
+                if action == "navigate" and path then
+                    island_store.SetCurrentDirectory(path)
+                    browser.ScanDirectory(path)
+                end
             end
         end
 
-        -- Scroll via mouse wheel
-        if gfx.mouse_x >= x and gfx.mouse_x <= x + w
-           and gfx.mouse_y >= current_y and gfx.mouse_y <= current_y + remaining_h then
-            local wheel = ui_store.ConsumeMouseWheelDelta()
-            if wheel ~= 0 then
-                local max_scroll = math.max(0, (#files or 0) - math.floor(remaining_h / ITEM_H))
-                island_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
+        -- ===========================
+        -- Preset list (RIGHT side)
+        -- ===========================
+        if right_w > 40 then
+            local files = island_store.GetPresetFiles()
+            local scroll = island_store.GetBrowserScroll()
+            local sel_idx = island_store.GetSelectedPresetIdx()
+
+            local _, list_result = DrawPresetList(right_x, current_y, right_w, content_h, files, scroll, sel_idx)
+
+            if list_result then
+                local action, value = list_result:match("^(.-):(.+)$")
+                if action == "select" and value then
+                    island_store.SetSelectedPresetIdx(tonumber(value))
+                elseif action == "fav" and value then
+                    browser.ToggleFavorite(value)
+                end
+            end
+
+            -- Scroll via mouse wheel over preset list
+            if gfx.mouse_x >= right_x and gfx.mouse_x <= right_x + right_w
+               and gfx.mouse_y >= current_y and gfx.mouse_y <= current_y + content_h then
+                local wheel = ui_store.ConsumeMouseWheelDelta()
+                if wheel ~= 0 then
+                    local max_scroll = math.max(0, (#files or 0) - math.floor(content_h / ITEM_H))
+                    island_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
+                end
             end
         end
-
-        current_y = current_y + remaining_h
     end
 end
 

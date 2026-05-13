@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Dropdown UI Component (extracted from components.lua)
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Dropdown UI Component (extracted from components.lua)
 local config = require("config")
 local ui_store = require("state.ui")
 local helpers = require("ui.helpers")

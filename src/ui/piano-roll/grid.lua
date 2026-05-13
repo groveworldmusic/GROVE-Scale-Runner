@@ -1,4 +1,6 @@
--- GROVE FL MIDI: Piano Roll Grid
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Piano Roll Grid
 -- Renders the pitch×time grid background, beat lines, and vertical keyboard strip.
 -- Extracted from piano-roll.lua monolith (PR1a).
 -- Handles: grid drawing, keyboard strip, scroll/zoom handlers, visible range computation.
@@ -14,7 +16,7 @@ local m = {}
 -- =========================================================
 -- Constants
 -- =========================================================
-m.PITCH_ROW_H = 12          -- Height per pitch row in pixels
+m.PITCH_ROW_H = 16          -- Height per pitch row in pixels
 m.PITCH_LABEL_W = 48        -- Width of pitch labels on the left (keyboard strip)
 m.MIN_PITCH = 12            -- C0
 m.MAX_PITCH = 119           -- B8 (octava 8 completa)
@@ -37,6 +39,7 @@ end
 -- Frame-cache: avoid recomputing visible ranges when scroll/zoom unchanged
 local _cache = {
     scroll_y = nil, scroll_x = nil, zoom_x = nil, w = nil, h = nil,
+    pitch_row_h = nil,
     pitch_start = 0, pitch_end = 0, beat_start = 0, beat_end = 0,
     visible_rows = 0, top_pitch = 0,
 }
@@ -73,7 +76,8 @@ end
 function m.ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
     -- Invalidate cache when parameters change
     if _cache.scroll_y == scroll_y and _cache.scroll_x == scroll_x
-       and _cache.zoom_x == zoom_x and _cache.w == w and _cache.h == h then
+       and _cache.zoom_x == zoom_x and _cache.w == w and _cache.h == h
+       and _cache.pitch_row_h == m.PITCH_ROW_H then
         return _cache.visible_rows, _cache.pitch_start, _cache.pitch_end,
                _cache.top_pitch, _cache.beat_start, _cache.beat_end
     end
@@ -93,6 +97,7 @@ function m.ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
     _cache.zoom_x = zoom_x
     _cache.w = w
     _cache.h = h
+    _cache.pitch_row_h = m.PITCH_ROW_H
     _cache.visible_rows = visible_rows
     _cache.pitch_start = pitch_start
     _cache.pitch_end = pitch_end
@@ -104,11 +109,12 @@ function m.ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
 end
 
 -- =========================================================
--- Vertical Piano Keyboard (pitch bands)
--- Each semitone gets its own band (RH tall), colored by white/black key class.
--- This avoids the E-F / B-C overlap that occurs with uniform-height key shapes,
--- and eliminates excessive gaps between keys 2 semitones apart.
--- Standard piano roll convention (FL Studio, Ableton, etc.).
+-- Vertical Piano Keyboard (uniform rows)
+-- Each semitone = full row height (1×RH). White keys get
+-- piano_white fill, black keys get piano_black fill. Every
+-- row gets label, scale indicator, and active note glow.
+-- No piano-style key shaping — uniform grid, like FL Studio
+-- or Ableton piano roll.
 -- =========================================================
 
 -- Scale note cache (Issue 13 pattern)
@@ -116,17 +122,17 @@ local _vpk_scale_root, _vpk_scale_idx
 local _vpk_scale_notes, _vpk_note_to_degree = {}, {}
 
 --- Draw the vertical piano keyboard for the visible pitch range.
---- Each visible pitch row gets a solid band colored by key class (white/black).
---- Aligned 1:1 with grid rows — no overlap, no gaps between adjacent rows.
+--- Each semitone row (1×RH) is filled with its key color. All rows are
+--- uniform height — no black key overlay, no shorter/narrower keys.
+--- Every row gets label + scale indicator + active glow.
 --- @param kx,ky,kw,kh Keyboard strip position & size (pixels)
---- @param scroll_y Vertical scroll offset in pitch rows (unused, kept for API compat)
+--- @param scroll_y number Vertical scroll offset (unused, kept for API compat)
 --- @param top_pitch Highest pitch visible at grid top
 function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     local RH = m.PITCH_ROW_H
     local MIN = m.MIN_PITCH
-    local MAX = m.MAX_PITCH
 
-    -- Refresh scale cache (Issue 13 pattern, shared helper)
+    -- Refresh scale cache (Issue 13 pattern)
     if _vpk_scale_root ~= config.state.root_index or _vpk_scale_idx ~= config.state.scale_index then
         _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(config.state.root_index, config.state.scale_index)
         _vpk_scale_root, _vpk_scale_idx = config.state.root_index, config.state.scale_index
@@ -140,70 +146,101 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
 
     local col = require("ui.colors")
 
-    -- Strip background (dark; fills gaps between the grid area and band edges)
+    -- Strip background
     helpers.SetColor({0.06, 0.06, 0.06, 0.95})
     gfx.rect(kx, ky, kw, kh, 1)
 
-    -- Number of rows to draw (matches grid rows)
     local visible_rows = math.ceil(kh / RH) + 2
 
-    -- Pitch bands: one band per semitone, exactly RH tall.
-    -- No gap — bands are aligned 1:1 with grid pitch rows.
+    -- ================================================================
+    -- PASS 1: Fill every row
+    --   White keys: piano_white (or btn_active if root)
+    --   Black keys: piano_black (or btn_active if root)
+    -- ================================================================
     for row = 0, visible_rows do
         local pitch = top_pitch - row
         if pitch < MIN then break end
-
         local py = ky + row * RH
         if py >= ky + kh then break end
 
-        local pc = (pitch % 12) + 1     -- 1-indexed pitch class
-        local is_white = WHITE_KEY_SET[pitch % 12]  -- 0-indexed lookup
+        -- Clip row height to viewport bottom (prevents overflow into scrollbar area)
+        local row_h = math.min(RH, ky + kh - py)
+        if row_h <= 0 then break end
+
+        local pc = (pitch % 12) + 1
+        local is_white = WHITE_KEY_SET[pitch % 12]
         local root = config.state.root_index == pc
-        local sc = _vpk_scale_notes[pc]
 
-        -- Band fill
-        if root then
-            helpers.SetColor(theme.colors.btn_active)
-        elseif is_white then
-            helpers.SetColor(theme.colors.piano_white)
+        if is_white then
+            helpers.SetColor(root and theme.colors.btn_active or theme.colors.piano_white)
         else
-            helpers.SetColor(theme.colors.piano_black)
+            helpers.SetColor(root and theme.colors.btn_active or theme.colors.piano_black)
         end
-        gfx.rect(kx, py, kw, RH, 1)
+        gfx.rect(kx, py, kw, row_h, 1)
+    end
 
-        -- Subtle horizontal separator between rows (matches grid line positions)
-        if py + RH < ky + kh then
-            helpers.SetColor({0.1, 0.1, 0.1, 0.35})
-            gfx.line(kx, py + RH, kx + kw, py + RH)
-        end
+    -- ================================================================
+    -- PASS 2: Labels + scale indicators + active glow on ALL rows
+    -- ================================================================
+    local fs = math.min(18, math.max(14, math.floor(RH / 1.2)))
+    for row = 0, visible_rows do
+        local pitch = top_pitch - row
+        if pitch < MIN then break end
+        local py = ky + row * RH
+        if py >= ky + kh then break end
 
-        -- Scale indicator (right side vertical bar)
+        -- Clip row height to viewport bottom (same as PASS 1)
+        local row_h = math.min(RH, ky + kh - py)
+        if row_h <= 0 then break end
+
+        local pc = (pitch % 12) + 1
+        local is_white = WHITE_KEY_SET[pitch % 12]
+        local sc = _vpk_scale_notes[pc]
+        local am = am12[pc]
+        local root = config.state.root_index == pc
+
+        -- Scale indicator (right edge)
         if not root and sc then
             helpers.SetColor(col.DegreeColor(_vpk_note_to_degree[pc]), 0.7)
-            gfx.rect(kx + kw - 5, py + 1, 3, RH - 2, 1)
+            gfx.rect(kx + kw - 5, py + 1, 3, row_h - 2, 1)
         end
 
         -- Active note glow
-        if not root and am12[pc] then
+        if not root and am then
             local dg = _vpk_note_to_degree[pc]
             local gl = dg and col.DegreeColor(dg) or {1,1,1,0.3}
             helpers.SetColor(gl, 0.25)
-            gfx.rect(kx, py, kw, RH, 1)
+            gfx.rect(kx, py, kw, row_h, 1)
         end
 
-        -- Label (left side)
-        local fs = math.min(10, math.max(7, math.floor(RH / 1.8)))
-        helpers.SetColor(root and theme.colors.text or theme.colors.text_dark)
-        gfx.setfont(1, "Calibri", fs)
-        local lb = KeyboardNoteLabel(pitch)
-        local _, lh = gfx.measurestr(lb)
-        if RH >= 8 then
-            gfx.x, gfx.y = kx + 2, py + math.floor((RH - lh) / 2)
+        -- Label
+        if row_h >= 8 then
+            if is_white then
+                helpers.SetColor(root and theme.colors.text or theme.colors.text_dark)
+            else
+                helpers.SetColor(theme.colors.text)
+            end
+            gfx.setfont(1, "Calibri", fs)
+            local lb = KeyboardNoteLabel(pitch)
+            local _, lh = gfx.measurestr(lb)
+            gfx.x, gfx.y = kx + 2, py + math.floor((row_h - lh) / 2)
             gfx.drawstr(lb)
         end
     end
 
-    -- Separator line between keyboard and grid
+    -- ================================================================
+    -- Separator lines
+    -- ================================================================
+    for row = 0, visible_rows do
+        local pitch = top_pitch - row
+        if pitch < MIN then break end
+        local py = ky + row * RH
+        if py + RH < ky + kh then
+            helpers.SetColor({0.1, 0.1, 0.1, 0.35})
+            gfx.line(kx, py + RH, kx + kw, py + RH)
+        end
+    end
+
     helpers.SetColor({0.15, 0.15, 0.15, 0.6})
     gfx.line(kx + kw, ky, kx + kw, ky + kh)
 end
@@ -237,22 +274,26 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
     end
 
     -- Draw pitch row backgrounds + horizontal lines
+    -- py check uses >= to prevent overflow past bounds.
     for row_offset = 0, visible_rows do
         local pitch = top_pitch - row_offset
         if pitch < MIN_PITCH then break end
 
         local py = y + row_offset * m.PITCH_ROW_H
-        if py > y + h then break end
+        if py >= y + h then break end
 
         local is_white = WHITE_KEY_SET[pitch % 12] == true
 
-        -- Row background tint
+        -- Row background tint (clamped to remaining height)
+        local row_h = math.min(m.PITCH_ROW_H, y + h - py)
         helpers.SetColor(is_white and PITCH_ROW_WHITE or PITCH_ROW_DARK)
-        gfx.rect(x, py, w, m.PITCH_ROW_H, 1)
+        gfx.rect(x, py, w, row_h, 1)
 
-        -- Horizontal line (bottom of each row)
-        helpers.SetColor(PITCH_ROW_BLACK)
-        gfx.line(x, py + m.PITCH_ROW_H, x + w, py + m.PITCH_ROW_H)
+        -- Horizontal line at row boundary (skip if it would overflow)
+        if py + row_h < y + h then
+            helpers.SetColor(PITCH_ROW_BLACK)
+            gfx.line(x, py + row_h, x + w, py + row_h)
+        end
     end
 
     -- Draw vertical beat lines (4-tier hierarchy)

@@ -1,35 +1,31 @@
--- GROVE FL MIDI: Island State Store
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Island State Store
 -- Encapsulates island piano-roll state with getters/setters.
 -- Schema: island_active, preset_panel_visible, notes (flat note list),
 --         playback_pos, scroll_offset_y/x, zoom_x, selected_indices, note_count.
 -- Phase 4: Added tool_mode, selected_indices (replacing selected_note_index),
 --          lasso state, AddNote/RemoveNoteAtIndex.
 local config = require("config")
+local api_guard = require("core.api-guard")
 
-local MAX_UNDO = 50
-local _uuid_to_idx = {}  -- Reverse index: note.uuid → array index
-
+local m = {}
+local _uuid_to_idx = {}
 local island_state = {
     island_active = false,
-    preset_panel_visible = true,
+    preset_panel_visible = false,
     notes = {},
-    playback_pos = 0,
-    scroll_offset_y = 36,  -- default: scroll position
-    scroll_offset_x = 0,
-    zoom_x = 40,
-    tool_mode = "pointer",               -- "pointer"|"pencil"|"eraser"
-    selected_indices = {},               -- {[idx]=true} replaces selected_note_index
-    _last_selected_idx = nil,            -- tracks last-selected index for GetPrimarySelectedIndex
     note_count = 0,
-
-    -- Lasso state (Phase 4)
+    playback_pos = 0,
+    scroll_offset_y = 58,   -- C3 abajo justo encima del HSB, C#3 sobre C3, arriba C#4
+    scroll_offset_x = 0,
+    zoom_x = 28,        -- 16 beats (4 measures) fit even with presets panel open (220px)
+    selected_indices = {},
+    _last_selected_idx = nil,
+    tool_mode = "pointer",
     lasso_active = false,
-    lasso_start_x = 0,
-    lasso_start_y = 0,
-    lasso_end_x = 0,
-    lasso_end_y = 0,
-
-    -- Preset browser state
+    lasso_start_x = 0, lasso_start_y = 0,
+    lasso_end_x = 0, lasso_end_y = 0,
     current_directory = "",
     preset_root = "",
     preset_tree = {},
@@ -39,36 +35,19 @@ local island_state = {
     browser_error = nil,
     favorites = {},
     bookmarks = {},
-    velocity_panel_expanded = true,
-
-    -- ToggleIsland resilience (PR1b)
+    velocity_panel_expanded = false,
     island_transition_in_progress = false,
     pre_toggle_dock = 0,
     pre_toggle_rect = nil,
-
-    -- Snap state (PR2)
-    snap_enabled = true,
-    snap_resolution = 4,         -- subdivisions per whole note: 1/2/4/8/16/32
-    snap_triplet = false,
-
-    -- Note drag/resize state (PR2)
-    note_drag_active = false,
-    note_drag_indices = {},
-    note_drag_start_pitch = 0,
-    note_drag_start_beat = 0,
-    note_drag_origin_mx = 0,
-    note_drag_origin_my = 0,
-    note_resize_edge = nil,      -- "left" or "right"
-
-    -- Undo/redo state (PR3)
+    snap_enabled = false,
+    snap_resolution = 4,
+    next_note_uuid = 1,
     undo_stack = {},
     redo_stack = {},
-    next_note_uuid = 1,
     undo_depth = 0,
     redo_depth = 0,
+    folder_scroll = 0,
 }
-
-local m = {}
 
 function m.Init(defaults)
     if defaults.island_active ~= nil then island_state.island_active = defaults.island_active end
@@ -267,6 +246,8 @@ function m.GetSelectedPresetIdx() return island_state.selected_preset_idx end
 function m.SetSelectedPresetIdx(v) island_state.selected_preset_idx = v end
 function m.GetBrowserScroll() return island_state.browser_scroll end
 function m.SetBrowserScroll(v) island_state.browser_scroll = math.max(0, v or 0) end
+function m.GetFolderScroll() return island_state.folder_scroll end
+function m.SetFolderScroll(v) island_state.folder_scroll = math.max(0, v or 0) end
 function m.GetBrowserError() return island_state.browser_error end
 function m.SetBrowserError(v) island_state.browser_error = v end
 function m.GetFavorites() return island_state.favorites end
@@ -370,6 +351,8 @@ end
 -- Undo/Redo Stack Functions (PR3)
 -- =========================================================
 
+local MAX_UNDO = 50
+
 --- Push an undo entry onto the undo stack.
 --- Automatically clears the redo stack (new edit invalidates redo).
 --- FIFO eviction when stack exceeds MAX_UNDO (50).
@@ -448,7 +431,8 @@ function m.GetRedoDepth() return island_state.redo_depth end
 --- @return number 0-127 (MIDI pitch)
 local function ProgressionEntryToPitch(root_idx, scale_idx, degree_idx, octave_val)
     local root = root_idx - 1
-    local scale = config.SCALES[scale_idx]
+    local si = api_guard.ClampIndex(scale_idx, 1, #config.SCALES)
+    local scale = config.SCALES[si]
     local n_scale = #scale.intervals
     local deg0 = degree_idx - 1
     local oct_off = math.floor(deg0 / n_scale)
@@ -463,7 +447,8 @@ end
 --- @param entry table Progression slot entry
 --- @return table Array of MIDI pitch numbers
 local function EntryToPitches(entry)
-    local chord_mode = config.CHORD_MODES[entry.chord_mode_index or 1]
+    local ci = api_guard.ClampIndex(entry.chord_mode_index or 1, 1, #config.CHORD_MODES)
+    local chord_mode = config.CHORD_MODES[ci]
     local pitches = {}
     for _, off in ipairs(chord_mode.offsets) do
         local pitch = ProgressionEntryToPitch(

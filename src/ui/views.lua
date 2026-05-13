@@ -1,9 +1,12 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
 local config = require("config")
 local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
 local midi_store = require("state.midi")
 local ui_store = require("state.ui")
 local island_store = require("state.island")
+local persist = require("state.persist")
 local theme = require("ui.theme")
 local components = require("ui.components")
 local helpers = require("ui.helpers")
@@ -17,6 +20,7 @@ local snap = require("core.snap")
 local timeline = require("ui.timeline")
 local velocity = require("ui.velocity")
 local preset_browser = require("ui.preset-browser")
+local api_guard = require("core.api-guard")
 
 local views = {}
 
@@ -34,17 +38,23 @@ local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
 
 -- Shared right-click quick config menu (used by both views)
 local function ShowQuickConfigMenu()
-    local m = "ROOT: " .. config.NOTE_NAMES[config.state.root_index] .. "|<SCALE: " .. helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name) .. "|OCTAVE: C" .. math.floor(config.state.octave) .. "|CHORD: " .. config.CHORD_MODES[config.state.chord_mode_index].name .. "|VELOCITY: " .. (midi_store.GetUseVelocity() and "ON" or "OFF") .. "|Dock in Transport Bar"
+    local si_qc = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local ci_qc = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local m = "ROOT: " .. config.NOTE_NAMES[api_guard.ClampIndex(config.state.root_index, 1, 12)] .. "|<SCALE: " .. helpers.AbbreviateScale(config.SCALES[si_qc].name) .. "|OCTAVE: C" .. math.floor(config.state.octave) .. "|CHORD: " .. config.CHORD_MODES[ci_qc].name .. "|VELOCITY: " .. (midi_store.GetUseVelocity() and "ON" or "OFF") .. "|Dock in Transport Bar"
     gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
     local choice = gfx.showmenu(m)
     if choice == 1 then
         config.state.root_index = (config.state.root_index % 12) + 1
+        persist.Save("root_index", config.state.root_index)
     elseif choice == 2 then
         config.state.scale_index = (config.state.scale_index % #config.SCALES) + 1
+        persist.Save("scale_index", config.state.scale_index)
     elseif choice == 3 then
         config.state.octave = math.floor((config.state.octave + 1) % 9)
+        persist.Save("octave", config.state.octave)
     elseif choice == 4 then
         config.state.chord_mode_index = (config.state.chord_mode_index % #config.CHORD_MODES) + 1
+        persist.Save("chord_mode_index", config.state.chord_mode_index)
     elseif choice == 5 then
         midi_store.SetUseVelocity(not midi_store.GetUseVelocity())
     elseif choice == 6 then
@@ -87,8 +97,11 @@ function views.DrawHeader()
 
     -- State indicator on the same line right after copyright
     gfx.setfont(1, "Calibri", layout.US(900))
-    local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
-    local state_str = "  ·  " .. config.NOTE_NAMES[config.state.root_index] .. " " .. scale_abbr .. " · " .. config.CHORD_MODES[config.state.chord_mode_index].name .. " · C" .. math.floor(config.state.octave)
+    local ri_h = api_guard.ClampIndex(config.state.root_index, 1, 12)
+    local si_h = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local ci_h = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local scale_abbr = helpers.AbbreviateScale(config.SCALES[si_h].name)
+    local state_str = "  ·  " .. config.NOTE_NAMES[ri_h] .. " " .. scale_abbr .. " · " .. config.CHORD_MODES[ci_h].name .. " · C" .. math.floor(config.state.octave)
     local sw, sh = gfx.measurestr(state_str)
     local state_x = math.min(ver_x + vw + layout.US(250), help_x - sw - layout.US(250))
     gfx.x, gfx.y = state_x, ver_y
@@ -115,6 +128,7 @@ function views.DrawHeader()
         local choice = gfx.showmenu(menu)
         if choice == 1 then
             ui_store.SetColorMode(is_grade and "flat" or "grade")
+            persist.Save("color_mode", ui_store.GetColorMode())
         elseif choice == 2 then
             local ret, csv = reaper.GetUserInputs("Posicion Vista Mini", 3,
                 "Offset X (0=auto),Offset Y,extrawidth=200",
@@ -190,10 +204,11 @@ function views.DrawIslands()
     -- MODO dropdown (más cerca del label, altura reducida)
     local modo_drop_x = modo_lbl_x + mw + layout.US(400)
     local modo_drop_w = layout.US(7000)
-    local modo_val = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
+    local si_is = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local modo_val = helpers.AbbreviateScale(config.SCALES[si_is].name)
     local choice = components.DrawDropdown(modo_drop_x, row_y, modo_drop_w, row_h, nil, modo_val, 
-                                          SCALE_OPTIONS, config.state.scale_index, btn_font_size)
-    if choice then config.state.scale_index = choice end
+                                          SCALE_OPTIONS, si_is, btn_font_size)
+    if choice then config.state.scale_index = choice; persist.Save("scale_index", choice) end
     
     -- Grid label + dropdown (entre MODO y NOTE display)
     local note_x = layout.UX(18826)
@@ -234,13 +249,13 @@ function views.DrawIslands()
     local oct_gap = layout.US(171)
     local oct_choice = components.DrawDropdown(btn_x, oct_content_y, std_btn_w, short_btn_h,
         nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, oct_open_up)  -- Issue 9
-    if oct_choice then config.state.octave = math.floor(oct_choice - 1) end
+    if oct_choice then config.state.octave = math.floor(oct_choice - 1); persist.Save("octave", config.state.octave) end
     if components.DrawButton(btn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5 end
+                             "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5; persist.Save("octave", 5) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4 end
+                             "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4; persist.Save("octave", 4) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3 end
+                             "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3; persist.Save("octave", 3) end
 
     ---------------------------------------------------------------------------
     -- Island 3: Chord (144px height, content fits inside)
@@ -254,13 +269,13 @@ function views.DrawIslands()
     gfx.drawstr("CHORD")
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
     if components.DrawButton(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
-                             "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4 end
+                             "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4; persist.Save("chord_mode_index", 4) end
     if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3 end
+                             "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3; persist.Save("chord_mode_index", 3) end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2 end
+                             "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2; persist.Save("chord_mode_index", 2) end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1 end
+                             "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1; persist.Save("chord_mode_index", 1) end
 
     ---------------------------------------------------------------------------
     -- Island: ISLA INVERSIONES (192×52px, below Octava + Chord, spans both)
@@ -305,6 +320,7 @@ function views.DrawIslands()
         if components.DrawButton(bx, inv_item_y, inv_btn_w, inv_item_h,
                                  inv_labels[i], config.state.inversion_index == inv_idx, inv_font) then
             config.state.inversion_index = (config.state.inversion_index == inv_idx) and 1 or inv_idx
+            persist.Save("inversion_index", config.state.inversion_index)
         end
     end
 
@@ -489,7 +505,8 @@ function views.DrawPerformanceArea()
     local margin = layout.US(800)
     local avail_w = w - (margin * 2)
     local pad_w, pad_h = layout.US(5300), layout.US(4116)
-    local num_intervals = #config.SCALES[config.state.scale_index].intervals
+    local si_pa = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local num_intervals = #config.SCALES[si_pa].intervals
     local num_pads = 7  -- always draw 7 slots; extra ones beyond num_intervals draw grayed out
     local pad_spacing = (avail_w - (pad_w * num_pads)) / (num_pads - 1)
     for i = 1, num_pads do
@@ -575,31 +592,18 @@ local _sb_dragging = false
 local _sb_drag_start_x = 0
 local _sb_scroll_at_drag_start = 0
 
-function views.DrawMIDIIsland(char)
-    if not midi.midi_island_expanded then
-        _island_progression_revision = -1
-        _sb_dragging = false  -- reset scrollbar drag state on collapse (H7)
-        return
-    end
+-- Vertical scrollbar thumb drag state
+local _vsb_dragging = false
+local _vsb_drag_start_y = 0
+local _vsb_scroll_at_drag_start = 0
 
-    -- Reload notes from progression whenever it changes (drag to slots, etc.)
-    local cur_rev = seq_store.GetProgressionRevision()
-    if cur_rev ~= _island_progression_revision then
-        island_store.LoadNotesFromProgression(seq_store)
-        piano_roll.MarkNotesDirty()
-        _island_progression_revision = cur_rev
-        -- Notes now live-update: piano roll renders them next frame
-    end
-
-    -- =========================================
-    -- Keyboard Shortcut Dispatch (PR3)
+-- Extracted helpers from DrawMIDIIsland
+function views.DrawKeyboardShortcutOverlay(char, tool_mode)
     -- Uses `char` passed from MainLoop via DrawFullView.
     -- Single gfx.getchar() per frame — avoids double-read crash (regression PR3).
     -- Ctrl+Z/Y/X/C/V, Delete, arrows, Shift+arrows.
     -- Unhandled keys fall through to REAPER.
     -- Escape: Cancel note drag/resize (PR2).
-    -- =========================================
-    local tool_mode = island_store.GetToolMode()
     local keyboard_consumed = false
 
     -- Handle Escape for cancel drag first (always active)
@@ -613,69 +617,10 @@ function views.DrawMIDIIsland(char)
         local scroll_beat = island_store.GetScrollOffsetX()
         keyboard_consumed = piano_roll.HandleKeyboardShortcut(char, scroll_beat)
     end
+end
 
-    -- Island header: CH + PRESETS buttons side by side, centered
-    local perf_end = 27738
-    local vel_h_v = 1980
-    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)
-    local top_pad = 428
-    local btn_y_v = perf_end + top_pad
-    local b_w = layout.US(5347)
-    local b_h = layout.US(vel_h_v)
-    local content_w = layout.US(39914)
-    local btn_gap = 8
-    local total_w = b_w * 2 + btn_gap
-    local header_y = layout.UY(btn_y_v)
-
-    -- CH button (left of center)
-    local ch_x = layout.UX(0) + math.floor((content_w - total_w) / 2)
-    local presets_x = ch_x + b_w + btn_gap
-
-    -- MIDI CH button
-    local ch = midi.midi_channel
-    local ch_hover = gfx.mouse_x >= ch_x and gfx.mouse_x <= ch_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
-    helpers.SetColor(ch_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    components.DrawRoundedRect(ch_x, header_y, b_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and ch_hover and not drag_store.GetIsDragging() then
-        local menu = ""
-        for i = 1, 16 do
-            menu = menu .. (i == ch and "!" or "") .. tostring(i) .. "|"
-        end
-        gfx.x, gfx.y = ch_x, header_y + b_h
-        local choice = gfx.showmenu(menu:sub(1, -2))
-        if choice and choice > 0 then midi.midi_channel = choice end
-    end
-    helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local ch_label = "CH " .. tostring(ch)
-    local ch_lw, ch_lh = gfx.measurestr(ch_label)
-    gfx.x, gfx.y = ch_x + (b_w - ch_lw)/2, header_y + (b_h - ch_lh)/2
-    gfx.drawstr(ch_label)
-    if ch_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("MIDI Channel: " .. ch, layout.US(700))
-    end
-
-    -- PRESETS button (right of CH, same size and style)
-    local ps_hover = gfx.mouse_x >= presets_x and gfx.mouse_x <= presets_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
-    local ps_active = island_store.GetPresetPanelVisible()
-    helpers.SetColor(ps_hover and theme.colors.btn_hover or (ps_active and theme.colors.btn_active or theme.colors.island_bg))
-    components.DrawRoundedRect(presets_x, header_y, b_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and ps_hover and not drag_store.GetIsDragging() then
-        island_store.SetPresetPanelVisible(not ps_active)
-    end
-    helpers.SetColor(ps_active and theme.colors.text or theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local ps_label = "PRESETS"
-    local ps_lw, ps_lh = gfx.measurestr(ps_label)
-    gfx.x, gfx.y = presets_x + (b_w - ps_lw)/2, header_y + (b_h - ps_lh)/2
-    gfx.drawstr(ps_label)
-    if ps_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip(ps_active and "Hide preset panel" or "Show preset panel", layout.US(700))
-    end
-
-    -- =========================================
+function views.DrawSnapControls(presets_x, b_w, b_h, header_y)
     -- Snap Controls (PR2) — right of PRESETS
-    -- =========================================
     local snap_toggle_w = math.floor(b_w * 0.65)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_trip_w = math.floor(b_w * 0.35)
@@ -753,10 +698,10 @@ function views.DrawMIDIIsland(char)
     if stp_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip(snap_trip and "Triplet: ON" or "Triplet: OFF", layout.US(700))
     end
+end
 
-    -- =========================================
+function views.DrawToolModeRow(ch_x, b_w, b_h, header_y)
     -- Tool mode buttons (Phase 4) — left of CH
-    -- =========================================
     local tool_btn_w = math.floor(b_w * 0.55)
     local tool_btn_gap = 4
     local tools_total_w = tool_btn_w * 3 + tool_btn_gap * 2
@@ -792,12 +737,119 @@ function views.DrawMIDIIsland(char)
             helpers.DrawTooltip(tool_hints[ti], layout.US(700))
         end
     end
+end
+
+function views.DrawPresetPanel(island_x, y, preset_w, h)
+    -- Preset Panel (left, collapsible) — darker bg to differentiate from main content
+    if preset_w > 0 then
+        local info_h = 0
+        local content_h = h - info_h
+        local p_radius = 10
+        helpers.SetColor(theme.colors.island_panel_bg)
+        components.DrawRoundedRectEx(island_x, y, preset_w, content_h, p_radius, {tl=true})
+
+        -- Draw the preset browser content
+        local browser_y = y + 4
+        local browser_h = content_h - 4
+        local root = island_store.GetPresetRoot()
+        if not root or #root == 0 then
+            preset_browser.Init()
+        end
+        preset_browser.DrawPresetBrowser(island_x, browser_y, preset_w, browser_h)
+    end
+end
+
+function views.DrawMIDIIsland(char)
+    if not midi.midi_island_expanded then
+        _island_progression_revision = -1
+        _sb_dragging = false  -- reset scrollbar drag state on collapse (H7)
+        _vsb_dragging = false
+        return
+    end
+
+    -- Reload notes from progression whenever it changes (drag to slots, etc.)
+    local cur_rev = seq_store.GetProgressionRevision()
+    if cur_rev ~= _island_progression_revision then
+        island_store.LoadNotesFromProgression(seq_store)
+        piano_roll.MarkNotesDirty()
+        _island_progression_revision = cur_rev
+        -- Notes now live-update: piano roll renders them next frame
+    end
+
+    -- =========================================
+    -- Keyboard Shortcut Dispatch (PR3)
+    -- =========================================
+    local tool_mode = island_store.GetToolMode()
+    views.DrawKeyboardShortcutOverlay(char, tool_mode)
+
+    -- Island header: CH + PRESETS buttons side by side, centered
+    local perf_end = 27738
+    local vel_h_v = 1980
+    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)
+    local top_pad = 428
+    local btn_y_v = perf_end + top_pad
+    local b_w = layout.US(5347)
+    local b_h = layout.US(vel_h_v)
+    local content_w = layout.US(39914)
+    local btn_gap = 8
+    local total_w = b_w * 2 + btn_gap
+    local header_y = layout.UY(btn_y_v)
+
+    -- CH button (left of center)
+    local ch_x = layout.UX(0) + math.floor((content_w - total_w) / 2)
+    local presets_x = ch_x + b_w + btn_gap
+
+    -- MIDI CH button
+    local ch = midi.midi_channel
+    local ch_hover = gfx.mouse_x >= ch_x and gfx.mouse_x <= ch_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    helpers.SetColor(ch_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(ch_x, header_y, b_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and ch_hover and not drag_store.GetIsDragging() then
+        local menu = ""
+        for i = 1, 16 do
+            menu = menu .. (i == ch and "!" or "") .. tostring(i) .. "|"
+        end
+        gfx.x, gfx.y = ch_x, header_y + b_h
+        local choice = gfx.showmenu(menu:sub(1, -2))
+        if choice and choice > 0 then midi.midi_channel = choice end
+    end
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1500))
+    local ch_label = "CH " .. tostring(ch)
+    local ch_lw, ch_lh = gfx.measurestr(ch_label)
+    gfx.x, gfx.y = ch_x + (b_w - ch_lw)/2, header_y + (b_h - ch_lh)/2
+    gfx.drawstr(ch_label)
+    if ch_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip("MIDI Channel: " .. ch, layout.US(700))
+    end
+
+    -- PRESETS button (right of CH, same size and style)
+    local ps_hover = gfx.mouse_x >= presets_x and gfx.mouse_x <= presets_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local ps_active = island_store.GetPresetPanelVisible()
+    helpers.SetColor(ps_hover and theme.colors.btn_hover or (ps_active and theme.colors.btn_active or theme.colors.island_bg))
+    components.DrawRoundedRect(presets_x, header_y, b_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and ps_hover and not drag_store.GetIsDragging() then
+        island_store.SetPresetPanelVisible(not ps_active)
+    end
+    helpers.SetColor(ps_active and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1500))
+    local ps_label = "PRESETS"
+    local ps_lw, ps_lh = gfx.measurestr(ps_label)
+    gfx.x, gfx.y = presets_x + (b_w - ps_lw)/2, header_y + (b_h - ps_lh)/2
+    gfx.drawstr(ps_label)
+    if ps_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(ps_active and "Hide preset panel" or "Show preset panel", layout.US(700))
+    end
+
+    views.DrawSnapControls(presets_x, b_w, b_h, header_y)
+
+    views.DrawToolModeRow(ch_x, b_w, b_h, header_y)
 
     -- Island background below the gap
     local island_y_v = btn_y_v + b_h + gap_v - top_pad
     local y = layout.UY(island_y_v)
     local w = layout.US(39914)
-    local h = layout.US(15400)
+    local h = layout.US(14000)
 
     helpers.SetColor(theme.colors.island_bg)
     components.DrawRoundedRect(layout.UX(0), y, w, h, 15, true)
@@ -820,64 +872,43 @@ function views.DrawMIDIIsland(char)
 
     -- Timeline ruler (top)
     local tl_h = timeline.TIMELINE_H
-    local info_h = 18
+    local info_h = 0
 
-    -- Determine velocity editor height BEFORE layout math (task 3.4)
-    local ve_h = velocity.EDITOR_H
-    if not island_store.GetVelocityPanelExpanded() then
-        ve_h = velocity.COLLAPSED_H
-    end
+    -- Velocity area HIDDEN (disabled temporarily)
+    local ve_h = 0
 
-    -- Piano roll (center, fills remaining space)
+    -- Scrollbar track size
+    local SB_SIZE = 7
+
+    -- Piano roll (center, fills remaining space minus scrollbar tracks)
     local pr_y = y + tl_h
-    local pr_h = h - tl_h - ve_h - info_h
+    local pr_h = h - tl_h - ve_h - info_h - SB_SIZE
 
-    -- Velocity editor (below piano roll)
+    -- Velocity editor (disabled, ve_h=0 so ve_y = pr_y + pr_h = end of piano roll)
     local ve_y = pr_y + pr_h
 
-    -- Info bar at bottom of island
-    local info_y = ve_y + ve_h
-
-    -- =========================================
-    -- Preset Panel (left, collapsible) — darker bg to differentiate from main content
-    -- =========================================
-    if preset_w > 0 then
-        local content_h = h - info_h
-        local p_radius = 10
-        helpers.SetColor(theme.colors.island_panel_bg)
-        components.DrawRoundedRectEx(island_x, y, preset_w, content_h, p_radius, {tl=true})
-
-        -- Draw the preset browser content
-        local browser_y = y + 4
-        local browser_h = content_h - 4
-        local root = island_store.GetPresetRoot()
-        if not root or #root == 0 then
-            preset_browser.Init()
-        end
-        preset_browser.DrawPresetBrowser(island_x, browser_y, preset_w, browser_h)
-    end
+    views.DrawPresetPanel(island_x, y, preset_w, h)
 
     -- =========================================
     -- Right Area: Timeline + Piano Roll + Velocity
     -- =========================================
     if right_w > 0 then
-        -- Nested panel background with only bottom corners (top corners handled by timeline ruler)
         local content_radius = 10
-        local content_h = h - info_h
+        local has_presets = island_store.GetPresetPanelVisible()
+        local ruler_round_tl = not has_presets  -- rounded when no presets, square when presets meet ruler
+
+        -- 1. Timeline Ruler (draws its own background with proper top corners)
+        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h, ruler_round_tl)
+
+        -- 2. Content background (starts BELOW ruler — only bottom corners)
+        local content_below_ruler_h = h - tl_h - info_h
         helpers.SetColor(theme.colors.island_bg)
-        components.DrawRoundedRectEx(right_x, y, right_w, content_h, content_radius, {bl=true, br=true})
+        components.DrawRoundedRectEx(right_x, pr_y, right_w, content_below_ruler_h, content_radius, {bl=true, br=true})
 
-        -- Timeline Ruler
-        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h)
+        -- Piano Roll (content area minus 7px for VSB track on right)
+        piano_roll.DrawPianoRoll(right_x, pr_y, right_w - SB_SIZE, pr_h)
 
-        -- Piano Roll
-        piano_roll.DrawPianoRoll(right_x, pr_y, right_w, pr_h)
-
-        -- Velocity Editor
-        local notes = island_store.GetNotes()
-        velocity.DrawVelocityEditor(right_x, ve_y, right_w, ve_h, notes,
-            island_store.GetScrollOffsetX(), island_store.GetZoomX(),
-            island_store.GetSelectedNoteIndex())
+        -- Velocity Editor (disabled)
 
         -- Mouse Event Handling within the right area
         local mx, my = gfx.mouse_x, gfx.mouse_y
@@ -899,7 +930,7 @@ function views.DrawMIDIIsland(char)
         end
 
         -- Piano roll left-click -> route by tool mode (Phase 4)
-        if not click_consumed and mx >= right_x and mx < right_x + right_w
+        if not click_consumed and mx >= right_x and mx < right_x + right_w - SB_SIZE
            and my >= pr_y and my < pr_y + pr_h then
             local grid_x = right_x + piano_roll.PITCH_LABEL_W
             -- tool_mode declared above in Delete Key section
@@ -907,6 +938,10 @@ function views.DrawMIDIIsland(char)
 
             if tool_mode == "pointer" then
                 if click then
+                    -- Safeguard: force-finalize any stale lasso before new action
+                    if island_store.GetLassoActive() then
+                        island_store.SetLassoActive(false)
+                    end
                     if in_grid then
                         local notes = island_store.GetNotes()
                         local hit_idx = piano_roll.NoteBlockHitTest(mx, my, notes,
@@ -924,7 +959,7 @@ function views.DrawMIDIIsland(char)
                                 -- Click on note body: select then arm potential drag
                                 piano_roll.HandleMouseClick(mx, my, grid_x, pr_y,
                                     island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
-                                    island_store.GetZoomX())
+                                    island_store.GetZoomX(), (gfx.mouse_cap & 32) ~= 0)
                                 piano_roll.ArmNoteDrag(hit_idx, mx, my)
                             end
                         else
@@ -1004,8 +1039,8 @@ function views.DrawMIDIIsland(char)
             end
         end
 
-        -- Piano roll right-click -> toggle mute
-        if not click_consumed and mx >= right_x and mx < right_x + right_w
+        -- Piano roll right-click -> toggle mute (VSB area excluded)
+        if not click_consumed and mx >= right_x and mx < right_x + right_w - SB_SIZE
            and my >= pr_y and my < pr_y + pr_h then
             if right_click then
                 local grid_x = right_x + piano_roll.PITCH_LABEL_W
@@ -1018,8 +1053,8 @@ function views.DrawMIDIIsland(char)
             end
         end
 
-        -- Velocity editor click-drag
-        if not click_consumed and mx >= right_x and mx < right_x + right_w
+        -- Velocity editor click-drag (VSB area excluded)
+        if not click_consumed and mx >= right_x and mx < right_x + right_w - SB_SIZE
            and my >= ve_y and my < ve_y + ve_h then
             local grid_x = right_x + piano_roll.PITCH_LABEL_W
             local mouse_down = (gfx.mouse_cap & 1) == 1
@@ -1090,7 +1125,7 @@ function views.DrawMIDIIsland(char)
     end
 
     -- =========================================
-    -- Horizontal Scrollbar with thumb drag interaction (task 3.1)
+    -- Horizontal Scrollbar (7px track below piano roll)
     -- =========================================
     if right_w > 0 then
         local notes = island_store.GetNotes()
@@ -1105,20 +1140,21 @@ function views.DrawMIDIIsland(char)
         end
         local scroll_x = island_store.GetScrollOffsetX()
         local zoom_x = island_store.GetZoomX()
-        local sb_h = 6
-        local sb_y = info_y - sb_h
-        local sb_w = right_w - piano_roll.PITCH_LABEL_W
+        local sb_h = SB_SIZE
+        local sb_y = pr_y + pr_h          -- below the piano roll content
+        local sb_w = right_w - piano_roll.PITCH_LABEL_W - SB_SIZE  -- leave room for VSB corner
         local visible_beats = math.ceil(sb_w / math.max(1, zoom_x))
         if visible_beats < total_beats then
             local scroll_ratio = visible_beats / total_beats
             local max_scroll_x = total_beats - visible_beats
             if max_scroll_x > 0 then
-                -- Track background (H12)
+                -- Track background
                 helpers.SetColor({0.15, 0.15, 0.15, 0.25})
                 gfx.rect(right_x + piano_roll.PITCH_LABEL_W, sb_y, sb_w, sb_h, 1)
 
-                local bar_x = right_x + piano_roll.PITCH_LABEL_W + (scroll_x / max_scroll_x) * sb_w
                 local bar_w = math.max(20, sb_w * scroll_ratio)
+                local track_w = sb_w - bar_w
+                local bar_x = right_x + piano_roll.PITCH_LABEL_W + (scroll_x / max_scroll_x) * track_w
 
                 -- Thumb hit test
                 local mx, my = gfx.mouse_x, gfx.mouse_y
@@ -1154,59 +1190,64 @@ function views.DrawMIDIIsland(char)
     end
 
     -- =========================================
-    -- Info / Status Bar (bottom of island, rounded)
+    -- Vertical Scrollbar (7px track on right edge)
     -- =========================================
-    helpers.SetColor(theme.colors.island_info_bar)
-    components.DrawRoundedRectEx(island_x, info_y, island_w, info_h, 4, {bl=true, br=true})
+    if right_w > 0 then
+        local scroll_y = island_store.GetScrollOffsetY()
+        local pitch_row_h = piano_roll.PITCH_ROW_H
+        local TOTAL_PITCHES = 108
+        local vsb_x = right_x + right_w - SB_SIZE
+        local vsb_y = pr_y
+        local vsb_w = SB_SIZE
+        local vsb_h = pr_h + SB_SIZE  -- reach bottom of island; HSB draws on top if visible
+        -- visible_pitches uses SAME formula as grid.ComputeVisibleRanges:
+        -- ceil(h / PITCH_ROW_H) + 2 (buffer) to keep bar thumb in sync
+        local visible_pitches = math.ceil(vsb_h / math.max(1, pitch_row_h)) + 2
+        if visible_pitches < TOTAL_PITCHES then
+            local scroll_ratio = visible_pitches / TOTAL_PITCHES
+            local max_scroll_y = TOTAL_PITCHES - visible_pitches
+            if max_scroll_y > 0 then
+                -- Track background
+                helpers.SetColor({0.15, 0.15, 0.15, 0.25})
+                gfx.rect(vsb_x, vsb_y, vsb_w, vsb_h, 1)
 
-    local root_name = config.NOTE_NAMES[config.state.root_index]
-    local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
-    local chord_name = config.CHORD_MODES[config.state.chord_mode_index].name
-    local oct_str = "C" .. math.floor(config.state.octave)
+                local bar_h = math.max(14, vsb_h * scroll_ratio)
+                local track_h = vsb_h - bar_h
+                local bar_y = vsb_y + (scroll_y / max_scroll_y) * track_h
 
-    local sel_info = ""
-    local sel_idx = island_store.GetSelectedNoteIndex()
-    if sel_idx then
-        local notes_list = island_store.GetNotes()
-        if notes_list and notes_list[sel_idx] then
-            local n = notes_list[sel_idx]
-            local pitch_nm = config.NOTE_NAMES[(n.pitch % 12) + 1]
-            local pitch_oc = math.floor(n.pitch / 12) - 1
-            local nvel = n.velocity or 100
-            sel_info = string.format(" | %s%d v%d b%.0f", pitch_nm, pitch_oc, nvel, n.start_beat)
+                -- Thumb hit test
+                local mx, my = gfx.mouse_x, gfx.mouse_y
+                local click = ui_store.GetMouseClick()
+                local thumb_hover = mx >= vsb_x and mx <= vsb_x + vsb_w
+                                and my >= bar_y and my <= bar_y + bar_h
+
+                -- Start drag on thumb click
+                if click and thumb_hover then
+                    _vsb_dragging = true
+                    _vsb_drag_start_y = my
+                    _vsb_scroll_at_drag_start = scroll_y
+                end
+
+                -- Continue drag while held
+                if _vsb_dragging then
+                    if (gfx.mouse_cap & 1) == 0 then
+                        _vsb_dragging = false
+                    else
+                        local delta_py = my - _vsb_drag_start_y
+                        -- Map full track drag to full scroll range (max_scroll_y)
+                        local delta_pitches = (delta_py / vsb_h) * max_scroll_y
+                        local new_scroll = math.max(0, math.min(max_scroll_y,
+                            _vsb_scroll_at_drag_start + delta_pitches))
+                        island_store.SetScrollOffsetY(math.floor(new_scroll + 0.5))
+                    end
+                end
+
+                helpers.SetColor({0.4, 0.4, 0.4, 0.35})
+                gfx.rect(vsb_x, bar_y, vsb_w, bar_h, 1)
+            end
         end
     end
 
-    local nc = island_store.GetNoteCount()
-    local zx_val = island_store.GetZoomX()
-    local right_text = string.format("Notes:%d Zoom:%d", nc, zx_val)
-
-    gfx.setfont(1, "Calibri", 11)
-    local rr, rrh = gfx.measurestr(right_text)
-    local right_x_pos = island_x + island_w - rr - 9
-
-    local left_text = string.format("%s %s · %s · %s%s", root_name, scale_abbr, chord_name, oct_str, sel_info)
-    local lw, lh = gfx.measurestr(left_text)
-    local max_left_w = right_x_pos - 16
-    if lw > max_left_w then
-        -- Truncate with proper measurestr loop instead of 6px heuristic (H10)
-        local trunc_len = 0
-        for i = 1, #left_text do
-            local cw, _ = gfx.measurestr(left_text:sub(1, i) .. "..")
-            if cw > max_left_w then break end
-            trunc_len = i
-        end
-        left_text = left_text:sub(1, trunc_len) .. ".."
-        lw, lh = gfx.measurestr(left_text)
-    end
-
-    helpers.SetColor(theme.colors.text_dim)
-    gfx.x, gfx.y = 8, info_y + (info_h - lh) / 2
-    gfx.drawstr(left_text)
-
-    helpers.SetColor(theme.colors.text)
-    gfx.x, gfx.y = right_x_pos, info_y + (info_h - rrh) / 2
-    gfx.drawstr(right_text)
 end
 
 function views.DrawFullView(char)
@@ -1237,34 +1278,41 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
     local x_pos = 10
 
     -- [ROOT] button - cycles through root notes
-    if components.DrawTransportButton(config.NOTE_NAMES[config.state.root_index], x_pos, btn_y, btn_w, btn_h) then
+    if components.DrawTransportButton(config.NOTE_NAMES[api_guard.ClampIndex(config.state.root_index, 1, 12)], x_pos, btn_y, btn_w, btn_h) then
         config.state.root_index = (config.state.root_index % 12) + 1
+        persist.Save("root_index", config.state.root_index)
     end
     x_pos = x_pos + btn_w + gap
 
     -- [SCALE] button - cycles through scales
-    local scale_abbr = helpers.AbbreviateScale(config.SCALES[config.state.scale_index].name)
+    local si_dt = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local scale_abbr = helpers.AbbreviateScale(config.SCALES[si_dt].name)
     if components.DrawTransportButton(scale_abbr, x_pos, btn_y, btn_w + 20, btn_h) then
         config.state.scale_index = (config.state.scale_index % #config.SCALES) + 1
+        persist.Save("scale_index", config.state.scale_index)
     end
     x_pos = x_pos + btn_w + 20 + gap
 
     -- [OCT−] button
     if components.DrawTransportButton("−", x_pos, btn_y, 30, btn_h) then
         config.state.octave = math.floor(math.max(0, config.state.octave - 1))
+        persist.Save("octave", config.state.octave)
     end
     x_pos = x_pos + 30 + gap
 
     -- [OCT+] button
     if components.DrawTransportButton("+", x_pos, btn_y, 30, btn_h) then
         config.state.octave = math.floor(math.min(8, config.state.octave + 1))
+        persist.Save("octave", config.state.octave)
     end
     x_pos = x_pos + 30 + gap
 
     -- [CHORD] button - cycles chord modes
-    local chord_label = config.CHORD_MODES[config.state.chord_mode_index].name
+    local ci_dt = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local chord_label = config.CHORD_MODES[ci_dt].name
     if components.DrawTransportButton(chord_label, x_pos, btn_y, btn_w, btn_h) then
         config.state.chord_mode_index = (config.state.chord_mode_index % #config.CHORD_MODES) + 1
+        persist.Save("chord_mode_index", config.state.chord_mode_index)
     end
     x_pos = x_pos + btn_w + gap
 

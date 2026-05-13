@@ -1,0 +1,91 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
+-- GROVE Scale Runner: Sequencer State Store
+-- Encapsulates sequencer state with getters/setters.
+-- Extracted from config.state.sequencer, config.state.progression,
+-- config.state.current_page, config.state.page_override_timer, and config.state.slot_flash.
+local persist = require("state.persist")
+local seq_state = {
+    progression = {},
+    progression_revision = 0,
+    is_playing = false,
+    current_step = 0,
+    last_measure = -1,
+    midi_notes = {},
+    progress = 0,
+    internal_beats = 0,
+    last_time = nil,
+    volume = 100,
+    current_page = 1,
+    page_override_timer = 0,
+    slot_flash = { idx = -1, timer = 0 },
+    current_sub_step = 0,
+}
+
+local m = {}
+
+function m.Init(defaults)
+    -- progression is shared by reference — in-place mutation (table.insert, etc.) affects the source
+    if defaults.progression then seq_state.progression = defaults.progression end
+    if defaults.sequencer then
+        for k, v in pairs(defaults.sequencer) do seq_state[k] = v end
+    end
+    if defaults.current_page ~= nil then seq_state.current_page = defaults.current_page end
+    if defaults.page_override_timer ~= nil then seq_state.page_override_timer = defaults.page_override_timer end
+    if defaults.slot_flash then
+        if defaults.slot_flash.idx ~= nil then seq_state.slot_flash.idx = defaults.slot_flash.idx end
+        if defaults.slot_flash.timer ~= nil then seq_state.slot_flash.timer = defaults.slot_flash.timer end
+    end
+end
+
+-- Progression table — returned by reference for in-place mutation
+function m.GetProgression() return seq_state.progression end
+function m.SetProgression(t) seq_state.progression = t; seq_state.progression_revision = seq_state.progression_revision + 1 end
+
+-- Indexed progression access
+function m.GetProgressionLen() return #seq_state.progression end
+function m.GetProgressionEntry(i) return seq_state.progression[i] end
+function m.SetProgressionEntry(i, v) seq_state.progression[i] = v; seq_state.progression_revision = seq_state.progression_revision + 1 end
+function m.ClearProgression()
+    for i = 1, 16 do seq_state.progression[i] = nil end
+    seq_state.progression_revision = seq_state.progression_revision + 1
+end
+
+-- Progression revision counter (incremented on every mutation)
+function m.GetProgressionRevision() return seq_state.progression_revision end
+
+-- Sequencer fields (was config.state.sequencer.*)
+function m.GetIsPlaying() return seq_state.is_playing end
+function m.SetIsPlaying(v) seq_state.is_playing = v end
+function m.GetCurrentStep() return seq_state.current_step end
+function m.SetCurrentStep(v) seq_state.current_step = v end
+function m.GetLastMeasure() return seq_state.last_measure end
+function m.SetLastMeasure(v) seq_state.last_measure = v end
+function m.GetMidiNotes() return seq_state.midi_notes end
+function m.SetMidiNotes(v) seq_state.midi_notes = v end
+function m.GetProgress() return seq_state.progress end
+function m.SetProgress(v) seq_state.progress = v end
+function m.GetInternalBeats() return seq_state.internal_beats end
+function m.SetInternalBeats(v) seq_state.internal_beats = v end
+function m.GetLastTime() return seq_state.last_time end
+function m.SetLastTime(v) seq_state.last_time = v end
+function m.GetVolume() return seq_state.volume end
+function m.SetVolume(v) seq_state.volume = v; persist.Save("volume", v) end
+
+-- Page state
+function m.GetCurrentPage() return seq_state.current_page end
+function m.SetCurrentPage(v) seq_state.current_page = v end
+function m.GetPageOverrideTimer() return seq_state.page_override_timer end
+function m.SetPageOverrideTimer(v) seq_state.page_override_timer = v end
+
+-- Slot flash sub-table (named keys: idx, timer)
+function m.GetSlotFlashIdx() return seq_state.slot_flash.idx end
+function m.SetSlotFlashIdx(v) seq_state.slot_flash.idx = v end
+function m.GetSlotFlashTimer() return seq_state.slot_flash.timer end
+function m.SetSlotFlashTimer(v) seq_state.slot_flash.timer = v end
+
+-- Sub-step tracking for subdivision playback
+function m.GetCurrentSubStep() return seq_state.current_sub_step end
+function m.SetCurrentSubStep(v) seq_state.current_sub_step = v end
+
+return m

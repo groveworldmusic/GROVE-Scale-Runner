@@ -1,3 +1,5 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik on the beat
 local config = require("config")
 local seq_store = require("state.sequencer")
 local midi = require("core.midi")
@@ -7,7 +9,9 @@ local sequencer = {}
 
 function sequencer.Stop()
     seq_store.SetIsPlaying(false)
-    for _, n in ipairs(seq_store.GetMidiNotes()) do 
+    -- Validate MidiNotes table before iterating (defensive: should never be nil, but guard anyway)
+    local midi_notes = seq_store.GetMidiNotes() or {}
+    for _, n in ipairs(midi_notes) do 
         midi.SendMidi(n, false, nil, true)  -- force=true: bypass ref-count gate on cleanup
     end
     seq_store.SetMidiNotes({})
@@ -44,12 +48,13 @@ function sequencer.Run()
     end
     
     local measures = 0
-    local play_state = reaper.GetPlayState()
+    local play_state = reaper.GetPlayState() or 0
     
     if (play_state & 1) ~= 0 then
         -- SYNC TO REAPER
-        local _, m = reaper.TimeMap2_timeToBeats(0, reaper.GetPlayPosition2())
-        measures = m
+        local ok, m = reaper.TimeMap2_timeToBeats(0, reaper.GetPlayPosition2())
+        if not ok then m = 0 end
+        measures = m or 0
         seq_store.SetLastTime(nil) -- Reset internal clock
     else
         -- INTERNAL CLOCK MODE
@@ -105,7 +110,7 @@ function sequencer.Run()
         seq_store.SetCurrentPage(math.floor((seq_store.GetCurrentStep() - 1) / 4) + 1)
         
         local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
-        if slot then
+        if slot and type(slot) == "table" then
             seq_store.SetMidiNotes(TriggerSubChord(slot, 0))
         end
     
@@ -120,7 +125,7 @@ function sequencer.Run()
             
             seq_store.SetCurrentSubStep(current_sub)
             local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
-            if slot then
+            if slot and type(slot) == "table" then
                 seq_store.SetMidiNotes(TriggerSubChord(slot, current_sub))
             end
         end
