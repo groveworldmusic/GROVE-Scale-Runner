@@ -31,6 +31,7 @@
 --   src/state/drag.lua
 --   src/state/island.lua
 --   src/state/midi.lua
+--   src/state/note-store.lua
 --   src/state/persist.lua
 --   src/state/sequencer.lua
 --   src/state/ui.lua
@@ -94,6 +95,8 @@ local ui_store = require("state.ui")
 ui_store.Init(config.state)
 local island_store = require("state.island")
 island_store.Init(config.state)
+local note_store = require("state.note-store")
+-- note_store.Init is called inside island_store.Init(config.state)
 local preferences_store = require("state.preferences")
 preferences_store.Init(config.state)
 local theme = require("ui.theme")
@@ -262,7 +265,7 @@ local function MainLoop()
     local fresh_click = (current_mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0
     ui_store.SetMouseClick(fresh_click)
     ui_store.SetMouseWheelDelta(mwd)
-    if mwd ~= 0 then gfx.mouse_wheel = 0 end
+    gfx.mouse_wheel = 0
 
     -- Check mouse movement
     local mx, my = gfx.mouse_x, gfx.mouse_y

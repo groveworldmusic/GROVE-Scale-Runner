@@ -34,13 +34,14 @@ src/
 │   ├── timeline.lua    ← Timeline ruler para modo ISLAND (~150 LOC)
 │   ├── velocity.lua    ← Velocity editor para modo ISLAND (~253 LOC)
 │   └── preset-browser.lua ← Preset browser para modo ISLAND (~640 LOC)
-└── state/              ← Stores de estado (6 módulos + island.lua)
+└── state/              ← Stores de estado (7 módulos + island.lua + note-store.lua)
     ├── compact.lua
     ├── sequencer.lua
     ├── drag.lua
     ├── midi.lua
     ├── ui.lua
-    └── island.lua      ← Island state store (~200 LOC) — estado de MIDI island expandida
+    ├── island.lua      ← Island state (~380 LOC) — estado de MIDI island, delega notas a note-store
+    └── note-store.lua  ← Note CRUD, UUID, undo/redo, progression→notes (~165 LOC)
 ```
 
 ## Flujo de Datos
@@ -55,8 +56,9 @@ midi.lua (envío MIDI)           views.lua (render GFX)
 
 ## Arquitectura de Stores
 
-5 stores independientes, cada una con tabla local + getters/setters + Init().
+7 stores independientes, cada una con tabla local + getters/setters + Init().
 Excepción: `midi.lua` (core) importa `sequencer_store` para leer volumen.
+Excepción: `island.lua` importa `note-store.lua` para delegar funciones de notas.
 
 ## Patrón Barrel
 

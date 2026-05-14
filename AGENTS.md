@@ -13,13 +13,13 @@ Sos el **orquestador principal** del proyecto. Tu responsabilidad es coordinar a
 
 | Métrica | Valor |
 |---------|-------|
-| Archivos fuente (`src/`) | 53 (Lua) + 4 AGENTS.md (src, core, ui, state) = 57 |
-| TLOC estimados (src/) | ~8,800 |
+| Archivos fuente (`src/`) | 55 (Lua) + 4 AGENTS.md (src, core, ui, state) = 59 |
+| TLOC estimados (src/) | ~9,800 |
 | State stores | 9 (compact, drag, midi, sequencer, ui, island, piano-roll-store, preset-store, preferences) + persist (load/save) |
 | Core modules | 6 (midi, keyboard, sequencer, progression, api-guard, snap) |
-| UI modules | 34 (28 root + 6 piano-roll/) |
+| UI modules | 37 (29 root + 6 piano-roll/ + 2 midi-island/) |
 | Tests | 14 test files in runner, 497 check() calls, 1 static-test outside runner |
-| Referencias a `config.state.*` runtime | ~1 (midi.lua:94 `TriggerChord` fallback) |
+| Referencias a `config.state.*` runtime | ~138 (12+ files) |
 | Total archivos en proyecto | ~90 (src/ + tests/ + docs/ + config) |
 
 ## Jerarquía de Agentes
@@ -98,7 +98,7 @@ views.lua ──require──► sequencer (para sequencer.Stop() en play/stop t
 
 ### Patrón: Barrel (Re-export)
 **Contexto**: Submódulos de compact/ y widgets/ necesitan una fachada unificada para los consumers.
-**Implementación**: `components.lua` (84 LOC) y `compact.lua` (25 LOC) — require de submódulos + re-assign de funciones. Consumers usan `components.*` o `compact.*`. `piano-roll.lua` (93 LOC) también es barrel para piano-roll/*.
+**Implementación**: `components.lua` (184 LOC) y `compact.lua` (25 LOC) — require de submódulos + re-assign de funciones. Consumers usan `components.*` o `compact.*`. `piano-roll.lua` (83 LOC) también es barrel para piano-roll/*.
 **Por qué**: Un solo require en vez de 7+. Aísla cambios de estructura interna.
 
 ### Patrón: Lazy require
@@ -154,7 +154,7 @@ views.lua ──require──► sequencer (para sequencer.Stop() en play/stop t
 
 ## Remnant Keys (config.state)
 
-Keys que NO fueron extraídas a stores y permanecen como root keys de `config.state`. La mayoría ahora se leen via `preferences_store.*` — solo 1 runtime read directo remanente:
+Keys que NO fueron extraídas a stores y permanecen como root keys de `config.state`. La mayoría ahora se leen via `preferences_store.*` — ~138 runtime reads directos remanentes en 12+ archivos:
 
 | Key | Rango | Propósito |
 |-----|-------|-----------|
@@ -169,7 +169,7 @@ Keys que NO fueron extraídas a stores y permanecen como root keys de `config.st
 | `view_offset_y` | number | Posición Y de ventana GFX |
 | `use_scroll` | boolean | Scroll habilitado |
 
-~1 runtime read remanente: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`. El resto de accesos son via `preferences_store.*`, `midi_store.*`, `sequencer_store.*`, etc.
+~138 runtime reads remanentes en 12+ archivos fuente (views.lua, compact-menu.lua, piano.lua, grid.lua, pads.lua, midi.lua, sequencer.lua, compact-init.lua, main.lua, entre otros). La mayoría son reads de `config.state.{root_index, scale_index, octave, chord_mode_index}` para rendering. El acceso directo más notable: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`.
 
 ## Issue Registry
 

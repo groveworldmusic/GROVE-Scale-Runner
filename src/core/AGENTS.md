@@ -6,11 +6,11 @@ Core domain logic: MIDI operations, keyboard interception, sequencer loop, progr
 
 | File | LOC | Functions | Dependencies | Reaper API? |
 |------|-----|-----------|--------------|-------------|
-| midi.lua | 232 | 9 exported + 3 fields + getter/setter | config, state.compact, state.sequencer, state.midi, state.ui, state.island, state.preferences, core.api-guard | Yes |
-| keyboard.lua | 105 | 5 exported | config, core.midi, state.midi, state.preferences, core.sequencer, core.api-guard | Yes |
-| sequencer.lua | 131 | 2 exported | state.sequencer, core.midi, core.progression | Yes |
+| midi.lua | 236 | 9 exported + 3 fields + getter/setter | config, state.compact, state.sequencer, state.midi, state.ui, state.island, state.preferences, core.api-guard | Yes |
+| keyboard.lua | 117 | 5 exported | config, core.midi, state.midi, state.preferences, core.sequencer, core.api-guard | Yes |
+| sequencer.lua | 136 | 2 exported | state.sequencer, core.midi, core.progression | Yes |
 | progression.lua | 33 | 5 exported | state.sequencer | No |
-| api-guard.lua | 44 | 3 exported | reaper.* (CheckAPI, AssertAPIs) | Yes |
+| api-guard.lua | 56 | 3 exported | reaper.* (CheckAPI, AssertAPIs) | Yes |
 | snap.lua | 26 | 1 exported | None (pure function) | No |
 
 ## Core Dependency Graph

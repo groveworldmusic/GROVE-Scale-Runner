@@ -1,65 +1,65 @@
 # src/ui/ — Interfaz GFX
 
 Componentes visuales, vistas, layout, helpers. Todo lo que renderiza en pantalla.
-34 archivos fuente, ~6,342 LOC total (28 root + 6 piano-roll/).
+37 archivos fuente, ~7,226 LOC total (29 root + 6 piano-roll/ + 2 midi-island/).
 
 ## File Map
 
 ### Core UI (~4 files)
 | Archivo | LOC | Propósito |
 |---------|-----|-----------|
-| `views.lua` | 654 | DrawFullView, DrawDockedTransportBar, DrawHeader, DrawIslands, DrawPerformanceArea, DrawMIDIIsland, DecrementPageOverrideTimer — orquestación de la vista completa |
-| `midi-island.lua` | 132 | **Orchestrator** — orquestación del island MIDI expandido (Phase 5 refactor). Delega a `midi-island/header.lua` e `input.lua`. |
-| `midi-island/header.lua` | 145 | Header rendering — tool modes, MIDI channel, snap, zoom controls. |
-| `midi-island/input.lua` | 180 | Input dispatcher — mouse and keyboard event handling for the MIDI Island. |
-| `components.lua` | 84 | **Barrel** — re-exporta widgets + inline DrawRoundedRect + DrawIsland |
-| `layout.lua` | 30 | SetScale, UX, UY, US — sistema de coordenadas virtuales (canvas 39914×29162) |
+| `views.lua` | 879 | DrawFullView, DrawDockedTransportBar, DrawHeader, DrawIslands, DrawPerformanceArea, DrawMIDIIsland, DecrementPageOverrideTimer — orquestación de la vista completa |
+| `midi-island.lua` | 216 | **Orchestrator** — orquestación del island MIDI expandido (Phase 5 refactor). Delega a `midi-island/header.lua` e `input.lua`. |
+| `midi-island/header.lua` | 194 | Header rendering — tool modes, MIDI channel, snap, zoom controls. |
+| `midi-island/input.lua` | 222 | Input dispatcher — mouse and keyboard event handling for the MIDI Island. |
+| `components.lua` | 184 | **Barrel** — re-exporta widgets + inline DrawRoundedRect + DrawIsland |
+| `layout.lua` | 20 | SetScale, UX, UY, US — sistema de coordenadas virtuales (canvas 39914×29162) |
 
 ### Widgets (~7 files)
 | Archivo | LOC | Funciones |
 |---------|-----|-----------|
-| `buttons.lua` | 78 | DrawButton, DrawToolIcon, DrawTransportButton, DrawNoteDisplay — botones y tool icons |
+| `buttons.lua` | 153 | DrawButton, DrawToolIcon, DrawTransportButton, DrawNoteDisplay — botones y tool icons |
 | `paginator.lua` | 41 | DrawPaginator — dots de paginación |
 | `dropdown.lua` | 76 | DrawDropdown — dropdown con scroll y menú contextual |
-| `piano.lua` | 158 | DrawPianoKeyboard + PIANO_LAYOUT constants — teclado de piano GFX |
-| `pads.lua` | 148 | DrawScalePad — pads de grado con drag-to-slot |
-| `slots.lua` | 300 | DrawProgressionSlot + HandleSlotInteraction — slots de progresión |
-| `drag.lua` | 88 | DrawDragPreview — preview flotante durante drag |
+| `piano.lua` | 148 | DrawPianoKeyboard + PIANO_LAYOUT constants — teclado de piano GFX |
+| `pads.lua` | 126 | DrawScalePad — pads de grado con drag-to-slot |
+| `slots.lua` | 279 | DrawProgressionSlot + HandleSlotInteraction — slots de progresión |
+| `drag.lua` | 87 | DrawDragPreview — preview flotante durante drag |
 
 ### Island UI (~4 root + 6 sub-modules)
 | Archivo | LOC | Propósito |
 |---------|-----|-----------|
-| `piano-roll.lua` | 93 | **Barrel** — re-exporta piano-roll/* submódulos |
-| `piano-roll/grid.lua` | 446 | DrawGrid, DrawNote, note hit-test — grilla de piano roll con snapping, selección por lasso y click |
-| `piano-roll/interaction.lua` | 795 | Mouse handling completo: click-to-select, lasso drag, note drag/resize, tool switching, context menu, zoom/scroll wheel |
-| `piano-roll/note.lua` | 300 | Note rendering (actual + ghosting), CRUD operations, note coloring. |
+| `piano-roll.lua` | 83 | **Barrel** — re-exporta piano-roll/* submódulos |
+| `piano-roll/grid.lua` | 450 | DrawGrid, DrawNote, note hit-test — grilla de piano roll con snapping, selección por lasso y click |
+| `piano-roll/interaction.lua` | 1051 | Mouse handling completo: click-to-select, lasso drag, note drag/resize, tool switching, context menu, zoom/scroll wheel |
+| `piano-roll/note.lua` | 284 | Note rendering (actual + ghosting), CRUD operations, note coloring. |
 | `piano-roll/undo.lua` | 148 | Undo/redo stacks, snapshot-based state tracking, max 50 entries |
 | `piano-roll/clipboard.lua` | 126 | Copy/paste notes, multi-note clipboard, paste-at-cursor |
 | `piano-roll/view.lua` | 44 | Viewport state, scroll clamp helpers, visible range calculation |
-| `timeline.lua` | 169 | DrawTimeline — timeline ruler con playhead sincronizado al sequencer |
-| `velocity.lua` | 450 | DrawVelocityEditor — 'Glass Blade' aesthetic, velocity edit per note, multi-selection. |
+| `timeline.lua` | 170 | DrawTimeline — timeline ruler con playhead sincronizado al sequencer |
+| `velocity.lua` | 390 | DrawVelocityEditor — 'Glass Blade' aesthetic, velocity edit per note, multi-selection. |
 | `preset-browser.lua` | 663 | DrawPresetBrowser — explorador de presets MIDI, favoritos, folder navigation. |
 
 ### Compact View (~6 files)
 | Archivo | LOC | Propósito |
 |---------|-----|-----------|
 | `compact.lua` | 25 | **Barrel** — re-exporta compact-* submódulos (11 funciones) |
-| `compact-init.lua` | 246 | SwitchViewMode, InitOverlay, HandlePanel, UpdateCompactView, FindTransportWindow, Cleanup |
-| `compact-bar.lua` | 60 | CompactBar — render LICE de la barra de transporte compacta |
+| `compact-init.lua` | 288 | SwitchViewMode, InitOverlay, HandlePanel, UpdateCompactView, FindTransportWindow, Cleanup |
+| `compact-bar.lua` | 58 | CompactBar — render LICE de la barra de transporte compacta |
 | `compact-panel.lua` | 99 | TogglePanel, IsPanelOpen, ClosePanel — panel flotante GFX |
 | `compact-intercept.lua` | 129 | ProcessMouseInterception, CleanupIntercept — WM_LBUTTONDOWN/RBUTTONDOWN routing |
-| `compact-menu.lua` | 96 | ShowContextMenu, GetMenuDismissTime — menú contextual right-click |
+| `compact-menu.lua` | 119 | ShowContextMenu, GetMenuDismissTime — menú contextual right-click |
 
 ### Utilities (~7 files)
 | Archivo | LOC | Propósito |
 |---------|-----|-----------|
 | `helpers.lua` | 107 | SetColor, DrawTooltip, AbbreviateScale, CompactAbbreviateScale |
-| `theme.lua` | 64 | theme.colors — paleta completa (16 colores + grade_colors[7]) |
+| `theme.lua` | 69 | theme.colors — paleta completa (16 colores + grade_colors[7]) |
 | `colors.lua` | 17 | DegreeColor(degree) → color table |
 | `format.lua` | 29 | NoteName, ChordLabel, RomanNumeral |
 | `positioning.lua` | 158 | Layout y posicionamiento de compact view (cv_x/y/w/h, auto-position, GetTransportScreenRect) |
-| `lice.lua` | 71 | EnsureLICE, DrawRoundedRectFill, DrawArrowIcon, DrawProgressBar, DrawModeHint — wrappers LICE |
-| `icons.lua` | 92 | DrawIcon, icon definitions (settings, help, scroll, clear, export, view, dock, midi) — iconos SVG-like vectoriales para tool icons |
+| `lice.lua` | 122 | EnsureLICE, DrawRoundedRectFill, DrawArrowIcon, DrawProgressBar, DrawModeHint — wrappers LICE |
+| `icons.lua` | 94 | DrawIcon, icon definitions (settings, help, scroll, clear, export, view, dock, midi) — iconos SVG-like vectoriales para tool icons |
 | `gfx-safe.lua` | 47 | SafeGfxInit, SafeGfxQuit — wrappers GFX con protección de doble init/quit, manejo de errores |
 
 ## Dual GFX Context

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 -- GROVE Scale Runner: Island State Store
 -- Encapsulates island piano-roll state with getters/setters.
 -- Schema: island_active, preset_panel_visible, notes (flat note list),
@@ -8,14 +8,12 @@
 --          lasso state, AddNote/RemoveNoteAtIndex.
 local config = require("config")
 local api_guard = require("core.api-guard")
+local note_store = require("state.note-store")
 
 local m = {}
-local _uuid_to_idx = {}
 local island_state = {
     island_active = false,
     preset_panel_visible = false,
-    notes = {},
-    note_count = 0,
     playback_pos = 0,
     scroll_offset_y = 58,   -- C3 abajo justo encima del HSB, C#3 sobre C3, arriba C#4
     scroll_offset_x = 0,
@@ -41,11 +39,6 @@ local island_state = {
     pre_toggle_rect = nil,
     snap_enabled = false,
     snap_resolution = 4,
-    next_note_uuid = 1,
-    undo_stack = {},
-    redo_stack = {},
-    undo_depth = 0,
-    redo_depth = 0,
     folder_scroll = 0,
     note_drag_origins = {},
 }
@@ -53,11 +46,6 @@ local island_state = {
 function m.Init(defaults)
     if defaults.island_active ~= nil then island_state.island_active = defaults.island_active end
     if defaults.preset_panel_visible ~= nil then island_state.preset_panel_visible = defaults.preset_panel_visible end
-    if defaults.notes then
-        -- notes are shared by reference
-        island_state.notes = defaults.notes
-        island_state.note_count = #defaults.notes
-    end
     if defaults.playback_pos ~= nil then island_state.playback_pos = defaults.playback_pos end
     if defaults.scroll_offset_y ~= nil then island_state.scroll_offset_y = defaults.scroll_offset_y end
     if defaults.scroll_offset_x ~= nil then island_state.scroll_offset_x = defaults.scroll_offset_x end
@@ -70,6 +58,8 @@ function m.Init(defaults)
     if defaults.current_directory ~= nil then island_state.current_directory = defaults.current_directory end
     if defaults.preset_root ~= nil then island_state.preset_root = defaults.preset_root end
     if defaults.velocity_panel_expanded ~= nil then island_state.velocity_panel_expanded = defaults.velocity_panel_expanded end
+    -- Delegate notes + undo/redo init to note-store
+    note_store.Init(defaults)
 end
 
 -- Island active state
@@ -80,19 +70,17 @@ function m.SetIslandActive(v) island_state.island_active = v end
 function m.GetPresetPanelVisible() return island_state.preset_panel_visible end
 function m.SetPresetPanelVisible(v) island_state.preset_panel_visible = v end
 
--- Notes table — returned by reference for in-place mutation
--- Each entry: {pitch, start_beat, duration, velocity, muted, uuid}
-function m.GetNotes() return island_state.notes end
+-- Notes table — delegated to note-store
+function m.GetNotes() return note_store.GetNotes() end
 function m.SetNotes(t)
-    island_state.notes = t or {}
-    island_state.note_count = #island_state.notes
+    note_store.SetNotes(t)
+    island_state.note_count = note_store.GetNoteCount()
     m.ClearSelection()  -- old indices are invalid when notes are replaced
-    m.RebuildUUIDIndex()
 end
 
--- Note count — updated automatically by SetNotes, can also be set directly
-function m.GetNoteCount() return island_state.note_count end
-function m.SetNoteCount(v) island_state.note_count = v end
+-- Note count — delegated to note-store
+function m.GetNoteCount() return note_store.GetNoteCount() end
+function m.SetNoteCount(v) note_store.SetNoteCount(v); island_state.note_count = v end
 
 -- Playback position (beats)
 function m.GetPlaybackPos() return island_state.playback_pos end
@@ -192,29 +180,21 @@ function m.SetLassoEndY(v) island_state.lasso_end_y = v end
 -- =========================================================
 -- Note CRUD (Phase 4)
 -- =========================================================
---- Append a note to the notes table. Sets origin = "manual" automatically.
---- Assigns UUID if not already set. Updates reverse index.
+--- Add a note — delegated to note-store.
 --- @param note table {pitch, start_beat, duration, velocity, muted}
 function m.AddNote(note)
-    note.uuid = note.uuid or m.AllocNoteUUID()
-    if note.origin == nil then note.origin = "manual" end
-    table.insert(island_state.notes, note)
-    island_state.note_count = #island_state.notes
-    if note.uuid then
-        _uuid_to_idx[note.uuid] = #island_state.notes
-    end
+    note_store.AddNote(note)
+    island_state.note_count = note_store.GetNoteCount()
 end
 
---- Remove a note at the given index. Shifts subsequent entries and
---- fixes up selected_indices so indices after the removed entry are adjusted.
---- Also rebuilds UUID reverse index.
+--- Remove a note at the given index. Delegates to note-store for
+--- note removal, then fixes up selected_indices (kept in island).
 --- @param idx number 1-based index into notes[]
 function m.RemoveNoteAtIndex(idx)
-    if idx < 1 or idx > #island_state.notes then return end
-    table.remove(island_state.notes, idx)
-    island_state.note_count = #island_state.notes
-    -- Rebuild UUID index since indices shifted
-    m.RebuildUUIDIndex()
+    local prev_count = note_store.GetNoteCount()
+    if idx < 1 or idx > prev_count then return end
+    note_store.RemoveNoteAtIndex(idx)
+    island_state.note_count = note_store.GetNoteCount()
     -- Fix up selected_indices: decrement keys > idx, drop key == idx
     local new_selected = {}
     for k in pairs(island_state.selected_indices) do
@@ -321,246 +301,35 @@ function m.ClearBrowserState()
 end
 
 -- =========================================================
--- UUID Reverse Index (PR3)
+-- UUID Reverse Index — Delegated to note-store
 -- =========================================================
-
---- Rebuild the UUID-to-index reverse index from scratch.
---- Call after any operation that adds/removes/reorders notes.
-function m.RebuildUUIDIndex()
-    _uuid_to_idx = {}
-    local notes = island_state.notes
-    for i, note in ipairs(notes) do
-        if note.uuid then
-            _uuid_to_idx[note.uuid] = i
-        end
-    end
-end
-
---- Allocate a new monotonic UUID for a note.
---- @return number
-function m.AllocNoteUUID()
-    local uuid = island_state.next_note_uuid
-    island_state.next_note_uuid = island_state.next_note_uuid + 1
-    return uuid
-end
-
---- Find a note's array index by UUID.
---- @param uuid number
---- @return number|nil Note index, or nil if not found
-function m.FindNoteByUUID(uuid)
-    return _uuid_to_idx[uuid]
-end
+function m.RebuildUUIDIndex() note_store.RebuildUUIDIndex() end
+function m.AllocNoteUUID() return note_store.AllocNoteUUID() end
+function m.FindNoteByUUID(uuid) return note_store.FindNoteByUUID(uuid) end
 
 -- =========================================================
--- Undo/Redo Stack Functions (PR3)
+-- Undo/Redo Stack — Delegated to note-store
 -- =========================================================
-
-local MAX_UNDO = 50
-
---- Push an undo entry onto the undo stack.
---- Automatically clears the redo stack (new edit invalidates redo).
---- FIFO eviction when stack exceeds MAX_UNDO (50).
---- Entry format: {type, note_uuids, prev_state, new_state, timestamp}
---- @param entry table
-function m.PushUndo(entry)
-    entry.timestamp = os.clock()
-    table.insert(island_state.undo_stack, entry)
-    island_state.undo_depth = #island_state.undo_stack
-    if island_state.undo_depth > MAX_UNDO then
-        table.remove(island_state.undo_stack, 1)
-        island_state.undo_depth = MAX_UNDO
-    end
-    -- New edit → clear redo stack
-    island_state.redo_stack = {}
-    island_state.redo_depth = 0
-end
-
---- Pop the most recent undo entry.
---- @return table|nil
-function m.PopUndo()
-    if #island_state.undo_stack == 0 then return nil end
-    local entry = table.remove(island_state.undo_stack)
-    island_state.undo_depth = #island_state.undo_stack
-    return entry
-end
-
---- Push a redo entry onto the redo stack.
---- @param entry table
-function m.PushRedo(entry)
-    entry.timestamp = os.clock()
-    table.insert(island_state.redo_stack, entry)
-    island_state.redo_depth = #island_state.redo_stack
-    if island_state.redo_depth > MAX_UNDO then
-        table.remove(island_state.redo_stack, 1)
-        island_state.redo_depth = MAX_UNDO
-    end
-end
-
---- Pop the most recent redo entry.
---- @return table|nil
-function m.PopRedo()
-    if #island_state.redo_stack == 0 then return nil end
-    local entry = table.remove(island_state.redo_stack)
-    island_state.redo_depth = #island_state.redo_stack
-    return entry
-end
-
---- Clear both undo and redo stacks.
-function m.ClearUndoStacks()
-    island_state.undo_stack = {}
-    island_state.redo_stack = {}
-    island_state.undo_depth = 0
-    island_state.redo_depth = 0
-end
-
---- Get the current undo stack depth.
---- @return number
-function m.GetUndoDepth() return island_state.undo_depth end
-
---- Get the current redo stack depth.
---- @return number
-function m.GetRedoDepth() return island_state.redo_depth end
+function m.PushUndo(entry) note_store.PushUndo(entry) end
+function m.PopUndo() return note_store.PopUndo() end
+function m.PushRedo(entry) note_store.PushRedo(entry) end
+function m.PopRedo() return note_store.PopRedo() end
+function m.ClearUndoStacks() note_store.ClearUndoStacks() end
+function m.GetUndoDepth() return note_store.GetUndoDepth() end
+function m.GetRedoDepth() return note_store.GetRedoDepth() end
 
 -- =========================================================
--- Progression→Notes Conversion
+-- Progression→Notes Conversion — Delegated to note-store
 -- =========================================================
-
---- Pure function: converts a progression entry to a MIDI pitch.
---- Matches the formula from midi.GetMidiNote (core/midi.lua line 14-23)
---- without requiring the midi module directly.
---- @param root_idx number 1-12 (index into NOTE_NAMES)
---- @param scale_idx number 1-21 (index into SCALES)
---- @param degree_idx number 1-N (scale degree, wraps by scale length)
---- @param octave_val number 0-8 (MIDI octave)
---- @return number 0-127 (MIDI pitch)
-local function ProgressionEntryToPitch(root_idx, scale_idx, degree_idx, octave_val)
-    local root = root_idx - 1
-    local si = api_guard.ClampIndex(scale_idx, 1, #config.SCALES)
-    local scale = config.SCALES[si]
-    local n_scale = #scale.intervals
-    local deg0 = degree_idx - 1
-    local oct_off = math.floor(deg0 / n_scale)
-    local interval = scale.intervals[(deg0 % n_scale) + 1]
-    local result = (octave_val + 1) * 12 + root + (oct_off * 12) + interval
-    return math.max(0, math.min(127, result))
-end
-
---- Convert a progression entry table to a list of note pitches.
---- Each entry has {degree, root_index, scale_index, octave, chord_mode_index}.
---- Each chord offset produces one pitch.
---- @param entry table Progression slot entry
---- @return table Array of MIDI pitch numbers
-local function EntryToPitches(entry)
-    local ci = api_guard.ClampIndex(entry.chord_mode_index or 1, 1, #config.CHORD_MODES)
-    local chord_mode = config.CHORD_MODES[ci]
-    local pitches = {}
-    for _, off in ipairs(chord_mode.offsets) do
-        local pitch = ProgressionEntryToPitch(
-            entry.root_index or 1,
-            entry.scale_index or 1,
-            entry.degree + off,
-            entry.octave or 4
-        )
-        table.insert(pitches, pitch)
-    end
-    return pitches
-end
-
---- Convert a progression table to a flat list of note entries.
---- Each slot i produces notes starting at (i-1) * beats_per_slot beats.
---- Each chord offset becomes a separate note entry.
----
---- @param progression table Array of progression entries (1..16, may have nils)
---- @param beats_per_slot number Beats per slot (default 4)
---- @param velocity number Default velocity (default 100)
---- @return table Array of {pitch, start_beat, duration, velocity, muted}
 function m.ProgressionToNotes(progression, beats_per_slot, velocity)
-    beats_per_slot = beats_per_slot or 4
-    velocity = velocity or 100
-    local notes = {}
-
-    if not progression then return notes end
-
-    for i = 1, 16 do
-        local entry = progression[i]
-        if entry and entry.degree then
-            local entry_velocity = entry.velocity or velocity
-            local entry_duration = entry.duration or beats_per_slot
-
-            if entry.subs and #entry.subs > 0 then
-                -- SUBDIVIDED SLOT: create one note group per sub-chord
-                local sub_duration = entry_duration / #entry.subs
-                for si, sub in ipairs(entry.subs) do
-                    local start_beat = (i - 1) * beats_per_slot + (si - 1) * sub_duration
-                    local sub_vel = sub.velocity or entry_velocity
-                    local sub_entry = {
-                        degree = sub.degree,
-                        root_index = entry.root_index,
-                        scale_index = entry.scale_index,
-                        octave = entry.octave,
-                        chord_mode_index = entry.chord_mode_index,
-                    }
-                    local pitches = EntryToPitches(sub_entry)
-                    for _, pitch in ipairs(pitches) do
-                        table.insert(notes, {
-                            pitch = pitch,
-                            start_beat = start_beat,
-                            duration = sub_duration,
-                            velocity = sub_vel,
-                            muted = false,
-                            uuid = m.AllocNoteUUID(),
-                        })
-                    end
-                end
-            else
-                -- LEGACY single-chord entry
-                local start_beat = (i - 1) * beats_per_slot
-                local pitches = EntryToPitches(entry)
-                for _, pitch in ipairs(pitches) do
-                    table.insert(notes, {
-                        pitch = pitch,
-                        start_beat = start_beat,
-                        duration = entry_duration,
-                        velocity = entry_velocity,
-                        muted = false,
-                        uuid = m.AllocNoteUUID(),
-                    })
-                end
-            end
-        end
-    end
-
-    return notes
+    return note_store.ProgressionToNotes(progression, beats_per_slot, velocity)
 end
-
---- Convenience: reads progression from sequencer_store and populates island notes.
---- Call this when entering island mode to materialise the progression as note blocks.
 function m.LoadNotesFromProgression(seq_store)
-    local progression = seq_store.GetProgression()
-    local notes = m.ProgressionToNotes(progression, 4, 100)
-    m.SetNotes(notes)
+    note_store.LoadNotesFromProgression(seq_store)
+    island_state.note_count = note_store.GetNoteCount()
 end
-
---- Filter notes by visible pitch and time range (for virtual scrolling).
---- @param notes table Full notes array
---- @param pitch_start number Minimum pitch (inclusive)
---- @param pitch_end number Maximum pitch (inclusive)
---- @param beat_start number Minimum beat (inclusive)
---- @param beat_end number Maximum beat (inclusive)
---- @return table Filtered notes (sub-set suitable for rendering)
 function m.GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end)
-    local result = {}
-    if not notes then return result end
-    for _, note in ipairs(notes) do
-        if note.pitch >= pitch_start and note.pitch <= pitch_end then
-            local ns = note.start_beat
-            local nd = note.duration or 1
-            if ns + nd >= beat_start and ns <= beat_end then
-                table.insert(result, note)
-            end
-        end
-    end
-    return result
+    return note_store.GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end)
 end
 
 return m

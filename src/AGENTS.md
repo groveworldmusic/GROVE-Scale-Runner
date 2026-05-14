@@ -12,7 +12,7 @@ src/
 ├── main.lua          ← Entry: Init() → MainLoop() → CleanupAll()
 ├── core/             ← Domain logic (6 files): midi, keyboard, sequencer, progression,
 │                       api-guard, snap
-├── ui/               ← GFX interface (35 files): views, widgets, slots, layout, compact-*, helpers,
+├── ui/               ← GFX interface (37 files): views, widgets, slots, layout, compact-*, helpers,
 │                       piano-roll (6 sub-modules), timeline, velocity, preset-browser,
 │                       midi-island, icons, gfx-safe
 └── state/            ← State stores (10 files): compact, drag, sequencer, midi, ui, island,
@@ -125,7 +125,7 @@ end)
 
 **VKEY_MAP physical rows**: Row1 (0x31-0x37, oct+1), Row2 QWERTYU (0x51/57/45/52/54/59/55, oct 0), Row3 ASDFGHJ (0x41/53/44/46/47/48/4A, oct-1), Row4 ZXCVBNM (0x5A/58/43/56/42/4E/4D, oct-2). Grado wrappea si > scale length.
 
-**config.state remnants**: `root_index`(1-12), `scale_index`(1-21), `octave`(0-8), `chord_mode_index`(1-4), `inversion_index`(1-4), `inversion_direction`(0-1), `subdivision_index`(1-6), `view_offset_x/y`, `use_scroll`. ~1 runtime read remanente: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`. El resto de accesos vía stores.
+**config.state remnants**: `root_index`(1-12), `scale_index`(1-21), `octave`(0-8), `chord_mode_index`(1-4), `inversion_index`(1-4), `inversion_direction`(0-1), `subdivision_index`(1-6), `view_offset_x/y`, `use_scroll`. ~138 runtime reads remanentes en 12+ archivos (midi.lua:94, views.lua, piano.lua, grid.lua, pads.lua, compact-menu.lua, compact-init.lua, main.lua, y otros). El más notable: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`.
 
 ## External Requirements
 

@@ -11,10 +11,10 @@ Estado global separado por dominio. Cada store encapsula su propia tabla de esta
 | `sequencer.lua` | 81 | 14 + progression[16] | 29 (14 pairs + 4 progression helpers + ClearProgression + Init) | `progression` (ref), `sequencer` sub-table, `current_page`, `page_override_timer`, `slot_flash.*` |
 | `midi.lua` | 57 | 6 + 3 sub-tables | 15 (3 pairs + 6 indexed + ClearActiveNotes + Init) | `use_velocity`, `last_note_played`, `active_note_draw_timer`, `key_states` (ref), `active_notes` (merge), `mouse_pad_state` (merge) |
 | `ui.lua` | 121 | 14 | 33 (14 pairs + 2 Consume* + 3 pad_flash + ClearPadFlash + Init) | ~15 root keys de `config.state.*` |
-| `island.lua` | 136 | 20 + notes[] | 42 (20 pairs + ClearBrowserState + 2 conversion helpers + LoadNotesFromProgression + GetVisibleNotes + Init) | `island_active`, `preset_panel_visible`, `notes` (ref), `playback_pos`, `scroll_*`, `zoom_x`, `selected_note_index`, `current_directory`, `preset_root` |
-| `piano-roll-store.lua` | 426 | 30+ | 50+ (pairs + CRUD + undo/redo + note helpers + Init) | `island_active`, `preset_panel_visible`, `notes` (ref), `playback_pos`, `scroll_*`, `zoom_x`, `selected_note_index` |
+| `island.lua` | 566 → ~380 | 14 + notes proxies | ~25 (14 pairs + ClearBrowserState + proxies to note-store + Init) | `island_active`, `preset_panel_visible`, `playback_pos`, `scroll_*`, `zoom_x`, `selected_note_index`, `current_directory`, `preset_root` |
+| `note-store.lua` | ~165 | 5 | ~18 (note CRUD + undo/redo + UUID + progression conversion + Init) | `notes` (ref), `next_note_uuid` |
 | `preset-store.lua` | 72 | 10 | 20 (10 pairs + ClearBrowserState + Init) | `current_directory`, `preset_root` |
-| `preferences.lua` | 81 | 7 | 16 (7 pairs + Init + SyncFromState + TickSaveDebounce) | `root_index`, `scale_index`, `octave`, `chord_mode_index`, `inversion_index`, `inversion_direction`, `subdivision_index` |
+| `preferences.lua` | 77 | 7 | 16 (7 pairs + Init + SyncFromState + TickSaveDebounce) | `root_index`, `scale_index`, `octave`, `chord_mode_index`, `inversion_index`, `inversion_direction`, `subdivision_index` |
 
 ## Store Module Pattern
 
@@ -42,8 +42,8 @@ Cada store procesa `config.state` de manera diferente:
 - **sequencer**: `progression` se asigna por **REFERENCIA** (mutaciones afectan caller). `sequencer` sub-table se mergea key-by-key. `current_page`, `page_override_timer` directos. `slot_flash` mergea idx+timer.
 - **midi**: `use_velocity`, `last_note_played`, `active_note_draw_timer` directos. `key_states` por **REFERENCIA**. `active_notes` mergea entry-by-entry (NO reemplazo completo). `mouse_pad_state` mergea sub-keys.
 - **ui**: ~15 root keys directas. `pad_flash` mergea recursivamente (sub-tablas anidadas como `prev_active`).
-- **island**: `island_active`, `preset_panel_visible`, `notes` por **REFERENCIA** (mutaciones afectan caller). `playback_pos`, `scroll_*`, `zoom_x`, `selected_note_index` directos. `current_directory`, `preset_root` directos.
-- **piano-roll-store**: `island_active`, `preset_panel_visible`, `notes` (ref), `playback_pos`, `scroll_offset_y/x`, `zoom_x`, `selected_note_index` directos. Note CRUD functions maintain internal state (uuid index, note count).
+- **island**: `island_active`, `preset_panel_visible`, `playback_pos`, `scroll_*`, `zoom_x`, `selected_note_index` directos. `current_directory`, `preset_root` directos. Notes/undo/redo delegados a note-store via `note_store.Init(defaults)` al final de su Init.
+- **note-store**: `notes` por **REFERENCIA** (mutaciones afectan caller), `next_note_uuid` directo. Note CRUD + undo/redo + UUID + progression conversion. Init se llama desde `island_store.Init()`, NO directamente desde main.lua.
 - **preset-store**: Init solo recibe `current_directory` y `preset_root`. El resto (preset_tree, preset_files, etc.) se inicializan desde defaults internos.
 - **preferences**: `root_index`, `scale_index`, `octave`, `chord_mode_index`, `inversion_index`, `inversion_direction`, `subdivision_index` directos. No hay sub-tablas.
 
@@ -105,13 +105,13 @@ Mouse pad state (ref): GetMousePadState() → table (REF)
 
 Init: `use_velocity`, `last_note_played`, `active_note_draw_timer`, `key_states` (ref), `active_notes` (merge entry-by-entry), `mouse_pad_state` (merge sub-keys).
 
-### island.lua — 20 pairs + ClearBrowserState + ProgressionToNotes + GetVisibleNotes
+### island.lua — 14 pairs + ClearBrowserState + note proxies + Init
 
 ```
 Island state: Get/Set: IslandActive(bool), PresetPanelVisible(bool)
 
-Notes (ref): GetNotes() → table (REF), SetNotes(t),
-             GetNoteCount(), SetNoteCount(v)
+Notes (delegated to note-store): GetNotes() → table (REF, proxy),
+             SetNotes(t), GetNoteCount(), SetNoteCount(v)
 
 Playback: Get/Set: PlaybackPos(num — beats)
 
@@ -127,65 +127,37 @@ Preset browser: Get/Set: CurrentDirectory(str), PresetRoot(str),
                 BrowserError(str|nil), Favorites(table — REF),
                 Bookmarks(table — REF)
 Special: ClearBrowserState() — resets browser fields to defaults
-Helpers: ProgressionToNotes(progression, beats_per_slot?, velocity?) → table
-         LoadNotesFromProgression(seq_store) → void (populates notes from sequencer)
-         GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end) → table
+Proxies (delegate to note-store): AddNote, RemoveNoteAtIndex (with selection fixup),
+         RebuildUUIDIndex, AllocNoteUUID, FindNoteByUUID,
+         PushUndo, PopUndo, PushRedo, PopRedo, ClearUndoStacks, GetUndoDepth, GetRedoDepth,
+         ProgressionToNotes, LoadNotesFromProgression, GetVisibleNotes
 ```
 
-Init: `island_active`, `preset_panel_visible`, `notes` (ref), `playback_pos`, `scroll_offset_y/x`, `zoom_x`, `selected_note_index`, `current_directory`, `preset_root`. 14 keys in total.
+Init: `island_active`, `preset_panel_visible`, `playback_pos`, `scroll_offset_y/x`, `zoom_x`, `selected_note_index`, `current_directory`, `preset_root`. ~12 keys. Notes/undo init delegated to note-store.
 
-### piano-roll-store.lua — 30+ pairs + note CRUD + undo/redo + selection + lasso + helpers
+### note-store.lua — note CRUD + undo/redo + UUID + progression conversion
 
 ```
-Island state: Get/Set: IslandActive(bool), PresetPanelVisible(bool)
+Notes: GetNotes() → table (REF), SetNotes(t), GetNoteCount(), SetNoteCount(v)
 
-Notes (ref): GetNotes() → table (REF), SetNotes(t) → clears selection + rebuilds UUID index,
-             GetNoteCount(), SetNoteCount(v)
-             AddNote(note) — inserts note with UUID, auto-alloc if missing
-             RemoveNoteAtIndex(idx) — removes + adjusts selection indices
+CRUD: AddNote(note) — inserts note with UUID, auto-alloc if missing
+      RemoveNoteAtIndex(idx) — removes note (does NOT touch selection)
 
-Selection: GetSelectedIndices() → table (REF), SetSelectedIndices(t),
-           ClearSelection(), IsNoteSelected(idx), ToggleNoteSelected(idx),
-           GetPrimarySelectedIndex(), GetSelectionCount()
-Shims: SetSelectedNoteIndex(v), GetSelectedNoteIndex() — legacy shims for backward compat
-
-Lasso: Get/Set: LassoActive(bool), LassoStartX/Y(num), LassoEndX/Y(num)
-
-Playback: Get/Set: PlaybackPos(num — beats)
-
-Scroll: Get/Set: ScrollOffsetY(num — clamped 0..108), ScrollOffsetX(num — clamped ≥0)
-
-Zoom: Get/Set: ZoomX(num — pixels per beat, clamped 10..200)
-
-Tool: Get/Set: ToolMode("pointer"|"pencil"|"eraser")
-
-Snap: Get/Set: SnapEnabled(bool), SnapResolution(num), SnapTriplet(bool)
-
-Note drag: Get/Set: NoteDragActive(bool), NoteDragIndices(table),
-           NoteDragStartPitch(num), NoteDragStartBeat(num),
-           NoteDragOriginMx/My(num), NoteResizeEdge(string|nil),
-           ResetNoteDrag() — clears all drag state
-
-Velocity: Get/Set: VelocityPanelExpanded(bool)
-
-Island transition: Get/Set: IslandTransitioning(bool),
-                   Get/SetPreToggleDock(num), Get/SetPreToggleRect(table)
+UUID: AllocNoteUUID() → auto-increment ID
+      FindNoteByUUID(uuid) → index|nil
+      RebuildUUIDIndex() — rebuilds uuid→index lookup
 
 Undo/Redo: PushUndo(entry), PopUndo() → entry|nil,
            PushRedo(entry), PopRedo() → entry|nil,
            ClearUndoStacks(), GetUndoDepth(), GetRedoDepth()
            Max 50 entries per stack. Pushing undo clears redo stack.
 
-UUID: AllocNoteUUID() → auto-increment ID
-      FindNoteByUUID(uuid) → index|nil
-      RebuildUUIDIndex() — rebuilds uuid→index lookup
-
 Helpers: ProgressionToNotes(progression, beats_per_slot?, velocity?) → table
          LoadNotesFromProgression(seq_store) → void
          GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end) → table
 ```
 
-Init: `island_active`, `preset_panel_visible`, `notes` (ref), `playback_pos`, `scroll_offset_y/x`, `zoom_x`, `selected_note_index`, `velocity_panel_expanded`. Approximately 10 keys.
+Init: `notes` (ref), `next_note_uuid`. Called from `island_store.Init()`, NOT directly from main.lua.
 
 ### preset-store.lua — 10 pairs + ClearBrowserState
 
@@ -259,20 +231,20 @@ Init desde ~15 root keys de `config.state.*`. `pad_flash` mergeado recursivament
 | `midi` | `GetActiveNotes()` | `midi_state.active_notes` — `{[note] = count}` ref-counted. Mutar directamente puede desincronizar. Preferir `SetActiveNote()`. |
 | `midi` | `GetMousePadState()` | `midi_state.mouse_pad_state` — mutación directa de sub-campos es intencional (pads.lua). |
 | `ui` | `GetPadFlashPrevActive()` | `ui_state.pad_flash.prev_active` — solo lectura, ClearPadFlash no lo toca. |
-| `piano-roll-store` | `GetNotes()` | `state.notes` — array de notas con UUID. Mutar entries in-place es seguro, no reasignar el array. |
-| `piano-roll-store` | `GetSelectedIndices()` | `state.selected_indices` — `{[idx] = true}` set. Mutar directamente es seguro. |
+| `note-store` | `GetNotes()` | `note-store.state.notes` — array de notas con UUID. Mutar entries in-place es seguro, no reasignar el array. |
+| `island` | `GetSelectedIndices()` | `island_state.selected_indices` — `{[idx] = true}` set. Mutar directamente es seguro. |
 | `preset-store` | `GetPresetTree/Files/Favorites/Bookmarks()` | Tablas internas referenciadas. Mutar sub-entries es seguro, reasignar requiere Set* correspondiente. |
 
 **Convención**: REFERENCIA MUTABLE en la descripción de la función. Setters como `SetProgression(t)` son para reemplazo completo. Para mutación in-place, usar la referencia directamente.
 
 ## Cross-Store Dependencies
 
-- **Ninguna store requiere otra store directamente** — cada store es completamente independiente.
+- **Ninguna store requiere otra store directamente** — cada store es completamente independiente. La única excepción es `island.lua` que requiere `note-store.lua` para delegar funciones de notas.
 - `midi.lua` (core) requiere `sequencer_store` para leer volumen — pero esto es desde el módulo de dominio, no desde la store.
 - `progression.lua` (core) requiere `sequencer_store` — mismo caso.
-- `piano-roll-store.lua` directamente importa `config` para ProgressionToNotes (usa SCALES, CHORD_MODES) y `core.api-guard` para ClampIndex — es el módulo de store con más dependencias externas.
+- `note-store.lua` importa `config` para ProgressionToNotes (usa SCALES, CHORD_MODES) y `core.api-guard` para ClampIndex.
+- `island.lua` importa `config` para ciertas constantes y `state.note-store` para delegación.
 - `preferences.lua` importa `state.persist` para el debounced save (TickSaveDebounce llama persist.Save).
-- `island.lua` importa `config` para ciertas constantes.
 - Las stores solo reciben `config.state` en Init y son consumidas por core/ y ui/.
 
 ## Remnant Keys (config.state)
@@ -292,4 +264,4 @@ Keys que persisten como root keys de `config.state` por compatibilidad con códi
 | `view_offset_y` | number | Posición Y de ventana GFX |
 | `use_scroll` | boolean | Scroll habilitado |
 
-~1 runtime read remanente: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`. El resto de accesos son vía stores. **NO agregar nuevas keys a `config.state`** — las stores son el mecanismo correcto.
+0 runtime reads remanentes directos a `config.state` desde stores (migrados a preferences_store / note-store). Quedan ~138 reads en core/ y ui/ que pasan por `ctx` o stores. **NO agregar nuevas keys a `config.state`** — las stores son el mecanismo correcto.
