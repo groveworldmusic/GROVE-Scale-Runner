@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 local config = require("config")
 local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
@@ -22,6 +22,7 @@ local velocity = require("ui.velocity")
 local preset_browser = require("ui.preset-browser")
 local midi_island = require("ui.midi-island")
 local api_guard = require("core.api-guard")
+local gfx_safe = require("ui.gfx-safe")
 
 local views = {}
 
@@ -152,6 +153,8 @@ function views.DrawHeader()
             compact.ResetAutoPosition()
         elseif choice == 4 then
             ui_store.SetUseScroll(not ui_store.GetUseScroll())
+            reaper.SetExtState("GROVE_Scale_Runner", "use_scroll",
+                ui_store.GetUseScroll() and "1" or "0", true)
         elseif choice == 5 then
             ui_store.SetAutoStartCompact(not ui_store.GetAutoStartCompact())
             reaper.SetExtState("GROVE_Scale_Runner", "auto_start_compact",
@@ -857,7 +860,7 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
         ui_store.SetDockedMode(false)
         ui_store.SetDockId(0)
         -- Resize back to normal window
-        gfx.init("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
+        gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     end
 end
 
