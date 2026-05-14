@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll View Coordinator
 -- DrawPianoRoll entry point: computes visible ranges, calls grid/note/lasso.
 -- Extracted from piano-roll.lua barrel (PR1b).

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Preset Browser
 -- Filesystem-based preset browser for saving/loading island note configurations.
 -- Uses io.* for file I/O and reaper.GetResourcePath() for base directory.
@@ -12,6 +12,7 @@ local helpers = require("ui.helpers")
 local components = require("ui.components")
 local ui_store = require("state.ui")
 local seq_store = require("state.sequencer")
+local layout = require("ui.layout")
 
 local browser = {}
 
@@ -21,7 +22,7 @@ local FOLDER_ICON_W = 16         -- Width of folder/file icons
 local STAR_SIZE = 14             -- Size of favorite star icon
 local HEADER_H = 28              -- Height of the browser header row
 local BTN_H = 24                 -- Height of action buttons
-local FONT_SIZE = 11             -- Base font size
+local FONT_SIZE = 11             -- Base font size (scaled in header)
 
 -- Colors
 local HEADER_BG = {0.22, 0.22, 0.22, 1}
@@ -356,15 +357,61 @@ end
 --- @return boolean clicked
 local function DrawActionButton(x, y, w, h, label, hover)
     helpers.SetColor(hover and BTN_HOVER or BTN_BG)
-    components.DrawRoundedRect(x, y, w, h, 4, true)
+    components.DrawRoundedRect(x, y, w, h, 10, true) -- Match header corner radius
 
     helpers.SetColor(theme.colors.text)
-    gfx.setfont(1, "Calibri", FONT_SIZE)
+    gfx.setfont(1, "Calibri", layout.US(1300)) -- Match header font size
     local lw, lh = gfx.measurestr(label)
     gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2
     gfx.drawstr(label)
 
     return hover and ui_store.GetMouseClick()
+end
+function browser.DrawActionButtons(x, y, btn_w, h)
+    local btn_spacing = 4
+    local total_w = btn_w * 3 + btn_spacing * 2
+    local btn_y = y
+
+    -- Save button
+    local save_x = x
+    local save_hover = gfx.mouse_x >= save_x and gfx.mouse_x <= save_x + btn_w
+                   and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
+    if DrawActionButton(save_x, btn_y, btn_w, h, "SAVE", save_hover) then
+        local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
+        if ret and csv and #csv > 0 then
+            local dir = island_store.GetCurrentDirectory()
+            if not dir or #dir == 0 then
+                dir = island_store.GetPresetRoot()
+            end
+            local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
+            if #filename > 0 then
+                local filepath = dir .. "\\" .. filename .. ".grove"
+                browser.SavePreset(filepath, filename)
+            end
+        end
+    end
+
+    -- Rename button (active only when a preset is selected)
+    local rename_x = save_x + btn_w + btn_spacing
+    local rename_hover = gfx.mouse_x >= rename_x and gfx.mouse_x <= rename_x + btn_w
+                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
+    if DrawActionButton(rename_x, btn_y, btn_w, h, "RENA", rename_hover) then
+        browser.RenamePreset()
+    end
+
+    -- Load button
+    local load_x = rename_x + btn_w + btn_spacing
+    local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
+                   and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
+    if DrawActionButton(load_x, btn_y, btn_w, h, "LOAD", load_hover) then
+        local files = island_store.GetPresetFiles()
+        local idx = island_store.GetSelectedPresetIdx()
+        if idx and idx >= 1 and idx <= #files then
+            browser.LoadPreset(files[idx].path)
+        end
+    end
+
+    return total_w
 end
 
 --- Draw the folder navigation header.
@@ -596,59 +643,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
         remaining_h = remaining_h - err_h
     end
 
-    -- ===========================
-    -- Action buttons row (Save / Rename / Load)
-    -- ===========================
-    local btn_y = current_y
-    local btn_spacing = 4
-    local btn_w = math.floor((w - 8 - 2 * btn_spacing) / 3)
-
-    -- Save button
-    local save_x = x + 4
-    local save_hover = gfx.mouse_x >= save_x and gfx.mouse_x <= save_x + btn_w
-                   and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    DrawActionButton(save_x, btn_y, btn_w, BTN_H, "Save", save_hover)
-
-    if save_hover and ui_store.GetMouseClick() then
-        local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
-        if ret and csv and #csv > 0 then
-            local dir = island_store.GetCurrentDirectory()
-            if not dir or #dir == 0 then
-                dir = island_store.GetPresetRoot()
-            end
-            local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
-            if #filename > 0 then
-                local filepath = dir .. "\\" .. filename .. ".grove"
-                browser.SavePreset(filepath, filename)
-            end
-        end
-    end
-
-    -- Rename button (active only when a preset is selected)
-    local rename_x = save_x + btn_w + btn_spacing
-    local rename_hover = gfx.mouse_x >= rename_x and gfx.mouse_x <= rename_x + btn_w
-                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    DrawActionButton(rename_x, btn_y, btn_w, BTN_H, "Rename", rename_hover)
-
-    if rename_hover and ui_store.GetMouseClick() then
-        browser.RenamePreset()
-    end
-
-    -- Load button
-    local load_x = rename_x + btn_w + btn_spacing
-    local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
-                   and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + BTN_H
-    DrawActionButton(load_x, btn_y, btn_w, BTN_H, "Load", load_hover)
-
-    if load_hover and ui_store.GetMouseClick() then
-        local files = island_store.GetPresetFiles()
-        local idx = island_store.GetSelectedPresetIdx()
-        if idx and idx >= 1 and idx <= #files then
-            browser.LoadPreset(files[idx].path)
-        end
-    end
-
-    current_y = btn_y + BTN_H + 4
+    current_y = current_y + 4
 
     -- Preset count label (below Rename, above divider â€” clearly separated)
     local files = island_store.GetPresetFiles()

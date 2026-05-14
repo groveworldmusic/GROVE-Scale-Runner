@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Progression CRUD â€” add, remove, swap, clear, and query operations
 local seq_store = require("state.sequencer")
 

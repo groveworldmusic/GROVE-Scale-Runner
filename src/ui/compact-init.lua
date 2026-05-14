@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Life-cycle Orchestration
 -- Central coordinator that wires together all compact sub-modules.
 -- Exports the functions that compact.lua re-exports to consumers.

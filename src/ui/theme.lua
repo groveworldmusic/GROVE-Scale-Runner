@@ -56,6 +56,12 @@ theme.colors = {
     -- Lasso selection rect (Phase 4)
     lasso_fill = {0.25, 0.50, 1.0, 0.15},     -- Semi-transparent blue fill
     lasso_border = {0.25, 0.50, 1.0, 0.50},   -- Blue border
+    
+    -- Scale Highlighting (Phase 5)
+    grid_scale_row = {1.0, 1.0, 1.0, 0.03},    -- Very subtle white highlight for scale rows
+    grid_black_key_row = {0.0, 0.0, 0.0, 0.15},-- Darker tint for non-scale rows (black keys)
+    note_ghost = {1.0, 1.0, 1.0, 0.3},         -- Semi-transparent ghost for dragging/resizing
+
     grade_colors = {
         hex2rgb("#3f81da"),  -- I:  blue
         hex2rgb("#4a9e6b"),  -- II: green

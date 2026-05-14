@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact view positioning and layout math
 -- Dependencies: config, state.compact (transport_hwnd via compact_store)
 local config = require("config")

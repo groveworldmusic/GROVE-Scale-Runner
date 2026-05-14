@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll Note Blocks
 -- Renders note blocks with gradient strips and velocity-based opacity.
 -- Handles hit testing, rect selection, and dirty cache.
@@ -62,7 +62,6 @@ end
 --- @param muted boolean
 local function DrawNoteWithGradient(nx, ny, nw, nh, pitch, velocity, muted)
     if muted then
-        -- Muted: flat fill at full alpha, NOTE_MUTED_RGB, no gradient
         helpers.SetColor(NOTE_MUTED_OPAQUE)
         components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
         return
@@ -71,22 +70,32 @@ local function DrawNoteWithGradient(nx, ny, nw, nh, pitch, velocity, muted)
     local base_color = NoteColorForPitch(pitch)
     local vel_alpha = 0.35 + (velocity / 127) * 0.65
     local strips = math.max(1, math.floor(nh / 4))
-
+    
+    -- Optimization: Draw all strips into the alpha-safe buffer in one go
+    -- We'll use components.DrawRoundedRect's logic but manually here to avoid multiple blits
+    helpers.SetColor({base_color[1], base_color[2], base_color[3], vel_alpha})
+    
+    -- Instead of calling DrawRoundedRect per strip, we draw the WHOLE note 
+    -- as one supersampled block, and then we'll overlay the strips if needed.
+    -- Or simpler: use DrawRoundedRect for the base and draw simple opaque rects for strips.
+    
+    -- Let's use DrawRoundedRect for the background and then draw the gradient strips
+    components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
+    
+    -- Add subtle gradient overlays (Draw directly since base is already blitted with alpha)
+    -- We use gfx.mode = 1 (additive) or just lower alpha to avoid destroying the corners
     for i = 0, strips - 1 do
         local t = i / strips
-        local darken = 1 - t * 0.3  -- top=1.0, bottomâ‰ˆ0.7
-        local sy = ny + math.floor(i * nh / strips)
-        local ey = ny + math.floor((i + 1) * nh / strips)
-
-        helpers.SetColor({
-            base_color[1] * darken,
-            base_color[2] * darken,
-            base_color[3] * darken,
-            vel_alpha,
-        })
-        -- Horizontal inset only, NO vertical inset: strips must tile without gaps
-        components.DrawRoundedRect(nx + 1, sy, math.max(1, nw - 2), ey - sy, math.min(3, math.floor((ey - sy) / 2)), true)
+        local darken = 0.1 - t * 0.2 -- subtle darkening
+        if math.abs(darken) > 0.01 then
+            gfx.set(0, 0, 0, math.abs(darken))
+            gfx.mode = (darken > 0) and 1 or 0 -- additive for highlight, normal for shadow
+            local sy = ny + math.floor(i * nh / strips)
+            local ey = ny + math.floor((i + 1) * nh / strips)
+            gfx.rect(nx + 2, sy + 1, math.max(1, nw - 4), ey - sy - 1, 1)
+        end
     end
+    gfx.mode = 0
 end
 
 -- =========================================================
@@ -157,8 +166,33 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
     local scroll_px_offset = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
 
     local notes = island_store.GetNotes()
-    if not notes or #notes == 0 then return end
+    if not notes then return end
 
+    -- PASS 1: GHOSTS (Phase 5)
+    -- Render semi-transparent silhouettes of notes at their original positions during drag/resize.
+    if island_store.GetNoteDragActive() then
+        local origins = island_store.GetNoteDragOrigins()
+        for idx, orig in pairs(origins) do
+            local op = orig.pitch
+            local os = orig.start_beat
+            local od = orig.duration or 1
+            
+            if op >= pitch_start and op <= pitch_end and os <= beat_end and (os + od) >= beat_start then
+                local gx = x + (os - scroll_x) * zoom_x
+                local gy = y + (top_pitch - op) * PITCH_ROW_H - scroll_px_offset
+                local gw = od * zoom_x
+                local gh = PITCH_ROW_H
+                
+                if gy < y + h and gy + gh > y then
+                    helpers.SetColor(theme.colors.note_ghost or {1, 1, 1, 0.2})
+                    components.DrawRoundedRect(gx + 1, gy + 1, math.max(1, gw - 2), math.max(1, gh - 2), 3, true)
+                end
+            end
+        end
+    end
+
+    -- PASS 2: ACTUAL NOTES
+    if #notes == 0 then return end
     for i, note in ipairs(notes) do
         local np = note.pitch
         local ns = note.start_beat
@@ -173,8 +207,7 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
             local nw = nd * zoom_x
             local nh = PITCH_ROW_H
 
-            -- Clip note height to viewport bottom (prevents overflow
-            -- into scrollbar margin or island container edge).
+            -- Clip note height to viewport bottom
             if ny < y + h and ny + nh > y then
                 local clipped_nh = math.min(nh, y + h - ny)
                 m.DrawNoteBlock(note, nx, ny, nw, clipped_nh, island_store.IsNoteSelected(i))

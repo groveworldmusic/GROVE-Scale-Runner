@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Formatting helpers for note names, chord labels, and roman numerals
 local config = require("config")
 local midi = require("core.midi")

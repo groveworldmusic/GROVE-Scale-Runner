@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: LICE wrappers for GFX compositing
 -- Dependencies: helpers, theme, state.compact (uses compact_store getters/setters)
 -- All functions take bitmap/font as explicit parameters (no require("config"))

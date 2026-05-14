@@ -255,13 +255,36 @@ local function MainLoop()
 
     -- GFX mode: mouse state + GFX calls
     local mwd = gfx.mouse_wheel
-    local fresh_click = (gfx.mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0
+    local current_mouse_cap = gfx.mouse_cap
+    local fresh_click = (current_mouse_cap & 1) == 1 and ui_store.GetLastMouseCap() == 0
     ui_store.SetMouseClick(fresh_click)
     ui_store.SetMouseWheelDelta(mwd)
     if mwd ~= 0 then gfx.mouse_wheel = 0 end
 
+    -- Check mouse movement
+    local mx, my = gfx.mouse_x, gfx.mouse_y
+    if mx ~= ui_store.GetLastMouseX() or my ~= ui_store.GetLastMouseY() then
+        ui_store.SetLastMouseX(mx)
+        ui_store.SetLastMouseY(my)
+        gfx_needs_redraw = true
+    end
+
+    -- Check mouse button state changes
+    if current_mouse_cap ~= ui_store.GetLastMouseCap() then
+        gfx_needs_redraw = true
+    end
+
+    -- Force an extra redraw frame after a click to ensure state changes are reflected
+    if ui_store.GetForceNextRedraw() then
+        gfx_needs_redraw = true
+        ui_store.SetForceNextRedraw(false)
+    end
+    if fresh_click then
+        ui_store.SetForceNextRedraw(true)
+    end
+
     -- Dirty-flag: set to true when any visual state changes
-    if mwd ~= 0 or fresh_click then gfx_needs_redraw = true end
+    if mwd ~= 0 then gfx_needs_redraw = true end
     -- Always redraw while sequencer is running or timers are active (state changes every frame)
     if sequencer_store.GetIsPlaying() then gfx_needs_redraw = true end
     if midi_store.GetActiveNoteDrawTimer() > 0 then gfx_needs_redraw = true end

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Progression Slot UI (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
@@ -66,9 +66,9 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
     end
 
     -- SUBDIVISION DOTS at slot bottom (show fill state always, active sub during play)
-    if slot and slot.subs and #slot.subs > 0 then
-        local sub_idx = config.state.subdivision_index or 1
-        local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
+    local sub_idx = config.state.subdivision_index or 1
+    local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
+    if slot and subdivision > 1 then
         local active_sub = play and (seq_store.GetCurrentSubStep() or 0) or -1
         local circle_r = math.max(2, math.min(4, math.floor(h * 0.035)))
         local spacing = circle_r * 3.5
@@ -84,8 +84,10 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
             local cy = circle_y_base - row * (circle_r * 3)
             if i == active_sub then
                 helpers.SetColor(theme.colors.page_active)
-            elseif slot.subs[i + 1] then
+            elseif slot.subs and slot.subs[i + 1] then
                 helpers.SetColor(theme.colors.text)  -- filled (has sub-entry)
+            elseif not slot.subs and i == 0 then
+                helpers.SetColor(theme.colors.text)  -- legacy: first dot is always filled
             else
                 helpers.SetColor(theme.colors.page_inactive)  -- empty
             end

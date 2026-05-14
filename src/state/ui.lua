@@ -24,6 +24,9 @@ local ui_state = {
     use_scroll = true,
     last_window_w = 720,
     last_window_h = 497,
+    last_mouse_x = 0,
+    last_mouse_y = 0,
+    force_next_redraw = false,
 }
 
 local m = {}
@@ -127,5 +130,14 @@ function m.GetLastWindowW() return ui_state.last_window_w end
 function m.SetLastWindowW(v) ui_state.last_window_w = v end
 function m.GetLastWindowH() return ui_state.last_window_h end
 function m.SetLastWindowH(v) ui_state.last_window_h = v end
+
+function m.GetLastMouseX() return ui_state.last_mouse_x end
+function m.SetLastMouseX(v) ui_state.last_mouse_x = v end
+
+function m.GetLastMouseY() return ui_state.last_mouse_y end
+function m.SetLastMouseY(v) ui_state.last_mouse_y = v end
+
+function m.GetForceNextRedraw() return ui_state.force_next_redraw end
+function m.SetForceNextRedraw(v) ui_state.force_next_redraw = v end
 
 return m

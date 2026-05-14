@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 local config = require("config")
 local compact_store = require("state.compact")
 local sequencer_store = require("state.sequencer")
@@ -7,6 +7,7 @@ local midi_store = require("state.midi")
 local ui_store = require("state.ui")
 local island_store = require("state.island")
 local api_guard = require("core.api-guard")
+local persist = require("state.persist")
 -- NOTE: do NOT require core.sequencer here — creates circular dependency (sequencer → midi → sequencer)
 local COLLAPSED_H = 497
 local EXPANDED_H = 793
@@ -16,6 +17,9 @@ local midi = {}
 midi.midi_island_expanded = false
 midi.midi_channel = 1
 midi.midi_island_toggled = false
+
+function midi.GetMidiChannel() return midi.midi_channel end
+function midi.SetMidiChannel(v) midi.midi_channel = v end
 
 function midi.GetMidiNote(root_idx, scale_idx, degree_idx, octave_val)
     local root = (api_guard.ClampIndex(root_idx, 1, 12) or root_idx) - 1
@@ -205,17 +209,25 @@ function midi.ToggleIsland()
     local dock = gfx.dock(-1)
     local gs = compact_store.GetLastGfxState()
     local hwnd = gfx.hwnd
+    
     if hwnd then
         local l, t, r, b = reaper.JS_Window_GetRect(hwnd)
         gs.x, gs.y = l, t
+        -- Persist to config.state so it's saved across sessions
+        config.state.view_offset_x = l
+        config.state.view_offset_y = t
+        persist.Save("view_offset_x", l)
+        persist.Save("view_offset_y", t)
+        
         -- Save to island_store for resilience across toggle
         island_store.SetPreToggleDock(dock)
         island_store.SetPreToggleRect({x = l, y = t})
     end
+    
     island_store.SetIslandTransitioning(true)
     local new_h = midi.midi_island_expanded and EXPANDED_H or COLLAPSED_H
     gfx.quit()
-    gfx.init(config.script_title, 720, new_h, dock, gs.x, gs.y)
+    gfx.init(config.script_title, 720, new_h, dock, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)
     island_store.SetIslandTransitioning(false)
 end

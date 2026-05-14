@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: MIDI State Store
 -- Encapsulates MIDI-related state with getters/setters.
 -- Extracted from config.state.* for MIDI, keyboard, and pad subsystems.

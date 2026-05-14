@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 -- GROVE Scale Runner: Snap Grid — Pure Function Module
 -- SnapBeat snaps a raw beat value to the nearest grid boundary.
 -- ZERO side effects — takes values, returns values.

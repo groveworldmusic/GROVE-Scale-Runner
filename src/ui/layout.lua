@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Layout System â€” Uniform Scale Factor & Canvas Constants
 -- Provides coordinate scaling functions and canvas dimensions for gfx rendering.
 local m = {}

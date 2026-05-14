@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Timeline Ruler
 -- Beat/measure markers displayed above the piano roll grid.
 -- Synchronizes with sequencer clock for playback head position.
@@ -17,10 +17,10 @@ local timeline = {}
 timeline.TIMELINE_H = 28               -- Height of the timeline ruler in pixels
 timeline.PITCH_LABEL_W = 48           -- Must match piano-roll.lua PITCH_LABEL_W
 
--- Colors
-local MEASURE_TICK_COLOR = {0.6, 0.6, 0.6, 0.7}
-local BEAT_TICK_COLOR = {0.4, 0.4, 0.4, 0.4}
-local MEASURE_TEXT_COLOR = {0.7, 0.7, 0.7, 0.8}
+-- Colors (Now synced with theme where possible)
+local MEASURE_TICK_COLOR = theme.colors.text_dim or {0.6, 0.6, 0.6, 0.7}
+local BEAT_TICK_COLOR = {0.4, 0.4, 0.4, 0.3}
+local MEASURE_TEXT_COLOR = theme.colors.text or {0.7, 0.7, 0.7, 0.8}
 local PLAYHEAD_COLOR = {0.9, 0.2, 0.2, 0.9}
 
 -- Tick heights
@@ -109,18 +109,17 @@ end
 --- @param playback_pos number Current playback position in beats
 --- @param zoom_x number Pixels per beat
 --- @param scroll_x number Horizontal scroll offset in beats
+--- @param grid_w number Width of the grid
 --- @param ruler_only boolean If true, only draw within the ruler (for the ruler area call)
-function timeline.DrawPlaybackHead(x, y, h, grid_h, playback_pos, zoom_x, scroll_x, ruler_only)
+function timeline.DrawPlaybackHead(x, y, h, grid_h, playback_pos, zoom_x, scroll_x, grid_w, ruler_only)
     if playback_pos < 0 then return end
-
-    -- Only show when sequencer is playing
     if not seq_store.GetIsPlaying() then return end
 
     local hx = x + (playback_pos - scroll_x) * zoom_x
-    if hx < x or hx > x + (grid_h > 0 and grid_h or h) + x then return end
+    -- Clip to visible grid area
+    if hx < x or (grid_w and hx > x + grid_w) then return end
 
     helpers.SetColor(PLAYHEAD_COLOR)
-
     local total_h = ruler_only and h or (h + grid_h)
     gfx.line(hx, y, hx, y + total_h)
 
@@ -157,28 +156,28 @@ function timeline.DrawTimelineRuler(x, y, w, h, grid_h, round_tl)
     local scroll_x = island_store.GetScrollOffsetX()
     local zoom_x = island_store.GetZoomX()
     local LABEL_W = timeline.PITCH_LABEL_W
+    local SB_SIZE = 7
 
-    -- Ruler background tint with rounded top corners
-    -- Top-right is always rounded (island right edge); top-left is rounded only
-    -- when no preset panel is visible (left edge matches island edge).
-    helpers.SetColor(theme.colors.island_ruler_bg)
-    components.DrawRoundedRectEx(x, y, w, h, 10, {tr=true, tl=round_tl or false})
+    -- 1. Ruler background (Only for the grid area to avoid spine overlap)
+    local grid_x = x + LABEL_W
+    local grid_w = w - LABEL_W - SB_SIZE
+    
+    helpers.SetColor({0.12, 0.12, 0.12, 0.98})
+    components.DrawRoundedRectEx(grid_x, y, grid_w + SB_SIZE, h, 10, {tr=true, tl=false, bl=false, br=false})
 
-    -- "BEATS" label in the label area
+    -- 2. "BEATS" label (drawn directly over the master spine)
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", 9)
     local lw, lh = gfx.measurestr("BEATS")
     gfx.x, gfx.y = x + (LABEL_W - lw) / 2, y + (h - lh) / 2
     gfx.drawstr("BEATS")
 
-    -- Draw ticks in the grid portion
+    -- 5. Content Ticks & Playhead
     local grid_x = x + LABEL_W
-    local grid_w = w - LABEL_W
+    local grid_w = w - LABEL_W - SB_SIZE
     if grid_w > 0 then
         timeline.DrawBeatTicks(grid_x, y, grid_w, h, zoom_x, scroll_x)
-
-        -- Draw playback head (extends through ruler + piano roll)
-        timeline.DrawPlaybackHead(grid_x, y, h, grid_h, island_store.GetPlaybackPos(), zoom_x, scroll_x, false)
+        timeline.DrawPlaybackHead(grid_x, y, h, grid_h, island_store.GetPlaybackPos(), zoom_x, scroll_x, grid_w, false)
     end
 end
 

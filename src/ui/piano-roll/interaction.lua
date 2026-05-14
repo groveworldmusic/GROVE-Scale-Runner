@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll Interaction
 -- Mouse event handlers, lasso rendering, Ctrl+A, keyboard shortcuts, undo/redo (PR3).
 -- Extracted from piano-roll.lua barrel (PR1b).
@@ -21,11 +21,9 @@ local _clipboard = {}
 -- Note Drag / Resize State (module-local, alive per drag session)
 -- =========================================================
 
---- Stores original positions of all notes being dragged.
---- Keys: note index, Values: {pitch = N, start_beat = N}
 --- Used for multi-note group move: relative offsets preserved by
 --- applying the same delta to each note's original position.
-local _drag_origins = {}
+-- Removed local _drag_origins, now using island_store.GetNoteDragOrigins() (Phase 5)
 
 --- Drag arming: on mouse down over a note, we arm a potential drag
 --- but wait for the 8px threshold before actually starting the drag.
@@ -385,16 +383,18 @@ function m.StartNoteDrag(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x, hit
 
     -- Save original positions of ALL dragged notes for relative offset preservation
     local drag_indices = {}
-    _drag_origins = {}
+    local origins = {}
     for idx in pairs(selected) do
         if notes[idx] then
             drag_indices[#drag_indices + 1] = idx
-            _drag_origins[idx] = {
+            origins[idx] = {
                 pitch = notes[idx].pitch,
                 start_beat = notes[idx].start_beat,
+                duration = notes[idx].duration or 1,
             }
         end
     end
+    island_store.SetNoteDragOrigins(origins)
 
     island_store.SetNoteDragIndices(drag_indices)
     island_store.SetNoteDragStartPitch(notes[hit_idx].pitch)
@@ -434,8 +434,9 @@ function m.UpdateNoteDrag(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     local delta_beat = delta_px_x / zoom_x
 
     -- Apply delta to each dragged note from its ORIGINAL position
+    local origins = island_store.GetNoteDragOrigins()
     for _, idx in ipairs(drag_indices) do
-        local orig = _drag_origins[idx]
+        local orig = origins[idx]
         if orig and notes[idx] then
             local new_pitch = math.max(grid.MIN_PITCH, math.min(grid.MAX_PITCH, orig.pitch + delta_pitch))
             local new_beat = math.max(0, orig.start_beat + delta_beat)
@@ -485,8 +486,9 @@ function m.CommitNoteDrag(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     local undo_new = {}
 
     -- Final pass: apply delta + snap
+    local origins = island_store.GetNoteDragOrigins()
     for _, idx in ipairs(drag_indices) do
-        local orig = _drag_origins[idx]
+        local orig = origins[idx]
         if orig and notes[idx] then
             -- Capture prev state
             table.insert(undo_uuids, notes[idx].uuid)
@@ -551,9 +553,10 @@ function m.CancelNoteDrag()
     local notes = island_store.GetNotes()
     local drag_indices = island_store.GetNoteDragIndices()
 
+    local origins = island_store.GetNoteDragOrigins()
     if drag_indices then
         for _, idx in ipairs(drag_indices) do
-            local orig = _drag_origins[idx]
+            local orig = origins[idx]
             if orig and notes[idx] then
                 notes[idx].pitch = orig.pitch
                 notes[idx].start_beat = orig.start_beat
@@ -580,12 +583,13 @@ function m.StartNoteResize(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x, h
     if not notes or not notes[hit_idx] then return end
 
     -- Save original position for this single note
-    _drag_origins = {}
-    _drag_origins[hit_idx] = {
+    local origins = {}
+    origins[hit_idx] = {
         pitch = notes[hit_idx].pitch,
         start_beat = notes[hit_idx].start_beat,
         duration = notes[hit_idx].duration or 1,
     }
+    island_store.SetNoteDragOrigins(origins)
 
     island_store.SetNoteDragIndices({hit_idx})
     island_store.SetNoteDragStartPitch(notes[hit_idx].pitch)
@@ -613,7 +617,8 @@ function m.UpdateNoteResize(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     if not drag_indices or #drag_indices == 0 then return end
 
     local idx = drag_indices[1]  -- single note resize
-    local orig = _drag_origins[idx]
+    local origins = island_store.GetNoteDragOrigins()
+    local orig = origins[idx]
     if not orig or not notes[idx] then return end
 
     local origin_mx = island_store.GetNoteDragOriginMx()
@@ -1128,7 +1133,8 @@ function m.CommitNoteResize(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x)
     end
 
     local idx = drag_indices[1]
-    local orig = _drag_origins[idx]
+    local origins = island_store.GetNoteDragOrigins()
+    local orig = origins[idx]
     if not orig or not notes[idx] then
         island_store.ResetNoteDrag()
         return

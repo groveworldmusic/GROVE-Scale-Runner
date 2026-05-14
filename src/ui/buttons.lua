@@ -14,7 +14,9 @@ local m = {}
 
 function m.DrawToolIcon(type, x, y, size, active)
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + size and gfx.mouse_y >= y and gfx.mouse_y <= y + size
-    helpers.SetColor(active and theme.colors.btn_active or (hover and theme.colors.text or theme.colors.text_dim))
+    local is_mouse_down = (gfx.mouse_cap & 1) == 1
+    local pressed = hover and is_mouse_down
+    helpers.SetColor(active and theme.colors.btn_active or (pressed and theme.colors.text or (hover and theme.colors.text or theme.colors.text_dim)))
     
     local r = size / 2
     if type == "settings" then
@@ -109,7 +111,8 @@ end
 function m.DrawButton(x, y, w, h, label, active, font_size)
     local components = require("ui.components")
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
-    local pressed = hover and ui_store.GetMouseClick()
+    local is_mouse_down = (gfx.mouse_cap & 1) == 1
+    local pressed = hover and is_mouse_down
 
     -- 1. Base background: btn_bg or btn_active
     helpers.SetColor(active and theme.colors.btn_active or theme.colors.btn_bg)
@@ -155,14 +158,17 @@ end
 function m.DrawTransportButton(label, x, y, w, h)
     local components = require("ui.components")
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + w and gfx.mouse_y >= y and gfx.mouse_y <= y + h
+    local is_mouse_down = (gfx.mouse_cap & 1) == 1
+    local pressed = hover and is_mouse_down
 
-    helpers.SetColor(hover and theme.colors.btn_hover or theme.colors.btn_bg)
+    helpers.SetColor(pressed and theme.colors.btn_active or (hover and theme.colors.btn_hover or theme.colors.btn_bg))
     components.DrawRoundedRect(x, y, w, h, 6, true)
 
     helpers.SetColor(theme.colors.text_dim)
     gfx.setfont(1, "Calibri", 11)
     local lw, lh = gfx.measurestr(label)
-    gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2
+    local off = pressed and 1 or 0
+    gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2 + off
     gfx.drawstr(label)
 
     return ui_store.GetMouseClick() and hover

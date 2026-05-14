@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Safe GFX Initialization and Error Display
 -- Wraps gfx.init() and gfx.quit() in pcall to prevent crashes when
 -- the GFX context is unavailable (e.g. during REAPER shutdown).

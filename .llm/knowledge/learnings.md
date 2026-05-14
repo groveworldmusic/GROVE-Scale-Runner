@@ -1,0 +1,144 @@
+# Aprendizajes — Bugs, Gotchas, Soluciones
+
+## Bug: DrawSlotBackground era local pero el barrel la re-exportaba
+
+**Síntoma**: `components.DrawSlotBackground = slots.DrawSlotBackground` devolvía `nil` en runtime.
+**Causa raíz**: DrawSlotBackground era `local function` en el original y se mantuvo `local function` en slots.lua. El barrel intentaba re-exportar una función que no existía en el módulo.
+**Solución**: No re-exportar funciones locales del barrel. Verificar que solo funciones públicas (`m.*`) se agreguen al barrel.
+**Archivos**: `src/ui/components.lua`, `src/core/slots.lua`
+
+## Gotcha: require circular en módulos extraídos
+
+**Contexto**: Los widgets extraídos de components.lua necesitan `DrawRoundedRect` que está en el barrel.
+**Solución**: Lazy require — `local components = require("ui.components")` dentro del cuerpo de la función.
+**Archivos**: buttons.lua, dropdown.lua, paginator.lua, piano.lua, pads.lua, etc.
+
+## Gotcha: compact-bar necesitaba compact_store
+
+**Contexto**: PR 1 de stores migró config.state.compact a compact_store, pero compact-bar.lua seguía leyendo `config.state.compact` directamente. Hubo que actualizarlo en el mismo PR.
+**Lección**: Al migrar stores, verificar TODOS los archivos que referencian las keys migradas, no solo los listados originalmente.
+**Archivos**: `src/ui/compact-bar.lua`
+
+## Bug: views.lua asignaba a getter
+
+**Síntoma**: `midi_store.GetUseVelocity() = not midi_store.GetUseVelocity()` — inválido en Lua.
+**Causa raíz**: Refactor mecánico reemplazó `config.state.use_velocity = not config.state.use_velocity` por `midi_store.GetUseVelocity() = not midi_store.GetUseVelocity()`.
+**Solución**: Cambiar a `midi_store.SetUseVelocity(not midi_store.GetUseVelocity())`.
+**Archivos**: `src/ui/views.lua`
+
+## Conocimiento: mouse_click event bus
+
+**Contexto**: `mouse_click` se setea en un frame cuando `gfx.mouse_cap & 1 == 1` y `last_mouse_cap == 0`. Se resetea automáticamente al frame siguiente cuando la condición deja de cumplirse.
+**Importante**: No hay setter explícito de "false" para mouse_click — es un evento de un solo frame por diseño.
+
+## Conocimiento: Scroll wheel en dual context
+
+Cada contexto GFX (main y compact) tiene su propio `gfx.mouse_wheel`. El patrón correcto es:
+1. `config.state.mouse_wheel_delta = gfx.mouse_wheel` (capturar)
+2. `gfx.mouse_wheel = 0` (zerear a nivel GFX)
+3. Cada widget lee `config.state.mouse_wheel_delta` y si lo consume, hace `config.state.mouse_wheel_delta = 0`
+
+## Isla MIDI: Gotchas y aprendizajes
+
+### gfx.quit()/gfx.init() en pcall
+Ambos pueden fallar (e.g., REAPER closing mid-transition). Siempre wrappear en pcall con revert logic. Ver `compact-init.lua` P5-01.
+
+### Grid alignment en todos los zoom levels
+Beat ticks y note positions deben usar la misma fórmula: `(value - scroll_x) * zoom_x`. Cualquier mismatch causa misalignment visible entre timeline y piano roll.
+
+### Drag state modular debe resetearse al salir del modo
+`velocity.ResetDrag()` se llama al salir de ISLAND mode. Sin esto, un drag a medio completar queda en estado stale si el usuario cambia de modo.
+
+### dofile() para presets: conveniente pero riesgoso
+`dofile()` ejecuta código Lua arbitrario. Funciona para datos de usuario pero puede crashear el script si el archivo está corrupto. Wrappear en pcall con validación y rollback.
+
+### io.popen('dir') es Windows-específico
+Para listing de directorios, `io.popen('dir ...')` no funciona en macOS/Linux. Usar `reaper.EnumerateSubdirectories()` como fallback para cross-platform.
+
+### Favoritos via GetExtState/SetExtState
+Se serializan como tablas Lua y se parsean via `load()`. Sobrevive reinicios del script. Usar `persist=true` en SetExtState. Formato: `{"path1","path2",...}`.
+
+## Piano Roll: Vertical Keyboard Strip
+
+### Separate label functions for keyboard vs note blocks
+`OctaveLabel()` (always "C4", "D#4", etc.) is shared by DrawNoteBlock and was used by the old flat key strip. When implementing `DrawVerticalKeyboard`, a new `KeyboardNoteLabel()` was created that only shows octave number on C (pitch_class=0). This avoids changing the note block label behavior which needs full labels.
+
+### Black key sizing: 35% width, right-aligned, top-aligned
+Black keys use 35% of PITCH_LABEL_W width (14px at default 40px strip width), positioned at the right edge of the key strip. Height is 60% of PITCH_ROW_H. Keys are top-aligned (bk_y = ky) since higher pitch = top of row in the inverted Y coordinate system.
+
+### Inline fill colors preferred over theme colors
+The existing `KEY_WHITE_FILL` ({0.55,0.55,0.55,0.7}) and `KEY_BLACK_FILL` ({0.06,0.06,0.06,0.9}) constants were reused instead of `theme.colors.piano_white`/`piano_black` because the theme values differ (piano_white is {0.85,0.85,0.85,1.0}). The inline constants match the original visual style with specific alpha values.
+
+### Border colors added for key definition
+White keys: `{0.2,0.2,0.2,0.6}`, Black keys: `{0.3,0.3,0.3,0.8}`. Drawn as unfilled rect via `gfx.rect(x, y, w, h, 0)`.
+
+### Caché de ComputeVisibleRanges()
+Parámetros (scroll_y, scroll_x, zoom_x, w, h) sin cambios → devolver valores cacheados. Esto elimina cómputo redundante en cada frame. Implementado como tabla _cache con chequeo de igualdad.
+
+## Piano Roll Phase 4: Tool Selector + Lasso Multi-Select
+
+### gfx.getchar() is non-consuming within a frame
+Multiple calls to `gfx.getchar()` within the same frame return the same character value. Calling it from `DrawMIDIIsland` (before MainLoop's own `gfx.getchar()` call) works correctly. VK_DELETE returns 302 (256+46) via `gfx.getchar()`, not 127 (ASCII DEL).
+
+### RemoveNoteAtIndex must fix up selected_indices
+When a note is removed at index `idx`, all `selected_indices` entries with key > idx must be decremented by 1. Entries with key == idx are dropped. This prevents stale indices from pointing to wrong notes after deletion.
+
+### Pencil tool snap strategy
+Pencil-created notes snap to the nearest half-beat (`floor(beat * 2 + 0.5) / 2`) to ensure alignment with beat grid subdivisions. The note's `origin` field is set to `"manual"` to distinguish from progression-sourced notes (which have no origin field by default).
+
+### Bulk velocity delta strategy
+When multiple notes are selected, velocity drag applies a RELATIVE delta from the initial click position. `drag_initial_vel` is captured on mousedown; each frame computes `delta = new_vel - drag_initial_vel` and applies it to all selected notes' base velocities. This preserves relative velocity differences between selected notes.
+
+### SetNotes clears selection
+When notes are replaced (e.g., on progression reload), `SetNotes()` now calls `ClearSelection()` since old indices are invalid. This prevents stale selection highlighting after external note changes.
+
+## Phase 2 — Bug/Lag/Edge-Case Fix: pads perf, keyboard buffer, preferences debounce
+
+### Per-frame cache para O(7·28) → O(28) en pads
+**Contexto**: 7 pads × 28 key states = 196 iteraciones/frame para determinar si un degree está activo.
+**Solución**: Cache `active_degrees_cache` poblado una vez por frame en `ComputeActiveDegrees()` (28 iteraciones total). Cada pad consulta O(1) via `active_degrees_cache[degree]`.
+**Lección**: El patrón "rebuild cache una vez por frame antes del loop" es simple y efectivo cuando el dato es frame-constante. Similar al hoisting de `JS_VKeys_GetState` fuera del loop.
+**Archivos**: `src/ui/pads.lua`, `src/ui/components.lua`, `src/ui/views.lua`
+
+### Debounce de persist.Save con dirty flag
+**Contexto**: Cada setter de preferences llamaba `reaper.SetExtState()` sincrónicamente — hasta 7 llamadas por frame si cambiaban múltiples preferencias.
+**Solución**: `save_pending` boolean + `TickSaveDebounce()` en MainLoop que persiste todos los keys en batch una vez por frame.
+**Lección**: El dirty flag simple (sin contador) funciona cuando flush es una vez por frame. Si se necesitara batching multi-frame (e.g., agrupar cambios de 3 frames), se usaría un contador regresivo.
+**Archivos**: `src/state/preferences.lua`, `src/main.lua`
+
+## distribution-prep: Proposal scope discovery — casi todo ya existía
+
+**Contexto**: El proposal de `distribution-prep` asumía 5 items como "nuevos" (header tags, constants, README, CI workflow, ReaPack config). El spec phase descubrió que 4 de 5 ya existían.
+**Lección**: Al planificar cambios de distribución/infra, verificar el estado actual del código primero. El proposal tenía stale assumptions. El SDD cycle catchó esto en spec/design antes de apply, ahorrando trabajo innecesario.
+**Archivos**: `src/main.lua` (header completo con @donation/@links), `src/config.lua` (APP_NAME/APP_VERSION/DONATION_URL), `.github/workflows/reapack-index.yml`, `.reapack-index.yaml`
+
+## Tarea masiva: 49 SPDX headers stale pendientes
+
+**Contexto**: Solo se actualizaron 3 archivos con SPDX `Andrik on the beat` → `Andrik Sanz Cordoví` (main.lua, config.lua, README.md). Quedan 49 source files con SPDX stale en `src/`.
+**Lección**: Scope slicing correcto — no mezclar branding normalization con batch header update. Recomendar follow-up change con `rg -l "Andrik on the beat" src/` para encontrar todos.
+**Archivos**: 49 archivos en `src/` + `LICENSE`
+
+## Full Codebase Bug/Lag/Edge-Case Fix (5 phases)
+
+### HIGH: JS_VKeys_GetState 28x/frame → 1x/frame
+**Contexto**: `keyboard.lua` llamaba `JS_VKeys_GetState(0)` dentro del loop de 28 teclas.
+**Solución**: Hoistear el call + nil guard fuera del loop, cachear en `local vk_state`.
+**Lección**: REAPER VKeys API es frame-constante — safe de cachear. Patrón aplicable a cualquier API de estado global en hot path.
+**Archivos**: `src/core/keyboard.lua`
+
+### MEDIUM: Slots click-to-play zero-duration notes
+**Contexto**: Click-to-play enviaba note-on + note-off en el mismo frame. REAPER no reproduce notas de duración cero.
+**Solución**: Cola `pending_noteoffs` con frame-counter. Note-on inmediato, note-off diferido 3 frames. Guard de `reaper.time_precise()` para una sola procesada por frame a pesar de que DrawProgressionSlot se llama 4 veces/frame.
+**Lección**: List-based queue > single counter — handlea múltiples clicks rápidos sin perder notas.
+**Archivos**: `src/core/slots.lua`
+
+### LOW: Revision counters para caches per-frame
+**Contexto**: piano.lua y slots.lua recomputaban datos cada frame sin verificar si cambiaron.
+**Solución**: `active_notes_revision` en midi_store + revision checks en piano.lua (active_mod12) y slots.lua (subdivision dots).
+**Lección**: Revision counter es más barato que comparar tablas enteras. Bump en mutaciones, check en reads.
+**Archivos**: `src/state/midi.lua`, `src/ui/piano.lua`, `src/core/slots.lua`
+
+### Phase 5: view_offset_x/y migration to ui_store
+**Contexto**: 12 referencias a `config.state.view_offset_x/y` en 4 archivos.
+**Solución**: Agregar a `ui_store` con getters/setters + reemplazar todas las referencias.
+**Lección**: view_offset_x/y NO se persistían via ExtState (no estaban en persist.lua PREF_KEYS) — window position se perdía al reiniciar REAPER. Queda como mejora futura persistirlas.

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Context Menu
 -- Right-click context menu with scale/octave/chord selection, tools, and position adjustment.
 -- Uses lazy requires for compact-init and compact-panel to avoid circular load-time deps.

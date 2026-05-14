@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Island State Store
 -- Encapsulates island piano-roll state with getters/setters.
 -- Schema: island_active, preset_panel_visible, notes (flat note list),
@@ -47,6 +47,7 @@ local island_state = {
     undo_depth = 0,
     redo_depth = 0,
     folder_scroll = 0,
+    note_drag_origins = {},
 }
 
 function m.Init(defaults)
@@ -296,6 +297,8 @@ function m.GetNoteDragOriginMy() return island_state.note_drag_origin_my end
 function m.SetNoteDragOriginMy(v) island_state.note_drag_origin_my = v or 0 end
 function m.GetNoteResizeEdge() return island_state.note_resize_edge end
 function m.SetNoteResizeEdge(v) island_state.note_resize_edge = v end
+function m.GetNoteDragOrigins() return island_state.note_drag_origins end
+function m.SetNoteDragOrigins(t) island_state.note_drag_origins = t or {} end
 --- Reset all note drag state to defaults.
 function m.ResetNoteDrag()
     island_state.note_drag_active = false
@@ -305,6 +308,7 @@ function m.ResetNoteDrag()
     island_state.note_drag_origin_mx = 0
     island_state.note_drag_origin_my = 0
     island_state.note_resize_edge = nil
+    island_state.note_drag_origins = {}
 end
 
 function m.ClearBrowserState()

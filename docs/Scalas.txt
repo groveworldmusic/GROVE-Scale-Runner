@@ -1,0 +1,69 @@
+Nomencratura de FL Studio
+Major
+Major Bebop
+Major Pentatonic
+Minor Harmonic
+Minor Hungarian
+Minor Melodic
+Minor Natural (Aeolian)
+Minor Neopolitan
+Minor Pentatonic
+Other Arabic
+Other Blues
+Other Diminished
+Other Dominant Bebop
+Other Dorian
+Other Enigmatic
+Other Japanese Insen
+Other Locrian
+Other Lydian
+Other Mixolydian
+Other Neopolitan
+Other Phrygian
+
+Abrebiaturas que usaremos para que quepa todo mejor dentro de los dropdonws
+En vista completa
+Major
+Maj Bebop
+Maj Penta
+Min Harmo
+Min Hunga
+Min Melod
+Min Natur
+Min Neopo
+Min Penta
+Arabic
+Blues
+Diminishe
+Dom Bebop
+Dorian
+Enigmatic
+Jap Insen
+Locrian
+Lydian
+Mixolydia
+Neopolita
+Phrygian
+
+En vista mini piano reduce un poco el largo horizontal de el dropdown octava y el chord tipe para aumentar un poco el tamaño de dropdown de modo sin romper ni desproporcionar nada
+Major
+Ma Be
+Ma Pe
+Mi Ha
+Mi Hu
+Mi Me
+Mi Na
+Mi Ne
+Mi Pe
+Arabi
+Blues
+Dimin
+Do Be
+Doria
+Enigm
+Ja In
+Locri
+Lydia
+Mixol
+Neopo
+Phryg

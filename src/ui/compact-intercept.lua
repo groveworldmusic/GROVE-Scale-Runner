@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Mouse Interception
 -- WM_LBUTTONDOWN/WM_RBUTTONDOWN routing and zone hit-testing.
 -- Exports ProcessMouseInterception (called from main.lua's MainLoop)

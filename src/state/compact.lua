@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact State Store
 -- Encapsulates compact view state with getters/setters.
 -- Extracted from config.state.compact to isolate concerns.

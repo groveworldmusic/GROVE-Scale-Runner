@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Floating Panel
 -- Floating GFX window with piano keyboard, scale/octave/chord dropdowns, VEL toggle
 -- TogglePanel is called from compact-intercept on left-click on bar "content" zone.
