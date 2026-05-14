@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Compact View Life-cycle Orchestration
 -- Central coordinator that wires together all compact sub-modules.
 -- Exports the functions that compact.lua re-exports to consumers.
@@ -22,6 +22,7 @@ local panel = require("ui.compact-panel")
 local intercept = require("ui.compact-intercept")
 local menu = require("ui.compact-menu")
 local gfx_safe = require("ui.gfx-safe")
+local persist = require("state.persist")
 
 local m = {}
 
@@ -148,6 +149,7 @@ function m.HandlePanel()
 
     local char = gfx.getchar()
     if char == -1 or char == 27 then
+        gfx.mouse_wheel = 0
         panel.ClosePanel()
         return
     end
@@ -171,6 +173,7 @@ function m.HandlePanel()
         panel.panel_state.inited = false
         panel.panel_state.hwnd = nil
         panel.panel_state.first_frame = true
+        gfx.mouse_wheel = 0
         return
     end
 
@@ -209,20 +212,20 @@ function m.HandlePanel()
     local r = components.DrawDropdown(piano_key_left, cy, scale_w, ch, nil,
         helpers.CompactAbbreviateScale(config.SCALES[si].name),
         panel.SCALE_FULL, si, 16, open_up)
-    if r then config.state.scale_index = r end
+    if r then config.state.scale_index = r; persist.Save("scale_index", r) end
 
     -- Octave dropdown
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap, cy, octave_w, ch, nil,
         "C" .. math.floor(config.state.octave),
         panel.OCTAVE_OPTIONS, config.state.octave + 1, 16, open_up)
-    if r then config.state.octave = math.floor(r - 1) end
+    if r then local ov = math.floor(r - 1); config.state.octave = ov; persist.Save("octave", ov) end
 
     -- Chord dropdown
     local ci = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap, cy, chord_w, ch, nil,
         config.CHORD_MODES[ci].name,
         panel.CHORD_OPTIONS, ci, 16, open_up)
-    if r then config.state.chord_mode_index = r end
+    if r then config.state.chord_mode_index = r; persist.Save("chord_mode_index", r) end
 
     -- VEL toggle
     local vx = piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap + chord_w + ctrl_gap
