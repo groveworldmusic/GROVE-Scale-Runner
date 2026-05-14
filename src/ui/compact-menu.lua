@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Compact View Context Menu
 -- Right-click context menu with scale/octave/chord selection, tools, and position adjustment.
 -- Uses lazy requires for compact-init and compact-panel to avoid circular load-time deps.
@@ -7,6 +7,7 @@ local config = require("config")
 local ui_store = require("state.ui")
 local components = require("ui.components")
 local midi = require("core.midi")
+local persist = require("state.persist")
 
 local m = {}
 
@@ -74,12 +75,16 @@ function m.ShowContextMenu()
         compact_init.SwitchViewMode()
     elseif ret >= OFFSET_TONE and ret < OFFSET_SCALE then
         config.state.root_index = ret - OFFSET_TONE + 1
+        persist.Save("root_index", config.state.root_index)
     elseif ret >= OFFSET_SCALE and ret < OFFSET_OCT then
         config.state.scale_index = ret - OFFSET_SCALE + 1
+        persist.Save("scale_index", config.state.scale_index)
     elseif ret >= OFFSET_OCT and ret < OFFSET_CHORD then
         config.state.octave = math.floor(ret - OFFSET_OCT)
+        persist.Save("octave", config.state.octave)
     elseif ret >= OFFSET_CHORD and ret < OFFSET_TOOLS then
         config.state.chord_mode_index = ret - OFFSET_CHORD + 1
+        persist.Save("chord_mode_index", config.state.chord_mode_index)
     elseif ret == OFFSET_TOOLS + 1 then
         midi.ExportToMidi()
     elseif ret == OFFSET_TOOLS + 2 then

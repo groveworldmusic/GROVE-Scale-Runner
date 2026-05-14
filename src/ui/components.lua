@@ -7,7 +7,7 @@ local paginator = require("ui.paginator")
 local dropdown = require("ui.dropdown")
 local piano = require("ui.piano")
 local pads = require("ui.pads")
-local slots = require("core.slots")
+local slots = require("ui.slots")
 local drag = require("ui.drag")
 
 local components = {}

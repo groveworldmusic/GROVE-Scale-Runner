@@ -1,9 +1,10 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 local config = require("config")
 local seq_store = require("state.sequencer")
 local midi = require("core.midi")
 local progression = require("core.progression")
+local prefs = require("state.preferences")
 
 local sequencer = {}
 
@@ -87,7 +88,7 @@ function sequencer.Run()
     end
     
     -- Resolve current subdivision count
-    local sub_idx = config.state.subdivision_index or 1
+    local sub_idx = prefs.GetSubdivisionIndex() or 1
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
     
     -- MEASURE BOUNDARY CROSSED

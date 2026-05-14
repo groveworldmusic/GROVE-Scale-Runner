@@ -10,7 +10,6 @@ Core domain logic: MIDI operations, keyboard interception, sequencer loop, progr
 | keyboard.lua | 105 | 5 exported | config, core.midi, state.midi, state.preferences, core.sequencer, core.api-guard | Yes |
 | sequencer.lua | 131 | 2 exported | state.sequencer, core.midi, core.progression | Yes |
 | progression.lua | 33 | 5 exported | state.sequencer | No |
-| slots.lua | 313 | 2 public + 2 private | config, state.drag, state.sequencer, state.ui, ui.helpers, ui.theme, ui.colors, ui.format, core.midi, core.progression | No (gfx.* only) |
 | api-guard.lua | 44 | 3 exported | reaper.* (CheckAPI, AssertAPIs) | Yes |
 | snap.lua | 26 | 1 exported | None (pure function) | No |
 
@@ -28,11 +27,11 @@ sequencer.lua ──→ midi.lua ──→ sequencer_store (state)
               └─── core.sequencer ──────┘
                      (keyboard.Stop)
 
-slots.lua ──→ lazy require ──→ ui.components
-
 api-guard.lua ──→ (consumed by midi, keyboard, main)
 snap.lua ──→ (pure function, consumed by ui)
 ```
+
+**Moved**: `slots.lua` was moved to `src/ui/` — see `src/ui/AGENTS.md` for its dependency graph.
 
 **⚠️ REGLA CRÍTICA**: `sequencer.lua` SÍ requiere `midi.lua`. La regla real es: `midi.lua` NO puede requerir `sequencer.lua` — usa `sequencer_store` (state) para leer volumen y estado. La dependencia `sequencer → midi` es one-way y segura.
 
@@ -189,27 +188,9 @@ snap.lua ──→ (pure function, consumed by ui)
 -- Performance: O(n) scan each call — cached by caller when called in a loop.
 ```
 
-### slots.lua — 2 public + 2 private functions
+### slots.lua — [MOVED to `src/ui/slots.lua`]
 
-```lua
--- Public:
--- m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover) → void
---   Handles right-click delete, left-click play, drag-start (8px Euclidean threshold, line 127),
---   drag-drop SWAP (source slot exists, line 149) vs NEW (from pad, line 152), and tooltips.
---   Cleans up drag state immediately after drop (lines 162-166).
-
--- m.DrawProgressionSlot(global_idx, x, y, w, h) → void
---   Entry point for slot rendering. Resolves ui.components lazily. Draws background, label,
---   and runs interaction handler. Also clears pending_slot_idx on mouse release outside.
-
--- Private:
--- DrawSlotBackground(global_idx, x, y, w, h, slot, play) → void
---   Background rect (filled or outline), playing glow, empty-state "+" hint, drop flash
---   animation, and progress bar overlay when playing. Uses lazy require("ui.components").
-
--- DrawSlotLabel(global_idx, x, y, w, h, slot) → void
---   Slot number (top-left), ChordLabel (center, large), RomanNumeral (below center, small).
-```
+`slots.lua` was moved from `core/` to `ui/` in a structural refactor. See `src/ui/AGENTS.md` for the full API documentation.
 
 ### api-guard.lua — 3 exported functions
 
@@ -266,12 +247,12 @@ snap.lua ──→ (pure function, consumed by ui)
 
 ### Patrón: Drag Threshold 8px
 **Contexto**: Click-to-play and drag-to-move share the same mouse-down event. Need to distinguish a click from a drag.
-**Implementación**: `slots.lua` line 127: `if math.sqrt(dx*dx + dy*dy) >= 8 then` — Euclidean distance from mouse-down origin.
+**Implementación**: `src/ui/slots.lua` line 127: `if math.sqrt(dx*dx + dy*dy) >= 8 then` — Euclidean distance from mouse-down origin.
 **Por qué**: Prevents accidental drags from hand tremor or trackpad noise.
 
 ### Patrón: Swap vs Overwrite
 **Contexto**: Dragging a slot onto another slot should swap, not overwrite. Dragging from a pad (no source slot) should create a new entry.
-**Implementación**: `slots.lua` lines 148-149: `progression.Swap(SourceSlotIdx, global_idx)` vs lines 150-158: `progression.Add(...)` with degree from drag source.
+**Implementación**: `src/ui/slots.lua` lines 148-149: `progression.Swap(SourceSlotIdx, global_idx)` vs lines 150-158: `progression.Add(...)` with degree from drag source.
 **Por qué**: Swap preserves existing progression data; overwrite would lose it silently. Pads create new entries because there is no existing slot to swap.
 
 ### Patrón: Velocity Humanization
@@ -306,7 +287,7 @@ snap.lua ──→ (pure function, consumed by ui)
 > **Causa**: `midi.AllNotesOff()` no llama `sequencer.Stop()` porque eso crearía una circular dep (sequencer → midi → sequencer).
 > **Solución**: En `main.lua`, cuando se necesita silencio completo, el caller DEBE ejecutar AMBOS: `midi.AllNotesOff()` y `sequencer.Stop()`.
 
-> ⚠️ **Pitfall: Lazy require circular en slots.lua**
+> ⚠️ **Pitfall: Lazy require circular en slots.lua** (now at `src/ui/slots.lua`)
 > **Causa**: `slots.lua` y `ui.components` se requieren mutuamente. `components.lua` dibuja slots y llama a funciones de `slots.lua`.
 > **Solución**: `slots.lua` resuelve `local components = require("ui.components")` dentro de CADA función (lazy), no al tope del módulo.
 
@@ -324,5 +305,5 @@ snap.lua ──→ (pure function, consumed by ui)
 
 - **`src/AGENTS.md`** — main.lua lifecycle (run loop, CleanupAll), delegation rules between core/ui/state
 - **`src/state/AGENTS.md`** — sequencer_store, midi_store, drag_store, compact_store, preferences_store
-- **`src/ui/AGENTS.md`** — components.lua (DrawRoundedRect, lazy-required by slots.lua), helpers.lua, theme/colors/format
+- **`src/ui/AGENTS.md`** — components.lua (DrawRoundedRect, lazy-required by `src/ui/slots.lua`), helpers.lua, theme/colors/format, slots.lua API docs
 - **`AGENTS.md` (root)** — circular dependency map (full project), pattern glossary, project standards

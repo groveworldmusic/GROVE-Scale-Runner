@@ -23,7 +23,7 @@ Componentes visuales, vistas, layout, helpers. Todo lo que renderiza en pantalla
 | `dropdown.lua` | 76 | DrawDropdown — dropdown con scroll y menú contextual |
 | `piano.lua` | 158 | DrawPianoKeyboard + PIANO_LAYOUT constants — teclado de piano GFX |
 | `pads.lua` | 148 | DrawScalePad — pads de grado con drag-to-slot |
-| `slots.lua` | 194 | (en `core/`) DrawProgressionSlot + HandleSlotInteraction — slots de progresión |
+| `slots.lua` | 300 | DrawProgressionSlot + HandleSlotInteraction — slots de progresión |
 | `drag.lua` | 88 | DrawDragPreview — preview flotante durante drag |
 
 ### Island UI (~4 root + 6 sub-modules)
@@ -239,7 +239,7 @@ Componentes visuales, vistas, layout, helpers. Todo lo que renderiza en pantalla
 - `state/piano-roll-store.lua` — notes, selection, zoom, scroll, tool_mode, lasso, undo/redo (consumido por piano-roll/*)
 - `state/preset-store.lua` — current_directory, preset_tree, preset_files, favorites, bookmarks (consumido por preset-browser.lua)
 - `core/midi.lua` — TriggerChord, SendMidi, midi_island_expanded, midi_channel, ExportToMidi
-- `core/slots.lua` — DrawProgressionSlot, HandleSlotInteraction (via lazy require en components.lua)
+- `ui/slots.lua` — DrawProgressionSlot, HandleSlotInteraction (via lazy require en components.lua)
 - `core/progression.lua` — Clear()
 - `core/sequencer.lua` — Stop() (play/stop toggle en Command Stack + docked transport bar)
 - `core/snap.lua` — SnapBeat (consumido por piano-roll/grid.lua)

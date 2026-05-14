@@ -1,9 +1,10 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 local config = require("config")
 local compact_store = require("state.compact")
 local sequencer_store = require("state.sequencer")
 local midi_store = require("state.midi")
+local prefs = require("state.preferences")
 local ui_store = require("state.ui")
 local island_store = require("state.island")
 local api_guard = require("core.api-guard")
@@ -97,10 +98,10 @@ function midi.TriggerChord(degree, on, ctx, velocity, inversion_index)
         local n = midi.GetMidiNote(ri, si, degree + off, c.octave)
         table.insert(notes, n)
     end
-    -- Apply inversion (parameter takes precedence, fallback to config.state)
-    local inv = inversion_index or config.state.inversion_index
+    -- Apply inversion (parameter takes precedence, fallback to preferences_store)
+    local inv = inversion_index or c.inversion_index or prefs.GetInversionIndex()
     if inv and inv > 1 then
-        notes = midi.InvertChord(notes, inv, config.state.inversion_direction)
+        notes = midi.InvertChord(notes, inv, prefs.GetInversionDirection())
     end
     -- Send MIDI (after inversion)
     for _, n in ipairs(notes) do

@@ -23,10 +23,10 @@ src/
 │   ├── keyboard.lua    ← HandleKeyboard, VKEY_MAP
 │   ├── sequencer.lua   ← Playback loop
 │   ├── progression.lua ← Progression CRUD
-│   └── slots.lua       ← Slot interaction + drawing
 ├── ui/                 ← Interfaz GFX
 │   ├── views.lua       ← Vista principal (~832 LOC) + DrawIslandView()
 │   ├── components.lua  ← Barrel (55 LOC)
+│   ├── slots.lua       ← Slot interaction + drawing (moved from core/)
 │   ├── compact-*.lua   ← Compact view (7 módulos)
 │   ├── widgets/        ← buttons, dropdown, paginator, piano, pads, drag
 │   ├── utils/          ← helpers, theme, colors, format, layout, lice, positioning

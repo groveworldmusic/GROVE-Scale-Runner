@@ -25,7 +25,6 @@
 --   src/core/midi.lua
 --   src/core/progression.lua
 --   src/core/sequencer.lua
---   src/core/slots.lua
 --   src/core/snap.lua
 --   -- state/
 --   src/state/compact.lua
@@ -36,6 +35,7 @@
 --   src/state/sequencer.lua
 --   src/state/ui.lua
 --   -- ui/
+--   src/ui/slots.lua
 --   src/ui/buttons.lua
 --   src/ui/colors.lua
 --   src/ui/compact.lua
@@ -94,6 +94,8 @@ local ui_store = require("state.ui")
 ui_store.Init(config.state)
 local island_store = require("state.island")
 island_store.Init(config.state)
+local preferences_store = require("state.preferences")
+preferences_store.Init(config.state)
 local theme = require("ui.theme")
 local midi = require("core.midi")
 local sequencer = require("core.sequencer")
@@ -226,6 +228,7 @@ local function MainLoop()
     keyboard.CheckFocus()
     sequencer.Run()
     keyboard.HandleKeyboard()
+    preferences_store.TickSaveDebounce()
 
     -- Compact mode (no GFX window)
     if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
@@ -356,6 +359,7 @@ local function Init()
 
     -- Load persisted preferences from REAPER ExtState (canonical with legacy fallback)
     persist.Load(config.state)
+    preferences_store.SyncFromState(config.state)
 
     gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)

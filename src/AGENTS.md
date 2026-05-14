@@ -10,9 +10,9 @@ src/
 ├── config.lua        ← Constants (SCALES[21], CHORD_MODES[4], VKEY_MAP[28], NOTE_NAMES[12],
 │                       VIEW_MODES, DOCK_MIN_W/H) + config.state defaults
 ├── main.lua          ← Entry: Init() → MainLoop() → CleanupAll()
-├── core/             ← Domain logic (7 files): midi, keyboard, sequencer, progression, slots,
+├── core/             ← Domain logic (6 files): midi, keyboard, sequencer, progression,
 │                       api-guard, snap
-├── ui/               ← GFX interface (34 files): views, widgets, layout, compact-*, helpers,
+├── ui/               ← GFX interface (35 files): views, widgets, slots, layout, compact-*, helpers,
 │                       piano-roll (6 sub-modules), timeline, velocity, preset-browser,
 │                       midi-island, icons, gfx-safe
 └── state/            ← State stores (10 files): compact, drag, sequencer, midi, ui, island,
@@ -156,7 +156,7 @@ main.lua   ←─── all stores, all core, key ui modules
 state/     ←─── no inter-store deps; consumed by core/ + ui/
 core/      ←─── depends on state/ + config/ (sequencer→midi→sequencer_store;
                  keyboard→midi, keyboard→sequencer, keyboard→preferences_store)
-ui/        ←─── depends on state/ + config/ + core/ (slots↔components via lazy require)
+ui/        ←─── depends on state/ + config/ + core/ (slots↔components via lazy require; slots moved to ui/)
 ```
 
 Ver `core/AGENTS.md` → Dependency Graph y `AGENTS.md` (root) → Circular Dependency Map para grafos detallados.

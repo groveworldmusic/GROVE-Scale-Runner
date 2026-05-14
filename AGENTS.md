@@ -16,7 +16,7 @@ Sos el **orquestador principal** del proyecto. Tu responsabilidad es coordinar a
 | Archivos fuente (`src/`) | 53 (Lua) + 4 AGENTS.md (src, core, ui, state) = 57 |
 | TLOC estimados (src/) | ~8,800 |
 | State stores | 9 (compact, drag, midi, sequencer, ui, island, piano-roll-store, preset-store, preferences) + persist (load/save) |
-| Core modules | 7 (midi, keyboard, sequencer, progression, slots, api-guard, snap) |
+| Core modules | 6 (midi, keyboard, sequencer, progression, api-guard, snap) |
 | UI modules | 34 (28 root + 6 piano-roll/) |
 | Tests | 14 test files in runner, 497 check() calls, 1 static-test outside runner |
 | Referencias a `config.state.*` runtime | ~1 (midi.lua:94 `TriggerChord` fallback) |
@@ -28,7 +28,7 @@ Sos el **orquestador principal** del proyecto. Tu responsabilidad es coordinar a
 |------|----------------|
 | `AGENTS.md` (root) | Orquestación general, estándares, entrada principal, dependency map, init/teardown contract, pattern glossary, issue registry |
 | `src/AGENTS.md` | Orquesta core + ui + state, estructura de `src/`, reglas de módulo Lua, life cycle del run loop |
-| `src/core/AGENTS.md` | Lógica de dominio: MIDI, teclado, secuenciador, progresión, slots, api-guard, snap — firmas de funciones, pitfalls, patterns |
+| `src/core/AGENTS.md` | Lógica de dominio: MIDI, teclado, secuenciador, progresión, api-guard, snap — firmas de funciones, pitfalls, patterns |
 | `src/ui/AGENTS.md` | Interfaz GFX: componentes, vistas, layout, temas, piano-roll, midi-island, icons, gfx-safe — convenciones GFX, barrel modules, compact view architecture |
 | `src/state/AGENTS.md` | Stores de estado: 9 stores + persist, Init semantics, remnant keys, getters/setters detallados |
 | `tests/AGENTS.md` | Infraestructura de testing, mocks, ~497 assertions, test file list |
@@ -46,11 +46,12 @@ keyboard.lua ──require──► midi.lua
                 require──► midi_store (state)
                 require──► preferences_store (state)
 
-slots.lua ──Lazy require──► components.lua (ui, en runtime)
+slots.lua ──Lazy require──► components.lua (ui, en runtime)  [moved to src/ui/slots.lua — see ui/AGENTS.md]
 
 widgets/*.lua ──Lazy require──► components.lua (en runtime)
 
-components.lua ──require──► buttons, paginator, dropdown, piano, pads, slots, drag
+components.lua ──require──► buttons, paginator, dropdown, piano, pads, drag
+                 require──► slots (ui/slots.lua — moved from core/)
 
 views.lua ──require──► sequencer (para sequencer.Stop() en play/stop toggle)
 ```
