@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll — Barrel Module
 -- Re-exports grid.lua + note.lua + interaction.lua + view.lua
 -- All original public functions remain accessible via require("ui.piano-roll").
@@ -11,11 +11,19 @@ local view = require("ui.piano-roll.view")
 
 local piano_roll = {}
 
+-- PITCH_ROW_H is mutable at runtime; use __index metatable so
+-- piano_roll.PITCH_ROW_H always reflects grid.PITCH_ROW_H live.
+setmetatable(piano_roll, {
+    __index = function(t, k)
+        if k == "PITCH_ROW_H" then return grid.PITCH_ROW_H end
+        return rawget(t, k)
+    end,
+})
+
 -- =========================================================
 -- Re-export grid constants and functions
--- (read-only after init; PITCH_ROW_H synced via SetPitchRowH)
+-- (PITCH_ROW_H is live via __index metatable)
 -- =========================================================
-piano_roll.PITCH_ROW_H = grid.PITCH_ROW_H
 piano_roll.PITCH_LABEL_W = grid.PITCH_LABEL_W
 piano_roll.MIN_PITCH = grid.MIN_PITCH
 piano_roll.MAX_PITCH = grid.MAX_PITCH
@@ -82,13 +90,9 @@ piano_roll.CommitNoteResize = interaction.CommitNoteResize
 -- =========================================================
 piano_roll.DrawPianoRoll = view.DrawPianoRoll
 
--- HACK: Sync PITCH_ROW_H on every SetPitchRowH call so both
--- barrel consumers (views.lua) and grid drawing functions see
--- the same value. Without this, the barrel copy goes stale.
-piano_roll.SetPitchRowH = function(h)
-    h = math.max(6, math.min(24, h))
-    piano_roll.PITCH_ROW_H = h
-    grid.SetPitchRowH(h)
-end
+-- =========================================================
+-- Re-export grid mutators
+-- =========================================================
+piano_roll.SetPitchRowH = grid.SetPitchRowH
 
 return piano_roll
