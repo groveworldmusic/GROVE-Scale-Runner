@@ -13,7 +13,6 @@ local theme = require("ui.theme")
 local m = {}
 
 function m.DrawToolIcon(type, x, y, size, active)
-    local components = require("ui.components")
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + size and gfx.mouse_y >= y and gfx.mouse_y <= y + size
     
     -- Glyph mapping for 5 supported icon types
@@ -28,11 +27,6 @@ function m.DrawToolIcon(type, x, y, size, active)
     if not glyph then
         return ui_store.GetMouseClick() and hover
     end
-    
-    -- Background color: active → btn_active, hover(not active) → btn_hover, default → island_bg
-    local bg_color = active and theme.colors.btn_active or (hover and theme.colors.btn_hover or theme.colors.island_bg)
-    helpers.SetColor(bg_color)
-    components.DrawRoundedRect(x, y, size, size, math.floor(size / 4), true)
     
     -- Glyph color: active → text, else → text_dim (matching MIDI island header pattern)
     local glyph_color = active and theme.colors.text or theme.colors.text_dim

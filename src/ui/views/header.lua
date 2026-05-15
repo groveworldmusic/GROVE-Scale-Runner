@@ -104,10 +104,21 @@ function m.DrawHeader()
     gfx.x, gfx.y = state_x + sw + layout.US(60), ver_y + 2
     gfx.drawstr(scroll_indicator)
     
-    if components.DrawToolIcon("help", help_x, (h - icon_size) / 2, icon_size) then
+    local icon_y = (h - icon_size) / 2
+    
+    -- HELP — container bg
+    local help_hover = gfx.mouse_x >= help_x and gfx.mouse_x <= help_x + icon_size and gfx.mouse_y >= icon_y and gfx.mouse_y <= icon_y + icon_size
+    helpers.SetColor(help_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(help_x, icon_y, icon_size, icon_size, math.floor(icon_size / 4), true)
+    if components.DrawToolIcon("help", help_x, icon_y, icon_size) then
         ui_store.SetShowTooltips(not ui_store.GetShowTooltips())
     end
-    if components.DrawToolIcon("settings", settings_x, (h - icon_size) / 2, icon_size) then
+    
+    -- SETTINGS — container bg
+    local settings_hover = gfx.mouse_x >= settings_x and gfx.mouse_x <= settings_x + icon_size and gfx.mouse_y >= icon_y and gfx.mouse_y <= icon_y + icon_size
+    helpers.SetColor(settings_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(settings_x, icon_y, icon_size, icon_size, math.floor(icon_size / 4), true)
+    if components.DrawToolIcon("settings", settings_x, icon_y, icon_size) then
         local is_grade = ui_store.GetColorMode() == "grade"
         local toggle_label = is_grade and "Cambiar a Colores Planos" or "Cambiar a Grados a color"
         local scroll_label = (ui_store.GetUseScroll() and "✓ " or "") .. "Activar Scroll en Dropdowns"
@@ -159,7 +170,11 @@ function m.DrawHeader()
         end
     end
     
-    if components.DrawToolIcon("view", view_x, (h - icon_size) / 2, icon_size) then
+    -- VIEW — container bg
+    local view_hover = gfx.mouse_x >= view_x and gfx.mouse_x <= view_x + icon_size and gfx.mouse_y >= icon_y and gfx.mouse_y <= icon_y + icon_size
+    helpers.SetColor(view_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(view_x, icon_y, icon_size, icon_size, math.floor(icon_size / 4), true)
+    if components.DrawToolIcon("view", view_x, icon_y, icon_size) then
         compact.SwitchViewMode()
     end
 end

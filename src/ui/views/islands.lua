@@ -192,9 +192,9 @@ function m.DrawIslands()
         local inv_idx = i + 1  -- maps to config indices 2, 3, 4
         if components.DrawButton(bx, inv_item_y, inv_btn_w, inv_item_h,
                                  inv_labels[i], prefs.GetInversionIndex() == inv_idx, inv_font) then
-            config.state.inversion_index = (prefs.GetInversionIndex() == inv_idx) and 1 or inv_idx
-            prefs.SetInversionIndex(config.state.inversion_index)
-            persist.Save("inversion_index", config.state.inversion_index)
+            local new_inv = (prefs.GetInversionIndex() == inv_idx) and 1 or inv_idx
+            prefs.SetInversionIndex(new_inv)
+            persist.Save("inversion_index", new_inv)
         end
     end
 
@@ -321,8 +321,11 @@ function m.DrawIslands()
         local l, r = SplitWidths(b_w, layout.US(500))
         local clear_x, export_x = i4_x, i4_x + l + layout.US(500)
         
-        -- CLEAR (left half) — DrawToolIcon owns its rounded rect background
+        -- CLEAR (left half) — full-width container + icon centered
         local clear_hover = gfx.mouse_x >= clear_x and gfx.mouse_x <= clear_x + l and gfx.mouse_y >= r2_y and gfx.mouse_y <= r2_y + b_h
+        local clear_bg = clear_hover and {0.4, 0.1, 0.1, 1} or theme.colors.island_bg
+        helpers.SetColor(clear_bg)
+        components.DrawRoundedRect(clear_x, r2_y, l, b_h, 10, true)
         if ui_store.GetMouseClick() and clear_hover and not drag_store.GetIsDragging() then PressOverlay(clear_x, r2_y, l, b_h) end
         local icon_pad = math.floor((l - b_h) / 2)
         if components.DrawToolIcon("clear", clear_x + icon_pad, r2_y, b_h, false) then
@@ -332,8 +335,11 @@ function m.DrawIslands()
             helpers.DrawTooltip("Clear all slots", layout.US(700))
         end
         
-        -- EXPORT (right half) — DrawToolIcon owns its rounded rect background
+        -- EXPORT (right half) — full-width container + icon centered
         local export_hover = gfx.mouse_x >= export_x and gfx.mouse_x <= export_x + r and gfx.mouse_y >= r2_y and gfx.mouse_y <= r2_y + b_h
+        local export_bg = export_hover and theme.colors.btn_hover or theme.colors.island_bg
+        helpers.SetColor(export_bg)
+        components.DrawRoundedRect(export_x, r2_y, r, b_h, 10, true)
         if ui_store.GetMouseClick() and export_hover and not drag_store.GetIsDragging() then PressOverlay(export_x, r2_y, r, b_h) end
         local export_icon_pad = math.floor((r - b_h) / 2)
         if components.DrawToolIcon("export", export_x + export_icon_pad, r2_y, b_h, false) then
