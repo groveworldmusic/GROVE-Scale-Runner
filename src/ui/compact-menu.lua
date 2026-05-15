@@ -76,15 +76,19 @@ function m.ShowContextMenu()
         compact_init.SwitchViewMode()
     elseif ret >= OFFSET_TONE and ret < OFFSET_SCALE then
         config.state.root_index = ret - OFFSET_TONE + 1
+        prefs.SetRootIndex(config.state.root_index)
         persist.Save("root_index", config.state.root_index)
     elseif ret >= OFFSET_SCALE and ret < OFFSET_OCT then
         config.state.scale_index = ret - OFFSET_SCALE + 1
+        prefs.SetScaleIndex(config.state.scale_index)
         persist.Save("scale_index", config.state.scale_index)
     elseif ret >= OFFSET_OCT and ret < OFFSET_CHORD then
         config.state.octave = math.floor(ret - OFFSET_OCT)
+        prefs.SetOctave(config.state.octave)
         persist.Save("octave", config.state.octave)
     elseif ret >= OFFSET_CHORD and ret < OFFSET_TOOLS then
         config.state.chord_mode_index = ret - OFFSET_CHORD + 1
+        prefs.SetChordModeIndex(config.state.chord_mode_index)
         persist.Save("chord_mode_index", config.state.chord_mode_index)
     elseif ret == OFFSET_TOOLS + 1 then
         midi.ExportToMidi()
