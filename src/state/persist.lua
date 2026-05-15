@@ -21,6 +21,8 @@ local PREF_KEYS = {
     octave            = "octave",
     chord_mode_index  = "chord_mode_index",
     inversion_index   = "inversion_index",
+    inversion_direction = "inversion_direction",
+    subdivision_index  = "subdivision_index",
     volume            = { "sequencer", "volume" },
     color_mode        = "color_mode",
 }

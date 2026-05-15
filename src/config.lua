@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Global Configuration and State
 local config = {}
 
@@ -37,7 +37,13 @@ config.CHORD_MODES = {
     {name="Off", offsets={0}},
     {name="Tri", offsets={0, 2, 4}},
     {name="7ma", offsets={0, 2, 4, 6}},
-    {name="9na", offsets={0, 2, 4, 6, 8}}
+    {name="9na", offsets={0, 2, 4, 6, 8}},
+    {name="sus2", offsets={0, 2, 7}},
+    {name="sus4", offsets={0, 5, 7}},
+    {name="dim", offsets={0, 3, 6}},
+    {name="aug", offsets={0, 4, 8}},
+    {name="11th", offsets={0, 4, 7, 10, 14, 17}},
+    {name="13th", offsets={0, 4, 7, 10, 14, 17, 21}}
 }
 
 config.INVERSION_MODES = {"Base", "1st", "2nd", "3rd"}
@@ -58,6 +64,8 @@ config.PREF_KEYS = {
     "octave",
     "chord_mode_index",
     "inversion_index",
+    "inversion_direction",
+    "subdivision_index",
     "volume",
     "color_mode",
 }
