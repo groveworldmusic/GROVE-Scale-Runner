@@ -17,13 +17,13 @@ function m.DrawToolIcon(type, x, y, size, active)
     local col = active and theme.colors.text or theme.colors.text_dim
     
     -- All icons render as Unicode glyphs via gfx.drawstr (same as MIDI island PAINT/KNIFE)
-    -- Each icon has a glyph + size scale (larger for clearer visibility)
+    -- Each icon has a glyph + size scale (s) + vertical offset (yo) for baseline tuning
     local icons = {
-        help = { g = "?", s = 0.75 },
-        settings = { g = "\226\154\153", s = 0.75 },  -- U+2699 ⚙
-        view = { g = "\226\138\159", s = 1.05 },       -- U+229F ⊟
-        clear = { g = "\226\140\171", s = 0.9 },       -- U+232B ⌫
-        export = { g = "\226\158\166", s = 1.05 },      -- U+27A6 ➦
+        help = { g = "?", s = 0.95, yo = 0 },
+        settings = { g = "\226\154\153", s = 0.75, yo = 0 },  -- U+2699 ⚙
+        view = { g = "\226\138\159", s = 1.2, yo = -1 },      -- U+229F ⊟
+        clear = { g = "\226\140\171", s = 0.9, yo = 0 },       -- U+232B ⌫
+        export = { g = "\226\158\166", s = 1.05, yo = 0 },     -- U+27A6 ➦
     }
     local icon = icons[type]
     if not icon then
@@ -33,7 +33,7 @@ function m.DrawToolIcon(type, x, y, size, active)
     helpers.SetColor(col)
     gfx.setfont(1, "Calibri", math.floor(size * icon.s))
     local gw, gh = gfx.measurestr(icon.g)
-    gfx.x, gfx.y = x + (size - gw) / 2, y + (size - gh) / 2
+    gfx.x, gfx.y = x + (size - gw) / 2, y + (size - gh) / 2 + (icon.yo or 0)
     gfx.drawstr(icon.g)
     
     return ui_store.GetMouseClick() and hover

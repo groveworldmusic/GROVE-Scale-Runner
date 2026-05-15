@@ -104,7 +104,9 @@ function m.DrawHeader()
     gfx.x, gfx.y = state_x + sw + layout.US(60), ver_y + 2
     gfx.drawstr(scroll_indicator)
     
-    local icon_y = (h - icon_size) / 2
+    -- Center icons vertically within header height h
+    -- Use icon_size as draw area (keeps consistent X spacing)
+    local icon_y = math.floor((h - icon_size) / 2)
     
     -- HELP — glyph only, no container (floats on header bg)
     if components.DrawToolIcon("help", help_x, icon_y, icon_size) then
