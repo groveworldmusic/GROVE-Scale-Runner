@@ -20,28 +20,45 @@ local preset_browser = require("ui.preset-browser")
 local header = require("ui.midi-island.header")
 local input = require("ui.midi-island.input")
 
+-- Initialize preset browser once at module load time (hoisted out of DrawPresetPanel)
+local function InitPresetBrowser()
+    local root = preset_store.GetPresetRoot()
+    if not root or #root == 0 then preset_browser.Init() end
+end
+InitPresetBrowser()
+
 local m = {}
 
 -- Preset panel zoom toggle state
 local _saved_zoom_x = nil
 local _prev_panel_visible = false
+-- Deferred zoom toggle: SetZoomX is applied at the start of the next Draw()
+-- call instead of mid-frame during rendering (PR: midi-island-critical-fixes).
+local _pending_zoom_target = nil
 
 -- Track progression revision
 local _island_progression_revision = -1
 
--- Guard: preset_browser.Init() should only run once (T3)
-local _preset_init_attempted = false
+-- total_beats cache for scrollbar (avoids O(N) per-frame scan)
+local _cached_total_beats = 64
+local _cached_total_beats_valid = false
+local _cached_notes_count = 0
 
-local THUMB_SIZE = 3  -- Scrollbar thumb size (centers exactly in 7px track: offset=(7-3)/2=2)
+-- Layout constants (virtual coordinate system, canvas 39914×29162)
+local CANVAS_W = layout.CANVAS_W                       -- Canvas width in virtual units
+local ISLAND_CONTENT_H = 14000                          -- Island content area height
+local BTN_TOP_V = 27738                                 -- Button area top Y in virtual coords
+local BTN_Y_OFFSET = 428                                -- Offset from button area top to buttons
+local BTN_H = 1980                                      -- Single button height in virtual coords
+local BTN_AREA_H = 15455                                -- Total button area height (5 x BTN_H + 4 gaps)
+local BTN_GAP_EXTRA = 1422                              -- Extra gap spacing adjust
 
--- Scrollbar drag states
-local _sb_dragging = false
-local _sb_drag_start_x = 0
-local _sb_scroll_at_drag_start = 0
+-- (T3 resolved: preset_browser.Init() is called once at module load)
 
-local _vsb_dragging = false
-local _vsb_drag_start_y = 0
-local _vsb_scroll_at_drag_start = 0
+local THUMB_SIZE = 5  -- Thumb size: 5px in 7px track → 1px margin each side, exact center
+
+-- Scrollbar drag states (Phase 5: moved to island_store — kept as local refs for perf, synced on demand)
+-- NOTE: Use island_store.GetSbDragging/SetSbDragging for persistence across island toggle.
 
 local function DrawPresetPanel(island_x, y, preset_w, h)
     if preset_w > 0 then
@@ -50,47 +67,74 @@ local function DrawPresetPanel(island_x, y, preset_w, h)
         components.DrawRoundedRectEx(island_x, y, preset_w, h, p_radius, {tl=true, bl=true})
 
         local browser_y = y + 4
-        local browser_h = h - 4
-        local root = preset_store.GetPresetRoot()
-        if not _preset_init_attempted then
-            _preset_init_attempted = true
-            if not root or #root == 0 then preset_browser.Init() end
-        end
+        local browser_h = h - 14
         preset_browser.DrawPresetBrowser(island_x, browser_y, preset_w, browser_h)
     end
 end
 
 function m.Draw(char)
-    if not midi.midi_island_expanded then
+    if not island_store.GetMidiIslandExpanded() then
         _island_progression_revision = -1
-        _sb_dragging, _vsb_dragging = false, false
+        island_store.ResetScrollbarDragState()
         if island_store.GetLassoActive() then island_store.SetLassoActive(false) end
+        island_store.SetNotesState(island_store.NOTES_STATE_LOADED)  -- Reset state on island close
         return
     end
 
-    -- Reload notes from progression if needed
+    -- Apply deferred zoom toggle (set on previous frame, applied before rendering)
+    if _pending_zoom_target then
+        island_store.SetZoomX(_pending_zoom_target)
+        _pending_zoom_target = nil
+    end
+
+    -- Reload notes from progression if needed (skip if user has manually edited)
     local cur_rev = seq_store.GetProgressionRevision()
     if cur_rev ~= _island_progression_revision then
-        island_store.LoadNotesFromProgression(seq_store)
-        piano_roll.MarkNotesDirty()
-        _island_progression_revision = cur_rev
+        if island_store.GetNotesState() == island_store.NOTES_STATE_LOADED then
+            island_store.LoadNotesFromProgression(seq_store)
+            _island_progression_revision = cur_rev
+            _cached_total_beats_valid = false
+        end
+    end
+
+    -- Sync playback position from sequencer during playback
+    -- Converts (measure + fractional progress) to absolute beats for the playhead cursor.
+    -- GetLastMeasure() is -1 when stopped, so the cursor stays hidden before playback starts.
+    if seq_store.GetIsPlaying() then
+        local cur_m = seq_store.GetLastMeasure()
+        if cur_m >= 0 then
+            island_store.SetPlaybackPos((cur_m + seq_store.GetProgress()) * 4)
+        end
     end
 
     -- 1. Input Handling
     input.HandleKeyboard(char)
 
-    -- 2. Header
-    local content_w = layout.US(39914)
-    header.DrawHeader(content_w)
+    -- 2. Header (also handles RELOAD + SYNC buttons returning request flags)
+    local content_w = layout.US(CANVAS_W)
+    local _, reload_requested, sync_requested = header.DrawHeader(content_w)
+    if reload_requested then
+        island_store.LoadNotesFromProgression(seq_store)
+        island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
+        _island_progression_revision = seq_store.GetProgressionRevision()
+        island_store.ClearSelection()
+        _cached_total_beats_valid = false
+    end
+    if sync_requested then
+        island_store.SyncNotesToProgression(seq_store, require("state.preferences"))
+        island_store.SetNotesState(island_store.NOTES_STATE_SYNCED)
+        _island_progression_revision = seq_store.GetProgressionRevision()
+        _cached_total_beats_valid = false
+    end
 
     -- 3. Layout Calculations
-    local btn_y_v = 27738 + 428
-    local b_h = layout.US(1980)
-    local gap_v = math.floor((15455 - 1980 * 5) / 4 + 1422)
-    local island_y_v = btn_y_v + b_h + gap_v - 428
+    local btn_y_v = BTN_TOP_V + BTN_Y_OFFSET
+    local b_h = layout.US(BTN_H)
+    local gap_v = math.floor((BTN_AREA_H - BTN_H * 5) / 4 + BTN_GAP_EXTRA)
+    local island_y_v = btn_y_v + b_h + gap_v - BTN_Y_OFFSET
     local y = layout.UY(island_y_v)
-    local w = layout.US(39914)
-    local h = layout.US(14000)
+    local w = layout.US(CANVAS_W)
+    local h = layout.US(ISLAND_CONTENT_H)
     
     local SB_SIZE = 7
     local LABEL_W = piano_roll.PITCH_LABEL_W
@@ -111,13 +155,14 @@ function m.Draw(char)
     local sb_y = y + h - SB_SIZE
     local grid_w = right_w - LABEL_W - SB_SIZE
 
-    -- Zoom toggle logic
+    -- Zoom toggle logic (deferred: stores target, applied at start of next Draw call)
     local panel_visible = island_store.GetPresetPanelVisible()
     if panel_visible and not _prev_panel_visible then
         _saved_zoom_x = island_store.GetZoomX()
-        island_store.SetZoomX(math.max(10, math.min(200, math.floor(right_w / 16 + 0.5))))
+        _pending_zoom_target = math.max(10, math.min(200, math.floor(right_w / 16 + 0.5)))
     elseif not panel_visible and _prev_panel_visible then
-        if _saved_zoom_x then island_store.SetZoomX(_saved_zoom_x); _saved_zoom_x = nil end
+        _pending_zoom_target = _saved_zoom_x or 28
+        _saved_zoom_x = nil
     end
     _prev_panel_visible = panel_visible
 
@@ -128,17 +173,26 @@ function m.Draw(char)
         local content_radius = 10
         local has_presets = island_store.GetPresetPanelVisible()
         
-        -- Chasis & Spine
+        -- Chasis
         helpers.SetColor(theme.colors.island_bg)
         components.DrawRoundedRectEx(right_x, y, right_w, h, content_radius, {tl=not has_presets, tr=true, bl=not has_presets, br=true})
-        components.DrawIslandSpine(right_x, y, LABEL_W, h, content_radius, {tl=not has_presets, tr=false, bl=not has_presets, br=false})
+
+        -- Spine area: seamless with panel when visible, semi-transparent otherwise
+        if has_presets then
+            helpers.SetColor(theme.colors.island_panel_bg)
+            gfx.rect(right_x, y, LABEL_W, h)
+            helpers.SetColor({0.15, 0.15, 0.15, 0.6})
+            gfx.line(right_x + LABEL_W, y, right_x + LABEL_W, y + h)
+        else
+            components.DrawIslandSpine(right_x, y, LABEL_W, h, content_radius, {tl=not has_presets, tr=false, bl=not has_presets, br=false})
+        end
 
         -- Sub-modules
         piano_roll.DrawPianoRoll(right_x, pr_y, right_w - SB_SIZE, pr_h)
         if ve_h > 0 then
             velocity.DrawVelocityEditor(right_x, ve_y, right_w - SB_SIZE, ve_h, island_store.GetNotes(), island_store.GetScrollOffsetX(), island_store.GetZoomX(), island_store.GetSelectedNoteIndex())
         end
-        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h, grid_w, not has_presets)
+        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h, not has_presets)
         
         -- 5. Mouse Dispatch
         local ctx = {
@@ -150,16 +204,48 @@ function m.Draw(char)
 
         -- 6. Scrollbars (UI Layer)
         m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_SIZE)
+
+        -- 7. Post-fix: restore spine area from velocity level to bottom edge
+        local cr = content_radius
+        local bot = y + h
+        local spine_h = bot - ve_y
+        if has_presets then
+            -- Expanded: flat panel_bg + separator
+            helpers.SetColor(theme.colors.island_panel_bg)
+            gfx.rect(right_x, ve_y, LABEL_W, spine_h)
+            helpers.SetColor({0.15, 0.15, 0.15, 0.6})
+            gfx.line(right_x + LABEL_W, ve_y, right_x + LABEL_W, bot)
+            helpers.SetColor({0.25, 0.25, 0.25, 0.5})
+            gfx.rect(right_x, y, 1, h)
+        else
+            -- Collapsed: island_bg with proper bl rounded corner
+            helpers.SetColor(theme.colors.island_bg)
+            components.DrawRoundedRectEx(right_x, ve_y, LABEL_W, spine_h, cr, {tl=false, tr=false, bl=true, br=false})
+            helpers.SetColor({0.15, 0.15, 0.15, 0.6})
+            gfx.line(right_x + LABEL_W, ve_y, right_x + LABEL_W, bot)
+        end
     end
 end
 
 function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_SIZE)
-    local thumb_offset = math.floor((SB_SIZE - THUMB_SIZE) / 2) + 1
+    -- Safety: reset stale scrollbar drag state if mouse button is no longer held
+    if island_store.GetSbDragging() and (gfx.mouse_cap & 1) == 0 then island_store.SetSbDragging(false) end
+    if island_store.GetVsbDragging() and (gfx.mouse_cap & 1) == 0 then island_store.SetVsbDragging(false) end
+
+    local thumb_offset = math.floor((SB_SIZE - THUMB_SIZE) / 2)
     local scroll_x = island_store.GetScrollOffsetX()
     local zoom_x = island_store.GetZoomX()
-    local total_beats = 64
+    -- Cache-aware total_beats: recompute only when notes array length changes
     local notes = island_store.GetNotes()
-    for _, n in ipairs(notes) do total_beats = math.max(total_beats, (n.start_beat or 0) + (n.duration or 4) + 4) end
+    if not _cached_total_beats_valid or _cached_notes_count ~= #notes then
+        _cached_total_beats = 64
+        for _, n in ipairs(notes) do _cached_total_beats = math.max(_cached_total_beats, (n.start_beat or 0) + (n.duration or 4) + 4) end
+        _cached_notes_count = #notes
+        _cached_total_beats_valid = true
+    end
+    local total_beats = _cached_total_beats
+
+    local mx, my = gfx.mouse_x, gfx.mouse_y
 
     -- Horizontal
     local visible_beats = math.ceil(grid_w / math.max(1, zoom_x))
@@ -169,10 +255,22 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
         local track_w = grid_w - bar_w
         local bar_x = right_x + LABEL_W + (math.min(scroll_x, max_scroll_x) / max_scroll_x) * track_w
         
-        helpers.SetColor({0.15, 0.15, 0.15, 0.25})
-        components.DrawRoundedRectEx(right_x + LABEL_W, sb_y, grid_w, SB_SIZE, 4, {bl=false, br=true})
+        -- Track (ends at vsb_x = right edge of grid area)
+        helpers.SetColor(theme.colors.island_bg)
+        gfx.rect(right_x + LABEL_W, sb_y, grid_w, SB_SIZE)
         
-        local mx, my = gfx.mouse_x, gfx.mouse_y
+        -- Thumb with hover/active states (opaque → fast path, avoids blit artifacts)
+        local is_hover = mx >= bar_x and mx <= bar_x + bar_w and my >= sb_y and my <= sb_y + SB_SIZE
+        if _sb_dragging then
+            helpers.SetColor({0.25, 0.50, 0.85, 1.0}) -- Blue active when dragging
+        elseif is_hover then
+            helpers.SetColor({0.6, 0.6, 0.6, 1.0}) -- Brighter on hover
+        else
+            helpers.SetColor({0.5, 0.5, 0.5, 1.0}) -- Default thumb
+        end
+        components.DrawRoundedRect(bar_x, sb_y + thumb_offset, bar_w, THUMB_SIZE, 2, true)
+        
+        -- Click detection
         if ui_store.GetMouseClick() and mx >= bar_x and mx <= bar_x + bar_w and my >= sb_y and my <= sb_y + SB_SIZE then
             _sb_dragging, _sb_drag_start_x, _sb_scroll_at_drag_start = true, mx, math.min(scroll_x, max_scroll_x)
         end
@@ -180,26 +278,36 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
             if (gfx.mouse_cap & 1) == 0 then _sb_dragging = false
             else island_store.SetScrollOffsetX(math.max(0, math.min(max_scroll_x, _sb_scroll_at_drag_start + ((mx - _sb_drag_start_x) / grid_w) * total_beats))) end
         end
-        helpers.SetColor(theme.colors.island_scrollbar_bg or {0.4, 0.4, 0.4, 0.35})
-        components.DrawRoundedRect(bar_x, sb_y + thumb_offset, bar_w, THUMB_SIZE, 2, true)
     end
 
     -- Vertical
     local scroll_y = island_store.GetScrollOffsetY()
     local TOTAL_PITCHES = 108
     local vsb_x, vsb_w = right_x + grid_w + LABEL_W, SB_SIZE
-    local vsb_h = pr_h + (ve_h > 0 and ve_h or 0) - 7
+    local vsb_h = pr_h + (ve_h > 0 and ve_h or 0)
     local visible_rows = pr_h / math.max(1, piano_roll.PITCH_ROW_H)
     if visible_rows < TOTAL_PITCHES then
         local max_scroll_y = TOTAL_PITCHES - visible_rows
-        helpers.SetColor({0.15, 0.15, 0.15, 0.25})
-        components.DrawRoundedRect(vsb_x, pr_y, vsb_w, vsb_h, 2, true)
+        -- Track
+        helpers.SetColor(theme.colors.island_bg)
+        gfx.rect(vsb_x, pr_y, vsb_w, vsb_h)
 
         local bar_h = math.max(14, vsb_h * (visible_rows / TOTAL_PITCHES))
         local track_h = vsb_h - bar_h
         local bar_y = pr_y + (math.min(scroll_y, max_scroll_y) / max_scroll_y) * track_h
         
-        local mx, my = gfx.mouse_x, gfx.mouse_y
+        -- Thumb with hover/active states (opaque → fast path, avoids blit artifacts)
+        local is_v_hover = mx >= vsb_x and mx <= vsb_x + vsb_w and my >= bar_y and my <= bar_y + bar_h
+        if _vsb_dragging then
+            helpers.SetColor({0.25, 0.50, 0.85, 1.0}) -- Blue active when dragging
+        elseif is_v_hover then
+            helpers.SetColor({0.6, 0.6, 0.6, 1.0}) -- Brighter on hover
+        else
+            helpers.SetColor({0.5, 0.5, 0.5, 1.0}) -- Default thumb
+        end
+        components.DrawRoundedRect(vsb_x + thumb_offset, bar_y, THUMB_SIZE, bar_h, 2, true)
+        
+        -- Click detection
         if ui_store.GetMouseClick() and mx >= vsb_x and mx <= vsb_x + vsb_w and my >= bar_y and my <= bar_y + bar_h then
             _vsb_dragging, _vsb_drag_start_y, _vsb_scroll_at_drag_start = true, my, math.min(scroll_y, max_scroll_y)
         end
@@ -207,8 +315,6 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
             if (gfx.mouse_cap & 1) == 0 then _vsb_dragging = false
             else island_store.SetScrollOffsetY(math.max(0, math.min(max_scroll_y, _vsb_scroll_at_drag_start + ((my - _vsb_drag_start_y) / vsb_h) * max_scroll_y))) end
         end
-        helpers.SetColor(theme.colors.island_scrollbar_bg or {0.4, 0.4, 0.4, 0.35})
-        components.DrawRoundedRect(vsb_x + thumb_offset, bar_y, THUMB_SIZE, bar_h, 2, true)
     end
 end
 
