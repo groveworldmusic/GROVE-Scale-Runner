@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Compact bar drawing
 -- Renders the transport bar composite (key, scale, octave, chord, restore button)
 -- Dependencies: config, theme, helpers, lice, positioning, state.compact
@@ -11,6 +11,7 @@ local lice = require("ui.lice")
 local positioning = require("ui.positioning")
 local compact_store = require("state.compact")
 local api_guard = require("core.api-guard")
+local prefs = require("state.preferences")
 
 local m = {}
 
@@ -32,12 +33,12 @@ function m.CompactBar(ctx)
     local bm = compact_store.GetLiceBitmap()
     local font = compact_store.GetLiceFont()
 
-    local ri = api_guard.ClampIndex(config.state.root_index, 1, #config.NOTE_NAMES)
-    local si = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
-    local ci = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local ri = api_guard.ClampIndex(prefs.GetRootIndex(), 1, #config.NOTE_NAMES)
+    local si = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
+    local ci = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     local key_n = config.NOTE_NAMES[ri]
     local scale_n = helpers.CompactAbbreviateScale(config.SCALES[si].name)
-    local oct_n = "C" .. math.floor(config.state.octave)
+    local oct_n = "C" .. math.floor(prefs.GetOctave())
     local chord_n = (ci == 1) and "Note" or config.CHORD_MODES[ci].name:sub(1, 3)
 
     local wk, ws, wo, wch = 16, 34, 16, 24

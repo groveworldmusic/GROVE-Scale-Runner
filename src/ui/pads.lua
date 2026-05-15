@@ -10,6 +10,7 @@ local theme = require("ui.theme")
 local colors = require("ui.colors")
 local format = require("ui.format")
 local midi = require("core.midi")
+local prefs = require("state.preferences")
 
 -- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
 -- to avoid circular require at load time (components.lua also requires pads.lua)
@@ -23,7 +24,7 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
     local components = require("ui.components")
     local disabled = total_degrees and degree > total_degrees
     local hover = not disabled and gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
-    local label = format.ChordLabel({root_index=config.state.root_index, scale_index=config.state.scale_index, degree=degree, octave=config.state.octave, chord_mode_index=config.state.chord_mode_index})
+    local label = format.ChordLabel({root_index=prefs.GetRootIndex(), scale_index=prefs.GetScaleIndex(), degree=degree, octave=prefs.GetOctave(), chord_mode_index=prefs.GetChordModeIndex()})
     local roman = format.RomanNumeral(degree)
 
     local active = false
@@ -116,7 +117,7 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
         local mps = midi_store.GetMousePadState()
         if mps.active_degree ~= degree then
             mps.active_degree = degree
-            mps.midi_notes = midi.TriggerChord(degree, true, nil, nil, config.state.inversion_index)
+            mps.midi_notes = midi.TriggerChord(degree, true, nil, nil, prefs.GetInversionIndex())
         end
     elseif not disabled and midi_store.GetMousePadState().active_degree == degree and (gfx.mouse_cap & 1) == 0 then
         -- Only turn off mouse-pad notes, not all notes (avoids killing QWERTY-held notes)

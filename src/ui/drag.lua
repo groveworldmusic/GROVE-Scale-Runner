@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Drag Preview UI (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
@@ -8,6 +8,7 @@ local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 local colors = require("ui.colors")
 local format = require("ui.format")
+local prefs = require("state.preferences")
 
 -- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
 -- to avoid circular require at load time (components.lua also requires this module)
@@ -53,7 +54,7 @@ function m.DrawDragPreview(w, h)
     if drag_store.GetSourceDegree() ~= -1 then
         -- Dragging from a pad: show actual note name + roman numeral
         local degree = drag_store.GetSourceDegree()
-        local label = format.ChordLabel({root_index=config.state.root_index, scale_index=config.state.scale_index, degree=degree, octave=config.state.octave, chord_mode_index=config.state.chord_mode_index})
+        local label = format.ChordLabel({root_index=prefs.GetRootIndex(), scale_index=prefs.GetScaleIndex(), degree=degree, octave=prefs.GetOctave(), chord_mode_index=prefs.GetChordModeIndex()})
         local roman = format.RomanNumeral(degree)
 
         local main_font = math.max(math.floor(ch * 0.35), 8)

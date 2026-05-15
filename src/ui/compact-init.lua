@@ -12,6 +12,7 @@ local midi_store = require("state.midi")
 local ui_store = require("state.ui")
 local island_store = require("state.island")
 local seq_store = require("state.sequencer")
+local prefs = require("state.preferences")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
@@ -208,7 +209,7 @@ function m.HandlePanel()
     local open_up = panel.panel_state.open_up
 
     -- Scale dropdown
-    local si = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local si = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
     local r = components.DrawDropdown(piano_key_left, cy, scale_w, ch, nil,
         helpers.CompactAbbreviateScale(config.SCALES[si].name),
         panel.SCALE_FULL, si, 16, open_up)
@@ -216,12 +217,12 @@ function m.HandlePanel()
 
     -- Octave dropdown
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap, cy, octave_w, ch, nil,
-        "C" .. math.floor(config.state.octave),
-        panel.OCTAVE_OPTIONS, config.state.octave + 1, 16, open_up)
+        "C" .. math.floor(prefs.GetOctave()),
+        panel.OCTAVE_OPTIONS, prefs.GetOctave() + 1, 16, open_up)
     if r then local ov = math.floor(r - 1); config.state.octave = ov; persist.Save("octave", ov) end
 
     -- Chord dropdown
-    local ci = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local ci = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap, cy, chord_w, ch, nil,
         config.CHORD_MODES[ci].name,
         panel.CHORD_OPTIONS, ci, 16, open_up)

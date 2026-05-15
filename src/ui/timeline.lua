@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Timeline Ruler
 -- Beat/measure markers displayed above the piano roll grid.
 -- Synchronizes with sequencer clock for playback head position.
@@ -10,11 +10,12 @@ local seq_store = require("state.sequencer")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
+local prefs = require("state.preferences")
 
 local timeline = {}
 
 -- Configuration
-timeline.TIMELINE_H = 28               -- Height of the timeline ruler in pixels
+timeline.TIMELINE_H = 30               -- Height of the timeline ruler in pixels
 timeline.PITCH_LABEL_W = 48           -- Must match piano-roll.lua PITCH_LABEL_W
 
 -- Colors (Now synced with theme where possible)
@@ -59,13 +60,13 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
                 local measure_num = math.floor(beat / 4)
                 local label = tostring(measure_num)
 
-                gfx.setfont(1, "Calibri", 10)
+                gfx.setfont(1, "Calibri", 12)
                 local lw, lh = gfx.measurestr(label)
 
                 -- Check for overlap: only draw if enough space
                 local label_start = bx - lw / 2
                 local label_end = bx + lw / 2
-                if label_start > last_label_end + 4 then
+                if label_start > last_label_end + 8 then
                     helpers.SetColor(MEASURE_TEXT_COLOR)
                     gfx.x, gfx.y = label_start, y + (h - lh) / 2
                     gfx.drawstr(label)
@@ -80,7 +81,7 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
     end
 
     -- Subdivision ticks (only when subdivision > 1)
-    local sub_idx = config.state.subdivision_index or 1
+    local sub_idx = prefs.GetSubdivisionIndex() or 1
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
     if subdivision > 1 then
         local SUB_TICK_COLOR = {0.3, 0.3, 0.3, 0.2}
@@ -167,7 +168,7 @@ function timeline.DrawTimelineRuler(x, y, w, h, grid_h, round_tl)
 
     -- 2. "BEATS" label (drawn directly over the master spine)
     helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", 9)
+    gfx.setfont(1, "Calibri", 10)
     local lw, lh = gfx.measurestr("BEATS")
     gfx.x, gfx.y = x + (LABEL_W - lw) / 2, y + (h - lh) / 2
     gfx.drawstr("BEATS")

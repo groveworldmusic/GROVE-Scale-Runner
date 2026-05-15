@@ -8,6 +8,7 @@ local ui_store = require("state.ui")
 local components = require("ui.components")
 local midi = require("core.midi")
 local persist = require("state.persist")
+local prefs = require("state.preferences")
 
 local m = {}
 
@@ -42,13 +43,13 @@ function m.ShowContextMenu()
     local menu = "#Scale Runner|"
     menu = menu .. (is_full and "Cambiar a Vista Compacta" or "Cambiar a Vista Completa") .. "|"
     menu = menu .. ">Tonalidad|"
-    for i, n in ipairs(config.NOTE_NAMES) do menu = menu .. (config.state.root_index == i and "!" or "") .. n .. "|" end
+    for i, n in ipairs(config.NOTE_NAMES) do menu = menu .. (prefs.GetRootIndex() == i and "!" or "") .. n .. "|" end
     menu = menu .. "<|>Escala|"
-    for i, s in ipairs(config.SCALES) do menu = menu .. (config.state.scale_index == i and "!" or "") .. s.name .. "|" end
+    for i, s in ipairs(config.SCALES) do menu = menu .. (prefs.GetScaleIndex() == i and "!" or "") .. s.name .. "|" end
     menu = menu .. "<|>Octava|"
-    for i=0, 8 do menu = menu .. (config.state.octave == i and "!" or "") .. "C" .. i .. "|" end
+    for i=0, 8 do menu = menu .. (prefs.GetOctave() == i and "!" or "") .. "C" .. i .. "|" end
     menu = menu .. "<|>Acorde|"
-    for i, mo in ipairs(config.CHORD_MODES) do menu = menu .. (config.state.chord_mode_index == i and "!" or "") .. mo.name .. "|" end
+    for i, mo in ipairs(config.CHORD_MODES) do menu = menu .. (prefs.GetChordModeIndex() == i and "!" or "") .. mo.name .. "|" end
     menu = menu .. "<|>Herramientas|"
     menu = menu .. "Exportar Progresion MIDI|Panic (Notas Off)||"
     menu = menu .. ">Posicion|Ajustar Offset X/Y...|Resetear Verticalmente|<"

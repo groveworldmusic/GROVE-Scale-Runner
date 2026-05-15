@@ -33,12 +33,12 @@ local function TriggerSubChord(slot, sub_step)
     if slot.subs and #slot.subs > 0 then
         local sub = slot.subs[sub_step + 1]
         if sub and sub.degree then
-            return midi.TriggerChord(sub.degree, true, slot, sub.velocity, config.state.inversion_index)
+            return midi.TriggerChord(sub.degree, true, slot, sub.velocity, prefs.GetInversionIndex())
         end
         return {}
     else
         -- Legacy entry: same chord plays on each sub-step
-        return midi.TriggerChord(slot.degree, true, slot, nil, config.state.inversion_index)
+        return midi.TriggerChord(slot.degree, true, slot, nil, prefs.GetInversionIndex())
     end
 end
 

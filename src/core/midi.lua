@@ -88,7 +88,13 @@ function midi.InvertChord(notes, inv_idx, direction)
 end
 
 function midi.TriggerChord(degree, on, ctx, velocity, inversion_index)
-    local c = ctx or config.state
+    local c = ctx or {
+        root_index = prefs.GetRootIndex(),
+        scale_index = prefs.GetScaleIndex(),
+        chord_mode_index = prefs.GetChordModeIndex(),
+        octave = prefs.GetOctave(),
+        inversion_index = prefs.GetInversionIndex(),
+    }
     local cmi = api_guard.ClampIndex(c.chord_mode_index, 1, #config.CHORD_MODES)
     local ri = api_guard.ClampIndex(c.root_index, 1, 12)
     local si = api_guard.ClampIndex(c.scale_index, 1, #config.SCALES)
