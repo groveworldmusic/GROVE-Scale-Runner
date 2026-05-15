@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 local config = require("config")
 local layout = require("ui.layout")
 local theme = require("ui.theme")

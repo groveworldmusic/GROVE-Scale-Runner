@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- @description Scale Runner — QWERTY to MIDI Controller for REAPER
 -- @version 1.0.0
 -- @author GROVE WORLD MUSIC
