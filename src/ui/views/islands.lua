@@ -299,7 +299,7 @@ function m.DrawIslands()
         local play_icon = is_playing and "\226\150\160" or "\226\150\182"  -- ■ U+25A0 or ▶ U+25B6
         local p_col = is_playing and theme.colors.text or theme.colors.slot_playing
         helpers.SetColor(p_col)
-        gfx.setfont(1, "Calibri", math.floor(b_h * 0.6))
+        gfx.setfont(1, "Calibri", math.floor(b_h * 0.75))
         local pw, ph = gfx.measurestr(play_icon)
         gfx.x, gfx.y = play_x + (r - pw) / 2, r1_y + (b_h - ph) / 2
         gfx.drawstr(play_icon)
