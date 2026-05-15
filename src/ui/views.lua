@@ -7,6 +7,7 @@ local midi_store = require("state.midi")
 local ui_store = require("state.ui")
 local island_store = require("state.island")
 local persist = require("state.persist")
+local prefs = require("state.preferences")
 local theme = require("ui.theme")
 local components = require("ui.components")
 local helpers = require("ui.helpers")
@@ -40,22 +41,26 @@ local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
 
 -- Shared right-click quick config menu (used by both views)
 local function ShowQuickConfigMenu()
-    local si_qc = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
-    local ci_qc = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
-    local m = "ROOT: " .. config.NOTE_NAMES[api_guard.ClampIndex(config.state.root_index, 1, 12)] .. "|<SCALE: " .. helpers.AbbreviateScale(config.SCALES[si_qc].name) .. "|OCTAVE: C" .. math.floor(config.state.octave) .. "|CHORD: " .. config.CHORD_MODES[ci_qc].name .. "|VELOCITY: " .. (midi_store.GetUseVelocity() and "ON" or "OFF") .. "|Dock in Transport Bar"
+    local si_qc = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
+    local ci_qc = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
+    local m = "ROOT: " .. config.NOTE_NAMES[api_guard.ClampIndex(prefs.GetRootIndex(), 1, 12)] .. "|<SCALE: " .. helpers.AbbreviateScale(config.SCALES[si_qc].name) .. "|OCTAVE: C" .. math.floor(prefs.GetOctave()) .. "|CHORD: " .. config.CHORD_MODES[ci_qc].name .. "|VELOCITY: " .. (midi_store.GetUseVelocity() and "ON" or "OFF") .. "|Dock in Transport Bar"
     gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
     local choice = gfx.showmenu(m)
     if choice == 1 then
-        config.state.root_index = (config.state.root_index % 12) + 1
+        config.state.root_index = (prefs.GetRootIndex() % 12) + 1
+        prefs.SetRootIndex(config.state.root_index)
         persist.Save("root_index", config.state.root_index)
     elseif choice == 2 then
-        config.state.scale_index = (config.state.scale_index % #config.SCALES) + 1
+        config.state.scale_index = (prefs.GetScaleIndex() % #config.SCALES) + 1
+        prefs.SetScaleIndex(config.state.scale_index)
         persist.Save("scale_index", config.state.scale_index)
     elseif choice == 3 then
-        config.state.octave = math.floor((config.state.octave + 1) % 9)
+        config.state.octave = math.floor((prefs.GetOctave() + 1) % 9)
+        prefs.SetOctave(config.state.octave)
         persist.Save("octave", config.state.octave)
     elseif choice == 4 then
-        config.state.chord_mode_index = (config.state.chord_mode_index % #config.CHORD_MODES) + 1
+        config.state.chord_mode_index = (prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1
+        prefs.SetChordModeIndex(config.state.chord_mode_index)
         persist.Save("chord_mode_index", config.state.chord_mode_index)
     elseif choice == 5 then
         midi_store.SetUseVelocity(not midi_store.GetUseVelocity())
@@ -99,11 +104,11 @@ function views.DrawHeader()
 
     -- State indicator on the same line right after copyright
     gfx.setfont(1, "Calibri", layout.US(900))
-    local ri_h = api_guard.ClampIndex(config.state.root_index, 1, 12)
-    local si_h = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
-    local ci_h = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local ri_h = api_guard.ClampIndex(prefs.GetRootIndex(), 1, 12)
+    local si_h = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
+    local ci_h = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     local scale_abbr = helpers.AbbreviateScale(config.SCALES[si_h].name)
-    local state_str = "  ·  " .. config.NOTE_NAMES[ri_h] .. " " .. scale_abbr .. " · " .. config.CHORD_MODES[ci_h].name .. " · C" .. math.floor(config.state.octave)
+    local state_str = "  ·  " .. config.NOTE_NAMES[ri_h] .. " " .. scale_abbr .. " · " .. config.CHORD_MODES[ci_h].name .. " · C" .. math.floor(prefs.GetOctave())
     local sw, sh = gfx.measurestr(state_str)
     local state_x = math.min(ver_x + vw + layout.US(250), help_x - sw - layout.US(250))
     gfx.x, gfx.y = state_x, ver_y
@@ -208,11 +213,11 @@ function views.DrawIslands()
     -- MODO dropdown (más cerca del label, altura reducida)
     local modo_drop_x = modo_lbl_x + mw + layout.US(400)
     local modo_drop_w = layout.US(7000)
-    local si_is = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local si_is = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
     local modo_val = helpers.AbbreviateScale(config.SCALES[si_is].name)
     local choice = components.DrawDropdown(modo_drop_x, row_y, modo_drop_w, row_h, nil, modo_val, 
                                           SCALE_OPTIONS, si_is, btn_font_size)
-    if choice then config.state.scale_index = choice; persist.Save("scale_index", choice) end
+    if choice then config.state.scale_index = choice; prefs.SetScaleIndex(choice); persist.Save("scale_index", choice) end
     
     -- Grid label + dropdown (entre MODO y NOTE display)
     local note_x = layout.UX(18826)
@@ -227,9 +232,9 @@ function views.DrawIslands()
     local grid_drop_x = grid_lbl_x + gw + layout.US(400)
     local grid_drop_w = note_x - grid_drop_x - layout.US(400)
     local grid_choice = components.DrawDropdown(grid_drop_x, row_y, grid_drop_w, row_h,
-        nil, config.SUBDIVISION_LABELS[config.state.subdivision_index],
-        config.SUBDIVISION_LABELS, config.state.subdivision_index, btn_font_size)
-    if grid_choice then config.state.subdivision_index = grid_choice end
+        nil, config.SUBDIVISION_LABELS[prefs.GetSubdivisionIndex()],
+        config.SUBDIVISION_LABELS, prefs.GetSubdivisionIndex(), btn_font_size)
+    if grid_choice then config.state.subdivision_index = grid_choice; prefs.SetSubdivisionIndex(grid_choice); persist.Save("subdivision_index", grid_choice) end
     
     -- NOTE display (sin label, misma posición)
     components.DrawNoteDisplay(note_x, row_y, layout.US(2800), row_h, midi_store.GetLastNotePlayed())
@@ -252,14 +257,14 @@ function views.DrawIslands()
     local oct_content_y = y_start + math.floor((short_island_h - oct_content_h) / 2) + layout.US(398)
     local oct_gap = layout.US(171)
     local oct_choice = components.DrawDropdown(btn_x, oct_content_y, std_btn_w, short_btn_h,
-        nil, "C"..math.floor(config.state.octave), OCTAVE_OPTIONS, config.state.octave + 1, btn_font_size, oct_open_up)  -- Issue 9
-    if oct_choice then config.state.octave = math.floor(oct_choice - 1); persist.Save("octave", config.state.octave) end
+        nil, "C"..math.floor(prefs.GetOctave()), OCTAVE_OPTIONS, prefs.GetOctave() + 1, btn_font_size, oct_open_up)  -- Issue 9
+    if oct_choice then config.state.octave = math.floor(oct_choice - 1); prefs.SetOctave(config.state.octave); persist.Save("octave", config.state.octave) end
     if components.DrawButton(btn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "C5", config.state.octave == 5, btn_font_size) then config.state.octave = 5; persist.Save("octave", 5) end
+                             "C5", prefs.GetOctave() == 5, btn_font_size) then config.state.octave = 5; prefs.SetOctave(5); persist.Save("octave", 5) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "C4", config.state.octave == 4, btn_font_size) then config.state.octave = 4; persist.Save("octave", 4) end
+                             "C4", prefs.GetOctave() == 4, btn_font_size) then config.state.octave = 4; prefs.SetOctave(4); persist.Save("octave", 4) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "C3", config.state.octave == 3, btn_font_size) then config.state.octave = 3; persist.Save("octave", 3) end
+                             "C3", prefs.GetOctave() == 3, btn_font_size) then config.state.octave = 3; prefs.SetOctave(3); persist.Save("octave", 3) end
 
     ---------------------------------------------------------------------------
     -- Island 3: Chord (144px height, content fits inside)
@@ -273,13 +278,13 @@ function views.DrawIslands()
     gfx.drawstr("CHORD")
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
     if components.DrawButton(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
-                             "9NA", config.state.chord_mode_index == 4, btn_font_size) then config.state.chord_mode_index = 4; persist.Save("chord_mode_index", 4) end
+                             "9NA", prefs.GetChordModeIndex() == 4, btn_font_size) then config.state.chord_mode_index = 4; prefs.SetChordModeIndex(4); persist.Save("chord_mode_index", 4) end
     if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "7MA", config.state.chord_mode_index == 3, btn_font_size) then config.state.chord_mode_index = 3; persist.Save("chord_mode_index", 3) end
+                             "7MA", prefs.GetChordModeIndex() == 3, btn_font_size) then config.state.chord_mode_index = 3; prefs.SetChordModeIndex(3); persist.Save("chord_mode_index", 3) end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "TRI", config.state.chord_mode_index == 2, btn_font_size) then config.state.chord_mode_index = 2; persist.Save("chord_mode_index", 2) end
+                             "TRI", prefs.GetChordModeIndex() == 2, btn_font_size) then config.state.chord_mode_index = 2; prefs.SetChordModeIndex(2); persist.Save("chord_mode_index", 2) end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "NOTE", config.state.chord_mode_index == 1, btn_font_size) then config.state.chord_mode_index = 1; persist.Save("chord_mode_index", 1) end
+                             "NOTE", prefs.GetChordModeIndex() == 1, btn_font_size) then config.state.chord_mode_index = 1; prefs.SetChordModeIndex(1); persist.Save("chord_mode_index", 1) end
 
     ---------------------------------------------------------------------------
     -- Island: ISLA INVERSIONES (192×52px, below Octava + Chord, spans both)
@@ -311,9 +316,11 @@ function views.DrawIslands()
 
     -- Button 1: UP/DN direction toggle (always selected, shows current direction)
     local bx1 = inv_btn_area_start
-    local dir_text = config.state.inversion_direction == 0 and "UP" or "DN"
+    local dir_text = prefs.GetInversionDirection() == 0 and "UP" or "DN"
     if components.DrawButton(bx1, inv_item_y, inv_btn_w, inv_item_h, dir_text, true, inv_font) then
-        config.state.inversion_direction = config.state.inversion_direction == 0 and 1 or 0
+        config.state.inversion_direction = prefs.GetInversionDirection() == 0 and 1 or 0
+        prefs.SetInversionDirection(config.state.inversion_direction)
+        persist.Save("inversion_direction", config.state.inversion_direction)
     end
 
     -- Buttons 2-4: 1st, 2nd, 3rd inversion (click active → root; click another → select)
@@ -322,8 +329,9 @@ function views.DrawIslands()
         local bx = inv_btn_area_start + i * (inv_btn_w + inv_btn_gap)
         local inv_idx = i + 1  -- maps to config indices 2, 3, 4
         if components.DrawButton(bx, inv_item_y, inv_btn_w, inv_item_h,
-                                 inv_labels[i], config.state.inversion_index == inv_idx, inv_font) then
-            config.state.inversion_index = (config.state.inversion_index == inv_idx) and 1 or inv_idx
+                                 inv_labels[i], prefs.GetInversionIndex() == inv_idx, inv_font) then
+            config.state.inversion_index = (prefs.GetInversionIndex() == inv_idx) and 1 or inv_idx
+            prefs.SetInversionIndex(config.state.inversion_index)
             persist.Save("inversion_index", config.state.inversion_index)
         end
     end
@@ -509,7 +517,7 @@ function views.DrawPerformanceArea()
     local margin = layout.US(800)
     local avail_w = w - (margin * 2)
     local pad_w, pad_h = layout.US(5300), layout.US(4116)
-    local si_pa = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local si_pa = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
     local num_intervals = #config.SCALES[si_pa].intervals
     local num_pads = 7  -- always draw 7 slots; extra ones beyond num_intervals draw grayed out
     local pad_spacing = (avail_w - (pad_w * num_pads)) / (num_pads - 1)
@@ -523,8 +531,22 @@ function views.DrawPerformanceArea()
     local slots_y = layout.UY(19730)
     local start_idx = (seq_store.GetCurrentPage() - 1) * 4 + 1
     for i = 0, 3 do
-        local sx = x_start + margin + i * (slot_w + slot_spacing)
+        local sx = math.floor(x_start + margin + i * (slot_w + slot_spacing))
         components.DrawProgressionSlot(start_idx + i, sx, slots_y, slot_w, slot_h)
+    end
+    -- DEBUG: set to true to show slot edge diagnostic lines
+    local SLOT_EDGE_DEBUG = false
+    if SLOT_EDGE_DEBUG then
+        gfx.set(0, 1, 0, 1)  -- green: right edge
+        for i = 0, 3 do
+            local sx = math.floor(x_start + margin + i * (slot_w + slot_spacing))
+            gfx.rect(sx + slot_w - 1, slots_y, 1, slot_h, 1)
+        end
+        gfx.set(1, 0, 0, 1)  -- red: left edge
+        for i = 0, 3 do
+            local sx = math.floor(x_start + margin + i * (slot_w + slot_spacing))
+            gfx.rect(sx, slots_y, 1, slot_h, 1)
+        end
     end
     local page_center_x = x_start + w/2
     local page_y = layout.UY(27192)
@@ -775,40 +797,45 @@ function views.DrawDockedTransportBar(dock_w, dock_h)
     local x_pos = 10
 
     -- [ROOT] button - cycles through root notes
-    if components.DrawTransportButton(config.NOTE_NAMES[api_guard.ClampIndex(config.state.root_index, 1, 12)], x_pos, btn_y, btn_w, btn_h) then
-        config.state.root_index = (config.state.root_index % 12) + 1
+    if components.DrawTransportButton(config.NOTE_NAMES[api_guard.ClampIndex(prefs.GetRootIndex(), 1, 12)], x_pos, btn_y, btn_w, btn_h) then
+        config.state.root_index = (prefs.GetRootIndex() % 12) + 1
+        prefs.SetRootIndex(config.state.root_index)
         persist.Save("root_index", config.state.root_index)
     end
     x_pos = x_pos + btn_w + gap
 
     -- [SCALE] button - cycles through scales
-    local si_dt = api_guard.ClampIndex(config.state.scale_index, 1, #config.SCALES)
+    local si_dt = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
     local scale_abbr = helpers.AbbreviateScale(config.SCALES[si_dt].name)
     if components.DrawTransportButton(scale_abbr, x_pos, btn_y, btn_w + 20, btn_h) then
-        config.state.scale_index = (config.state.scale_index % #config.SCALES) + 1
+        config.state.scale_index = (prefs.GetScaleIndex() % #config.SCALES) + 1
+        prefs.SetScaleIndex(config.state.scale_index)
         persist.Save("scale_index", config.state.scale_index)
     end
     x_pos = x_pos + btn_w + 20 + gap
 
     -- [OCT−] button
     if components.DrawTransportButton("−", x_pos, btn_y, 30, btn_h) then
-        config.state.octave = math.floor(math.max(0, config.state.octave - 1))
+        config.state.octave = math.floor(math.max(0, prefs.GetOctave() - 1))
+        prefs.SetOctave(config.state.octave)
         persist.Save("octave", config.state.octave)
     end
     x_pos = x_pos + 30 + gap
 
     -- [OCT+] button
     if components.DrawTransportButton("+", x_pos, btn_y, 30, btn_h) then
-        config.state.octave = math.floor(math.min(8, config.state.octave + 1))
+        config.state.octave = math.floor(math.min(8, prefs.GetOctave() + 1))
+        prefs.SetOctave(config.state.octave)
         persist.Save("octave", config.state.octave)
     end
     x_pos = x_pos + 30 + gap
 
     -- [CHORD] button - cycles chord modes
-    local ci_dt = api_guard.ClampIndex(config.state.chord_mode_index, 1, #config.CHORD_MODES)
+    local ci_dt = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     local chord_label = config.CHORD_MODES[ci_dt].name
     if components.DrawTransportButton(chord_label, x_pos, btn_y, btn_w, btn_h) then
-        config.state.chord_mode_index = (config.state.chord_mode_index % #config.CHORD_MODES) + 1
+        config.state.chord_mode_index = (prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1
+        prefs.SetChordModeIndex(config.state.chord_mode_index)
         persist.Save("chord_mode_index", config.state.chord_mode_index)
     end
     x_pos = x_pos + btn_w + gap
