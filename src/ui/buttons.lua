@@ -21,8 +21,8 @@ function m.DrawToolIcon(type, x, y, size, active)
         help = "?",
         settings = "\226\154\153",    -- U+2699 ⚙
         view = "\226\138\159",         -- U+229F ⊟
-        clear = "\226\156\151",        -- U+2717 ✗ (ballot X, same Dingbats block as ✎)
-        export = "\226\153\170",       -- U+266A ♪ (eighth note, represents MIDI export)
+        clear = "\226\140\171",        -- U+232B ⌫ (erase to the left / backspace)
+        export = "\226\158\166",       -- U+27A6 ➦ (arrow tail rightwards)
     }
     local glyph = glyphs[type]
     if not glyph then
