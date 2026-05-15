@@ -9,6 +9,7 @@ local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
 local midi_store = require("state.midi")
 local ui_store = require("state.ui")
+local island_store = require("state.island")
 local prefs = require("state.preferences")
 local theme = require("ui.theme")
 local components = require("ui.components")
@@ -24,6 +25,7 @@ local m = {}
 
 -- Cached dropdown options (built once, scales don't change at runtime)
 local SCALE_OPTIONS = (function() local t = {} for _, v in ipairs(config.SCALES) do t[#t + 1] = v.name end return t end)()
+local CHORD_OPTIONS = (function() local t = {} for _, v in ipairs(config.CHORD_MODES) do t[#t + 1] = v.name end return t end)()
 local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
 
 function m.DrawIslands()
@@ -63,7 +65,7 @@ function m.DrawIslands()
     local modo_val = helpers.AbbreviateScale(config.SCALES[si_is].name)
     local choice = components.DrawDropdown(modo_drop_x, row_y, modo_drop_w, row_h, nil, modo_val, 
                                           SCALE_OPTIONS, si_is, btn_font_size)
-    if choice then config.state.scale_index = choice; prefs.SetScaleIndex(choice); persist.Save("scale_index", choice) end
+    if choice then prefs.SetScaleIndex(choice); persist.Save("scale_index", choice) end
     
     -- Grid label + dropdown (entre MODO y NOTE display)
     local note_x = layout.UX(18826)
@@ -80,7 +82,7 @@ function m.DrawIslands()
     local grid_choice = components.DrawDropdown(grid_drop_x, row_y, grid_drop_w, row_h,
         nil, config.SUBDIVISION_LABELS[prefs.GetSubdivisionIndex()],
         config.SUBDIVISION_LABELS, prefs.GetSubdivisionIndex(), btn_font_size)
-    if grid_choice then config.state.subdivision_index = grid_choice; prefs.SetSubdivisionIndex(grid_choice); persist.Save("subdivision_index", grid_choice) end
+    if grid_choice then prefs.SetSubdivisionIndex(grid_choice); persist.Save("subdivision_index", grid_choice) end
     
     -- NOTE display (sin label, misma posición)
     components.DrawNoteDisplay(note_x, row_y, layout.US(2800), row_h, midi_store.GetLastNotePlayed())
@@ -104,16 +106,16 @@ function m.DrawIslands()
     local oct_gap = layout.US(171)
     local oct_choice = components.DrawDropdown(btn_x, oct_content_y, std_btn_w, short_btn_h,
         nil, "C"..math.floor(prefs.GetOctave()), OCTAVE_OPTIONS, prefs.GetOctave() + 1, btn_font_size, oct_open_up)  -- Issue 9
-    if oct_choice then config.state.octave = math.floor(oct_choice - 1); prefs.SetOctave(config.state.octave); persist.Save("octave", config.state.octave) end
+    if oct_choice then local oct = math.floor(oct_choice - 1); prefs.SetOctave(oct); persist.Save("octave", oct) end
     if components.DrawButton(btn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "C5", prefs.GetOctave() == 5, btn_font_size) then config.state.octave = 5; prefs.SetOctave(5); persist.Save("octave", 5) end
+                             "C5", prefs.GetOctave() == 5, btn_font_size) then prefs.SetOctave(5); persist.Save("octave", 5) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "C4", prefs.GetOctave() == 4, btn_font_size) then config.state.octave = 4; prefs.SetOctave(4); persist.Save("octave", 4) end
+                             "C4", prefs.GetOctave() == 4, btn_font_size) then prefs.SetOctave(4); persist.Save("octave", 4) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "C3", prefs.GetOctave() == 3, btn_font_size) then config.state.octave = 3; prefs.SetOctave(3); persist.Save("octave", 3) end
+                             "C3", prefs.GetOctave() == 3, btn_font_size) then prefs.SetOctave(3); persist.Save("octave", 3) end
 
     ---------------------------------------------------------------------------
-    -- Island 3: Chord (144px height, content fits inside)
+    -- Island 3: Chord (dropdown + TRI/7MA/9NA quick buttons, like octave island)
     ---------------------------------------------------------------------------
     local i3_x = layout.UX(28832)
     components.DrawIsland(i3_x, y_start, std_island_w, short_island_h, nil, nil)
@@ -123,14 +125,28 @@ function m.DrawIslands()
     gfx.x, gfx.y = i3_x + (std_island_w - ch_tw)/2, y_start
     gfx.drawstr("CHORD")
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
-    if components.DrawButton(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
-                             "9NA", prefs.GetChordModeIndex() == 4, btn_font_size) then config.state.chord_mode_index = 4; prefs.SetChordModeIndex(4); persist.Save("chord_mode_index", 4) end
+    local chord_cmi = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
+    local chord_choice = components.DrawDropdown(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
+        nil, config.CHORD_MODES[chord_cmi].name, CHORD_OPTIONS, chord_cmi, btn_font_size, oct_open_up)
+    if chord_choice then
+        prefs.SetChordModeIndex(chord_choice)
+        persist.Save("chord_mode_index", chord_choice)
+    end
     if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "7MA", prefs.GetChordModeIndex() == 3, btn_font_size) then config.state.chord_mode_index = 3; prefs.SetChordModeIndex(3); persist.Save("chord_mode_index", 3) end
+                             "TRI", prefs.GetChordModeIndex() == 2, btn_font_size) then
+        local new_val = prefs.GetChordModeIndex() == 2 and 1 or 2
+        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+    end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "TRI", prefs.GetChordModeIndex() == 2, btn_font_size) then config.state.chord_mode_index = 2; prefs.SetChordModeIndex(2); persist.Save("chord_mode_index", 2) end
+                             "7MA", prefs.GetChordModeIndex() == 3, btn_font_size) then
+        local new_val = prefs.GetChordModeIndex() == 3 and 1 or 3
+        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+    end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "NOTE", prefs.GetChordModeIndex() == 1, btn_font_size) then config.state.chord_mode_index = 1; prefs.SetChordModeIndex(1); persist.Save("chord_mode_index", 1) end
+                             "9NA", prefs.GetChordModeIndex() == 4, btn_font_size) then
+        local new_val = prefs.GetChordModeIndex() == 4 and 1 or 4
+        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+    end
 
     ---------------------------------------------------------------------------
     -- Island: ISLA INVERSIONES (192×52px, below Octava + Chord, spans both)
@@ -164,9 +180,9 @@ function m.DrawIslands()
     local bx1 = inv_btn_area_start
     local dir_text = prefs.GetInversionDirection() == 0 and "UP" or "DN"
     if components.DrawButton(bx1, inv_item_y, inv_btn_w, inv_item_h, dir_text, true, inv_font) then
-        config.state.inversion_direction = prefs.GetInversionDirection() == 0 and 1 or 0
-        prefs.SetInversionDirection(config.state.inversion_direction)
-        persist.Save("inversion_direction", config.state.inversion_direction)
+        local new_dir = prefs.GetInversionDirection() == 0 and 1 or 0
+        prefs.SetInversionDirection(new_dir)
+        persist.Save("inversion_direction", new_dir)
     end
 
     -- Buttons 2-4: 1st, 2nd, 3rd inversion (click active → root; click another → select)
@@ -183,157 +199,224 @@ function m.DrawIslands()
     end
 
     ---------------------------------------------------------------------------
-    -- Island 4: Command Vertical Stack (Alineación Exacta)
+    -- Island 4: Command Vertical Stack
     ---------------------------------------------------------------------------
     local i4_x = layout.UX(34541)
     local b_w = std_island_w + layout.US(57)
     local b_h = layout.US(1980)
     -- Padding calculado dinámicamente para alinear el borde inferior
     local b_gap = (island_h - (b_h * 5)) / 4
+    local half_gap = layout.US(400)
     local function PressOverlay(x, y, w, h)
         helpers.SetColor({0, 0, 0, 0.15})
         gfx.rect(x, y, w, h / 2, 1)
     end
     
-    -- 1. VEL Island
-    local v_y = y_start
-    local v_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= v_y and gfx.mouse_y <= v_y + b_h
-    local vel_on = midi_store.GetUseVelocity()
-    local v_bg = vel_on and theme.colors.btn_active or (v_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    helpers.SetColor(v_bg)
-    components.DrawRoundedRect(i4_x, v_y, b_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and v_hover and not drag_store.GetIsDragging() then PressOverlay(i4_x, v_y, b_w, b_h) end
-    helpers.SetColor(vel_on and theme.colors.text or theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local vw, vh = gfx.measurestr("VEL")
-    gfx.x, gfx.y = i4_x + (b_w - vw)/2, v_y + (b_h - vh)/2
-    gfx.drawstr("VEL")
-    if v_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip(midi_store.GetUseVelocity() and "Click: disable" or "Click: enable", layout.US(700))
-    end
-    if ui_store.GetMouseClick() and v_hover and not drag_store.GetIsDragging() then midi_store.SetUseVelocity(not midi_store.GetUseVelocity()) end
-    
-    -- 2. PLAY/STOP Island
-    local p_y = v_y + b_h + b_gap - layout.US(57)
-    local p_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= p_y and gfx.mouse_y <= p_y + b_h
-    local is_playing = seq_store.GetIsPlaying()
-    local p_bg = is_playing and theme.colors.slot_playing or (p_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    helpers.SetColor(p_bg)
-    components.DrawRoundedRect(i4_x, p_y, b_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then PressOverlay(i4_x, p_y, b_w, b_h) end
-    local cx, cy = i4_x + b_w/2, p_y + b_h/2
-    local s = layout.US(1000)
-    if is_playing then
-        helpers.SetColor({0,0,0,0.4})
-        gfx.rect(cx-s/2, cy-s/2, s, s, 1)
-    else
-        helpers.SetColor(theme.colors.slot_playing)
-        gfx.triangle(cx-s/2, cy-s/2, cx-s/2, cy+s/2, cx+s/2, cy)
-    end
-    if p_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("Play/Stop progression", layout.US(700))
-    end
-    if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then
-        if is_playing then sequencer.Stop() else seq_store.SetIsPlaying(true) end
+    --- Helper: side-by-side half-width calculation
+    local function SplitWidths(total, gap)
+        local avail = total - gap
+        local left = math.floor(avail / 2)
+        return left, avail - left
     end
     
-    -- 3. CLEAR + EXPORT (side by side, same row)
-    local c_y = p_y + b_h + b_gap - layout.US(57)
-    local split_gap = layout.US(500)  -- gap entre CLEAR y EXPORT
-    local half_w = math.floor((b_w - split_gap) / 2)
-    local clear_x = i4_x
-    local export_x = i4_x + half_w + split_gap
-
-    -- CLEAR icon (left half)
-    local clear_hover = gfx.mouse_x >= clear_x and gfx.mouse_x <= clear_x + half_w and gfx.mouse_y >= c_y and gfx.mouse_y <= c_y + b_h
-    local clear_bg = clear_hover and {0.4, 0.1, 0.1, 1} or theme.colors.island_bg
-    helpers.SetColor(clear_bg)
-    components.DrawRoundedRect(clear_x, c_y, half_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and clear_hover and not drag_store.GetIsDragging() then PressOverlay(clear_x, c_y, half_w, b_h) end
-    local icon_pad = math.floor((half_w - b_h) / 2)
-    if components.DrawToolIcon("clear", clear_x + icon_pad, c_y, b_h, false) then
-        progression.Clear()
-    end
-    if clear_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("Clear all slots", layout.US(700))
-    end
-
-    -- EXPORT icon (right half)
-    local export_hover = gfx.mouse_x >= export_x and gfx.mouse_x <= export_x + half_w and gfx.mouse_y >= c_y and gfx.mouse_y <= c_y + b_h
-    local export_bg = export_hover and theme.colors.btn_hover or theme.colors.island_bg
-    helpers.SetColor(export_bg)
-    components.DrawRoundedRect(export_x, c_y, half_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and export_hover and not drag_store.GetIsDragging() then PressOverlay(export_x, c_y, half_w, b_h) end
-    if components.DrawToolIcon("export", export_x + icon_pad, c_y, b_h, false) then
-        midi.ExportToMidi()
-    end
-    if export_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("Export MIDI", layout.US(700))
-    end
-
-    -- 4. MIDI TOGGLE (replaces old EXPORT)
-    local e_y = c_y + b_h + b_gap - layout.US(57)
-    local e_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= e_y and gfx.mouse_y <= e_y + b_h
-    local midi_expanded = midi.midi_island_expanded
-    local e_bg = midi_expanded and theme.colors.btn_active or (e_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    helpers.SetColor(e_bg)
-    components.DrawRoundedRect(i4_x, e_y, b_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and e_hover and not drag_store.GetIsDragging() then PressOverlay(i4_x, e_y, b_w, b_h) end
-    helpers.SetColor(midi_expanded and theme.colors.text or theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local ew, eh = gfx.measurestr("MIDI")
-    gfx.x, gfx.y = i4_x + (b_w - ew)/2, e_y + (b_h - eh)/2
-    gfx.drawstr("MIDI")
-    if e_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip(midi_expanded and "Collapse MIDI island" or "Expand MIDI island", layout.US(700))
-    end
-    if ui_store.GetMouseClick() and e_hover and not drag_store.GetIsDragging() then midi.ToggleIsland() end
-
-    -- 5. VOLUME SLIDER
-    local s_y = e_y + b_h + layout.US(398) + layout.US(57) + layout.US(57)
-    local vol_h = (v_y + island_h) - s_y
-    local s_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + b_w and gfx.mouse_y >= s_y and gfx.mouse_y <= s_y + vol_h
-    local volume = seq_store.GetVolume() or 100
-
-    -- Track (mismo island_bg que los botones para que coincida visualmente)
-    helpers.SetColor(theme.colors.island_bg)
-    components.DrawRoundedRect(i4_x, s_y, b_w, vol_h, 10, true)
-
-    -- Fill (barra activa con padding interno de layout.US(180))
-    local fill_pad = layout.US(180)
-    local fill_w = (volume / 100) * (b_w - fill_pad * 2)
-    if fill_w > 0 then
-        helpers.SetColor(theme.colors.btn_active)
-        components.DrawRoundedRect(i4_x + fill_pad, s_y + fill_pad, fill_w, vol_h - fill_pad * 2, 10, true)
-    end
-
-    -- Label
-    helpers.SetColor(theme.colors.text)
-    gfx.setfont(1, "Calibri", layout.US(1100))
-    local label = string.format("VOL %d%%", volume)
-    local lw, lh = gfx.measurestr(label)
-    gfx.x, gfx.y = i4_x + (b_w - lw)/2, s_y + (vol_h - lh)/2
-    gfx.drawstr(label)
-
-    -- Interaction
-    if s_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("Volume: " .. volume .. "%", layout.US(700))
-    end
-    -- Scroll wheel volume adjustment
-    if s_hover and ui_store.GetUseScroll() and ui_store.GetMouseWheelDelta() ~= 0 then
-        local delta = ui_store.GetMouseWheelDelta() > 0 and 5 or -5
-        ui_store.SetMouseWheelDelta(0)
-        seq_store.SetVolume(math.max(0, math.min(100, volume + delta)))
-    end
-    if ui_store.GetMouseClick() and s_hover and not drag_store.GetIsDragging() then
-        ui_store.SetSliderDragging(true)
-    end
-    if ui_store.GetSliderDragging() then
-        local ratio = (gfx.mouse_x - i4_x) / b_w
-        seq_store.SetVolume(math.floor(math.max(0, math.min(100, ratio * 100))))
-        if (gfx.mouse_cap & 1) == 0 then
-            ui_store.SetSliderDragging(false)
+    -- Row tracking
+    local r0_y = y_start
+    
+    -- =========================================================
+    -- Row 1: VEL | SUST
+    -- =========================================================
+    do
+        local l, r = SplitWidths(b_w, half_gap)
+        local vel_x, sust_x = i4_x, i4_x + l + half_gap
+        
+        -- VEL (left)
+        local v_hover = gfx.mouse_x >= vel_x and gfx.mouse_x <= vel_x + l and gfx.mouse_y >= r0_y and gfx.mouse_y <= r0_y + b_h
+        local vel_on = midi_store.GetUseVelocity()
+        local v_bg = vel_on and theme.colors.btn_active or (v_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(v_bg)
+        components.DrawRoundedRect(vel_x, r0_y, l, b_h, 10, true)
+        if ui_store.GetMouseClick() and v_hover and not drag_store.GetIsDragging() then PressOverlay(vel_x, r0_y, l, b_h) end
+        helpers.SetColor(vel_on and theme.colors.text or theme.colors.text_dim)
+        gfx.setfont(1, "Calibri", layout.US(1500))
+        local vw, vh = gfx.measurestr("VEL")
+        gfx.x, gfx.y = vel_x + (l - vw)/2, r0_y + (b_h - vh)/2
+        gfx.drawstr("VEL")
+        if v_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip(midi_store.GetUseVelocity() and "Velocity: ON — click off" or "Velocity: OFF — click on", layout.US(700))
         end
+        if ui_store.GetMouseClick() and v_hover and not drag_store.GetIsDragging() then midi_store.SetUseVelocity(not midi_store.GetUseVelocity()) end
+        
+        -- SUST (right) — smaller text
+        local sust_held = midi.GetSustain()
+        local sust_hover = gfx.mouse_x >= sust_x and gfx.mouse_x <= sust_x + r and gfx.mouse_y >= r0_y and gfx.mouse_y <= r0_y + b_h
+        local sust_bg = sust_held and theme.colors.btn_active or (sust_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(sust_bg)
+        components.DrawRoundedRect(sust_x, r0_y, r, b_h, 10, true)
+        if ui_store.GetMouseClick() and sust_hover and not drag_store.GetIsDragging() then PressOverlay(sust_x, r0_y, r, b_h) end
+        helpers.SetColor(sust_held and theme.colors.text or theme.colors.text_dim)
+        gfx.setfont(1, "Calibri", layout.US(1500))
+        local suw, suh = gfx.measurestr("SUS")
+        gfx.x, gfx.y = sust_x + (r - suw)/2, r0_y + (b_h - suh)/2
+        gfx.drawstr("SUS")
+        if sust_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip(sust_held and "Sustain: ON — click to release" or "Sustain: OFF — click to hold", layout.US(700))
+        end
+        if ui_store.GetMouseClick() and sust_hover and not drag_store.GetIsDragging() then midi.SetSustain(not sust_held) end
+    end
+    
+    -- =========================================================
+    -- Row 2: MOD | PLAY
+    -- =========================================================
+    local r1_y = r0_y + b_h + b_gap - layout.US(57)
+    do
+        local l, r = SplitWidths(b_w, half_gap)
+        local mod_x, play_x = i4_x, i4_x + l + half_gap
+        
+        -- MOD (left) — smaller text
+        local cc_mod_val = midi.GetModulation()
+        local cc_hover = gfx.mouse_x >= mod_x and gfx.mouse_x <= mod_x + l and gfx.mouse_y >= r1_y and gfx.mouse_y <= r1_y + b_h
+        local cc_bg = cc_mod_val > 0 and theme.colors.btn_active or (cc_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(cc_bg)
+        components.DrawRoundedRect(mod_x, r1_y, l, b_h, 10, true)
+        if ui_store.GetMouseClick() and cc_hover and not drag_store.GetIsDragging() then PressOverlay(mod_x, r1_y, l, b_h) end
+        helpers.SetColor(cc_mod_val > 0 and theme.colors.text or theme.colors.text_dim)
+        gfx.setfont(1, "Calibri", layout.US(1200))
+        local ccw, cch = gfx.measurestr("MOD")
+        gfx.x, gfx.y = mod_x + (l - ccw)/2, r1_y + (b_h - cch)/2
+        gfx.drawstr("MOD")
+        if cc_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip(cc_mod_val > 0 and "Modulation: ON — click off" or "Modulation: OFF — click on", layout.US(700))
+        end
+        if ui_store.GetMouseClick() and cc_hover and not drag_store.GetIsDragging() then midi.ToggleModulation() end
+        
+        -- PLAY (right, acortado al ancho de MOD)
+        local is_playing = seq_store.GetIsPlaying()
+        local p_hover = gfx.mouse_x >= play_x and gfx.mouse_x <= play_x + r and gfx.mouse_y >= r1_y and gfx.mouse_y <= r1_y + b_h
+        local p_bg = is_playing and theme.colors.slot_playing or (p_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(p_bg)
+        components.DrawRoundedRect(play_x, r1_y, r, b_h, 10, true)
+        if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then PressOverlay(play_x, r1_y, r, b_h) end
+        local cx, cy = play_x + r/2, r1_y + b_h/2
+        local s = layout.US(1000)
+        if is_playing then
+            helpers.SetColor({0,0,0,0.4})
+            gfx.rect(cx-s/2, cy-s/2, s, s, 1)
+        else
+            helpers.SetColor(theme.colors.slot_playing)
+            gfx.triangle(cx-s/2, cy-s/2, cx-s/2, cy+s/2, cx+s/2, cy)
+        end
+        if p_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip("Play/Stop progression", layout.US(700))
+        end
+        if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then
+            if is_playing then sequencer.Stop() else seq_store.SetIsPlaying(true) end
+        end
+    end
+    
+    -- =========================================================
+    -- Row 3: CLEAR | EXPORT
+    -- =========================================================
+    local r2_y = r1_y + b_h + b_gap - layout.US(57)
+    do
+        local l, r = SplitWidths(b_w, layout.US(500))
+        local clear_x, export_x = i4_x, i4_x + l + layout.US(500)
+        
+        -- CLEAR (left half) — DrawToolIcon owns its rounded rect background
+        local clear_hover = gfx.mouse_x >= clear_x and gfx.mouse_x <= clear_x + l and gfx.mouse_y >= r2_y and gfx.mouse_y <= r2_y + b_h
+        if ui_store.GetMouseClick() and clear_hover and not drag_store.GetIsDragging() then PressOverlay(clear_x, r2_y, l, b_h) end
+        local icon_pad = math.floor((l - b_h) / 2)
+        if components.DrawToolIcon("clear", clear_x + icon_pad, r2_y, b_h, false) then
+            progression.Clear()
+        end
+        if clear_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip("Clear all slots", layout.US(700))
+        end
+        
+        -- EXPORT (right half) — DrawToolIcon owns its rounded rect background
+        local export_hover = gfx.mouse_x >= export_x and gfx.mouse_x <= export_x + r and gfx.mouse_y >= r2_y and gfx.mouse_y <= r2_y + b_h
+        if ui_store.GetMouseClick() and export_hover and not drag_store.GetIsDragging() then PressOverlay(export_x, r2_y, r, b_h) end
+        local export_icon_pad = math.floor((r - b_h) / 2)
+        if components.DrawToolIcon("export", export_x + export_icon_pad, r2_y, b_h, false) then
+            midi.ExportToMidi()
+        end
+        if export_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip("Export MIDI", layout.US(700))
+        end
+    end
+    
+    -- =========================================================
+    -- Row 4: VOLUME SLIDER (auto-sized for 7px gaps both sides)
+    -- =========================================================
+    local r3_y = r2_y + b_h + b_gap - layout.US(57)
+    local vol_gap = layout.US(398)  -- 7px gap
+    local vol_h = (y_start + island_h - 2 * vol_gap - b_h) - r3_y
+    vol_h = math.max(b_h * 0.5, math.min(b_h * 1.5, vol_h))  -- clamp between 0.5x and 1.5x button height
+    do
+        local slide_w = b_w
+        local slide_x = i4_x
+        local slide_h = vol_h + 4
+        local volume = seq_store.GetVolume() or 100
+        local s_hover = gfx.mouse_x >= slide_x and gfx.mouse_x <= slide_x + slide_w and gfx.mouse_y >= r3_y and gfx.mouse_y <= r3_y + slide_h
+
+        helpers.SetColor(theme.colors.island_bg)
+        components.DrawRoundedRect(slide_x, r3_y, slide_w, slide_h, 10, true)
+
+        local fill_pad = layout.US(180)
+        local fill_w = (volume / 100) * (slide_w - fill_pad * 2)
+        if fill_w > 0 then
+            helpers.SetColor(theme.colors.btn_active)
+            components.DrawRoundedRect(slide_x + fill_pad, r3_y + fill_pad, fill_w, slide_h - fill_pad * 2, 10, true)
+        end
+
+        helpers.SetColor(theme.colors.text)
+        gfx.setfont(1, "Calibri", layout.US(1100))
+        local label = string.format("VOL %d%%", volume)
+        local lw, lh = gfx.measurestr(label)
+        gfx.x, gfx.y = slide_x + (slide_w - lw)/2, r3_y + (slide_h - lh)/2
+        gfx.drawstr(label)
+        
+        if s_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip("Volume: " .. volume .. "%", layout.US(700))
+        end
+        if s_hover and ui_store.GetUseScroll() and ui_store.GetMouseWheelDelta() ~= 0 then
+            local delta = ui_store.GetMouseWheelDelta() > 0 and 5 or -5
+            ui_store.SetMouseWheelDelta(0)
+            seq_store.SetVolume(math.max(0, math.min(100, volume + delta)))
+        end
+        if ui_store.GetMouseClick() and s_hover and not drag_store.GetIsDragging() then
+            ui_store.SetSliderDragging(true)
+        end
+        if ui_store.GetSliderDragging() then
+            local ratio = (gfx.mouse_x - slide_x) / slide_w
+            seq_store.SetVolume(math.floor(math.max(0, math.min(100, ratio * 100))))
+            if (gfx.mouse_cap & 1) == 0 then
+                ui_store.SetSliderDragging(false)
+            end
+        end
+    end
+    
+    -- =========================================================
+    -- Row 5: MIDI toggle (full width, 7px below volume, 7px above island bottom)
+    -- =========================================================
+    do
+        local r4_y = r3_y + vol_h + vol_gap + 6
+        local full_w = b_w
+        
+        local midi_expanded = island_store.GetMidiIslandExpanded()
+        local m_hover = gfx.mouse_x >= i4_x and gfx.mouse_x <= i4_x + full_w and gfx.mouse_y >= r4_y and gfx.mouse_y <= r4_y + b_h
+        local m_bg = midi_expanded and theme.colors.btn_active or (m_hover and theme.colors.btn_hover or theme.colors.island_bg)
+        helpers.SetColor(m_bg)
+        components.DrawRoundedRect(i4_x, r4_y, full_w, b_h, 10, true)
+        if ui_store.GetMouseClick() and m_hover and not drag_store.GetIsDragging() then PressOverlay(i4_x, r4_y, full_w, b_h) end
+        helpers.SetColor(midi_expanded and theme.colors.text or theme.colors.text_dim)
+        gfx.setfont(1, "Calibri", layout.US(1500))
+        local ew, eh = gfx.measurestr("MIDI")
+        gfx.x, gfx.y = i4_x + (full_w - ew)/2, r4_y + (b_h - eh)/2
+        gfx.drawstr("MIDI")
+        if m_hover and not drag_store.GetIsDragging() then
+            helpers.DrawTooltip(midi_expanded and "Collapse MIDI island" or "Expand MIDI island", layout.US(700))
+        end
+        if ui_store.GetMouseClick() and m_hover and not drag_store.GetIsDragging() then midi.ToggleIsland() end
     end
 end
 
