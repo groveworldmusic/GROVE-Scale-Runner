@@ -11,6 +11,7 @@ local midi_store = require("state.midi")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local prefs = require("state.preferences")
+local midi = require("core.midi")
 
 local m = {}
 
@@ -22,7 +23,7 @@ m.PITCH_LABEL_W = 48        -- Width of pitch labels on the left (keyboard strip
 m.MIN_PITCH = 12            -- C0
 m.MAX_PITCH = 119           -- B8 (octava 8 completa)
 m.TOTAL_ROWS = 108          -- 119 - 12 + 1 (C0 a B8)
-m.OCTAVE_BUFFER = 12        -- +1 octave buffer for virtual scroll
+m.OCTAVE_BUFFER = 4         -- Reduced from 12: with Y clip guard, only need 1-2 rows for edge stability (PR: revision-isla-midi-bugs)
 
 -- =========================================================
 -- Internal color constants
@@ -44,6 +45,9 @@ local _cache = {
     pitch_start = 0, pitch_end = 0, beat_start = 0, beat_end = 0,
     visible_rows = 0, top_pitch = 0,
 }
+
+-- Piano key playable state: tracks currently pressed key for note-on/off
+local _pressed_key_pitch = nil  -- MIDI pitch of the currently pressed key, or nil
 
 -- =========================================================
 -- Internal helpers
@@ -91,7 +95,7 @@ function m.ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
     local top_pitch = math.max(m.MIN_PITCH, m.MAX_PITCH - math.floor(clamped_scroll))
     local pitch_start = math.max(m.MIN_PITCH, top_pitch - visible_rows - m.OCTAVE_BUFFER)
     local pitch_end = math.min(m.MAX_PITCH, top_pitch + m.OCTAVE_BUFFER)
-    local beat_start = scroll_x - 1
+    local beat_start = math.max(0, scroll_x - 1)  -- Clamp: never negative at extreme scroll positions (PR: revision-isla-midi-bugs)
     local beat_end = scroll_x + math.ceil((w or 0) / math.max(1, zoom_x)) + 1
 
     -- Cache for next frame
@@ -153,8 +157,12 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
 
     local col = require("ui.colors")
 
-    -- Strip background
-    helpers.SetColor({0.06, 0.06, 0.06, 0.95})
+    -- Strip background (blend with preset panel when visible)
+    if island_store.GetPresetPanelVisible() then
+        helpers.SetColor(theme.colors.island_panel_bg)
+    else
+        helpers.SetColor({0.06, 0.06, 0.06, 0.95})
+    end
     gfx.rect(kx, ky, kw, kh, 1)
 
     local visible_rows = math.ceil(kh / RH) + 2
@@ -261,6 +269,74 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
 
     helpers.SetColor({0.15, 0.15, 0.15, 0.6})
     gfx.line(kx + kw, ky, kx + kw, ky + kh)
+
+    -- ================================================================
+    -- PASS 3: Mouse interaction — playable piano keys
+    -- Detect mouse position relative to the keyboard strip, find the
+    -- corresponding pitch, and send note-on/off on press/release.
+    -- Visual feedback: pressed key gets a 40% lighter overlay.
+    -- ================================================================
+    local mx, my = gfx.mouse_x, gfx.mouse_y
+    local in_key_strip = mx >= kx and mx < kx + kw and my >= ky and my < ky + kh
+
+    if in_key_strip then
+        -- Find pitch at mouse Y (inverted: higher pitch = lower Y)
+        local row = math.floor((my - ky + scroll_px_offset) / RH)
+        local hover_pitch = math.max(MIN, top_pitch - row)
+
+        if hover_pitch >= MIN and hover_pitch <= m.MAX_PITCH then
+            -- Left mouse button pressed this frame (transition from not held to held)
+            local left_down = (gfx.mouse_cap & 1) == 1
+
+            if left_down and _pressed_key_pitch == nil then
+                -- Note-on: ref-counted via midi_store (PR: revision-isla-midi-bugs)
+                -- Use direct midi_store pattern to participate in ref-counted active notes
+                -- so keyboard strip + pads + QWERTY don't conflict on note-off.
+                local cur = midi_store.GetActiveNote(hover_pitch)
+                midi_store.SetActiveNote(hover_pitch, (cur or 0) + 1)
+                reaper.StuffMIDIMessage(midi.midi_channel - 1, 0x90, hover_pitch, 127)
+                _pressed_key_pitch = hover_pitch
+            end
+
+            -- Draw hover/pressed visual feedback
+            if _pressed_key_pitch == hover_pitch or (left_down and _pressed_key_pitch == nil) then
+                local py = ky + row * RH - scroll_px_offset
+                local clip_y = math.max(ky, py)
+                local clip_h = math.min(py + RH, ky + kh) - clip_y
+                if clip_h > 0 then
+                    helpers.SetColor({1, 1, 1, 0.4})
+                    gfx.rect(kx, clip_y, kw, clip_h, 1)
+                end
+            end
+        end
+    end
+
+    -- Note-off helper: decrement ref-count, send 0x80 only when count reaches 0
+    local function ReleasePitch(pitch)
+        local cur = midi_store.GetActiveNote(pitch)
+        if cur then
+            cur = cur - 1
+            if cur <= 0 then
+                midi_store.SetActiveNote(pitch, nil)
+                reaper.StuffMIDIMessage(midi.midi_channel - 1, 0x80, pitch, 0)
+            else
+                midi_store.SetActiveNote(pitch, cur)
+            end
+        end
+    end
+
+    -- Note-off: detect mouse release (no longer held) while a key was pressed
+    local left_held = (gfx.mouse_cap & 1) == 1
+    if _pressed_key_pitch ~= nil and not left_held then
+        ReleasePitch(_pressed_key_pitch)
+        _pressed_key_pitch = nil
+    end
+
+    -- Also release the pressed key if mouse leaves the strip
+    if _pressed_key_pitch ~= nil and not in_key_strip and not left_held then
+        ReleasePitch(_pressed_key_pitch)
+        _pressed_key_pitch = nil
+    end
 end
 
 -- =========================================================
@@ -355,9 +431,13 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
     -- snap_res 8 (1/8)   → step 0.5 (show 1/8+)
     -- snap_res 16 (1/16) → step 0.25 (show 1/16+)
     -- snap_res 32 (1/32) → step 0.125 (show all)
+    -- Normalize snap_res to nearest power-of-2 first so triplet (3) and other non-standard
+    -- values map to a valid grid tier (PR: revision-isla-midi-bugs).
     local min_grid_step = 0
     if snap_res > 0 then
-        min_grid_step = 4 / snap_res
+        local norm = 1
+        while norm * 2 <= snap_res do norm = norm * 2 end
+        min_grid_step = 4 / norm
     end
 
     -- Measure lines (every 4 beats) — 2px wide via rect for consistent bold (H9)
@@ -365,7 +445,8 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
     local first_measure = math.ceil(beat_start / 4) * 4
     for beat = first_measure, beat_end, 4 do
         local bx = x + (beat - scroll_x) * zoom_x
-        if bx >= x and bx <= x + w then
+        -- Guard: 2px rect at the rightmost boundary would overflow past grid edge (PR: revision-isla-midi-bugs)
+        if bx >= x and bx + 2 <= x + w then
             gfx.rect(bx, y, 2, h, 1)
         end
     end
@@ -483,11 +564,26 @@ function m.HandleZoomVertical(delta, row_h)
     return math.max(6, math.min(24, math.floor(row_h * factor + 0.5)))
 end
 
+--- Invalidate the visible ranges cache so it recomputes on next call.
+local function InvalidateVisibleRangesCache()
+    _cache.scroll_y = nil
+    _cache.scroll_x = nil
+    _cache.zoom_x = nil
+    _cache.w = nil
+    _cache.h = nil
+    _cache.pitch_row_h = nil
+end
+
 --- Set pitch row height. Updates m.PITCH_ROW_H so grid drawing functions
---- see the change immediately.
+--- see the change immediately. Invalidates the visible ranges cache when
+--- the value actually changes.
 --- @param h number New height in pixels
 function m.SetPitchRowH(h)
-    m.PITCH_ROW_H = math.max(6, math.min(24, h))
+    local clamped = math.max(6, math.min(24, h))
+    if clamped ~= m.PITCH_ROW_H then
+        m.PITCH_ROW_H = clamped
+        InvalidateVisibleRangesCache()
+    end
 end
 
 --- Handle vertical mouse wheel in piano roll area: scroll pitch rows.

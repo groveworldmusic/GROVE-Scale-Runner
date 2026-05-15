@@ -10,6 +10,7 @@ local preset_store = require("state.preset-store")
 local ui_store = require("state.ui")
 local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
+local prefs = require("state.preferences")
 local midi = require("core.midi")
 local piano_roll = require("ui.piano-roll")
 local timeline = require("ui.timeline")
@@ -44,6 +45,15 @@ local _cached_total_beats = 64
 local _cached_total_beats_valid = false
 local _cached_notes_count = 0
 
+-- Auto-focus piano roll: tracks last progression revision that triggered a focus.
+-- When the progression revision changes (user adds/edits a slot), the viewport
+-- auto-centers on the notes so the island behaves as an inspector.
+local _last_focused_revision = -1
+
+-- Pending auto-focus flag: set after progression load/sync, consumed at layout calc.
+-- Was leaking as a global (missing `local`) — fixed in PR: revision-isla-midi-bugs.
+local _focus_pending = false
+
 -- Layout constants (virtual coordinate system, canvas 39914×29162)
 local CANVAS_W = layout.CANVAS_W                       -- Canvas width in virtual units
 local ISLAND_CONTENT_H = 14000                          -- Island content area height
@@ -72,6 +82,52 @@ local function DrawPresetPanel(island_x, y, preset_w, h)
     end
 end
 
+--- Auto-focus the piano roll viewport to show all notes after loading from progression.
+--- Computes the note bounding box, then adjusts zoom_x, scroll_x, and scroll_y so that
+--- all notes are comfortably visible (like an inspector).
+--- @param grid_w number Available grid width in pixels
+--- @param pr_h number Available piano roll height in pixels
+local function AutoFocusNotes(grid_w, pr_h)
+    local notes = island_store.GetNotes()
+    if not notes or #notes == 0 then return end
+
+    local min_pitch, max_pitch = 127, 0
+    local min_beat, max_beat = math.huge, -math.huge
+
+    for _, n in ipairs(notes) do
+        local p = n.pitch or 60
+        if p < min_pitch then min_pitch = p end
+        if p > max_pitch then max_pitch = p end
+        local sb = n.start_beat or 0
+        local nd = n.duration or 1
+        if sb < min_beat then min_beat = sb end
+        if sb + nd > max_beat then max_beat = sb + nd end
+    end
+
+    if max_pitch < min_pitch then return end
+    if max_beat <= min_beat then max_beat = min_beat + 1 end
+
+    -- Vertical centering
+    local PITCH_ROW_H = piano_roll.PITCH_ROW_H
+    local visible_pitches = pr_h / PITCH_ROW_H
+    local center_pitch = (min_pitch + max_pitch) / 2
+    local target_scroll_y = center_pitch - visible_pitches / 2
+    local max_scroll = piano_roll.TOTAL_ROWS - visible_pitches
+    target_scroll_y = math.max(0, math.min(max_scroll, target_scroll_y))
+    island_store.SetScrollOffsetY(target_scroll_y)
+
+    -- Horizontal: fit notes with comfortable margin (80% of grid width)
+    local beat_span = max_beat - min_beat
+    local target_zoom_x = grid_w * 0.8 / beat_span
+    target_zoom_x = math.max(10, math.min(200, target_zoom_x))
+    island_store.SetZoomX(target_zoom_x)
+
+    local center_beat = (min_beat + max_beat) / 2
+    local target_scroll_x = center_beat - (grid_w / target_zoom_x) / 2
+    target_scroll_x = math.max(0, target_scroll_x)
+    island_store.SetScrollOffsetX(target_scroll_x)
+end
+
 function m.Draw(char)
     if not island_store.GetMidiIslandExpanded() then
         _island_progression_revision = -1
@@ -87,14 +143,14 @@ function m.Draw(char)
         _pending_zoom_target = nil
     end
 
-    -- Reload notes from progression if needed (skip if user has manually edited)
+    -- Reload notes from progression when progression changes (inspector mode).
+    -- Always reloads regardless of notes_state so the MIDI island reflects the latest
+    -- progression — the user explicitly changed slots, so they want to see those notes.
     local cur_rev = seq_store.GetProgressionRevision()
     if cur_rev ~= _island_progression_revision then
-        if island_store.GetNotesState() == island_store.NOTES_STATE_LOADED then
-            island_store.LoadNotesFromProgression(seq_store)
-            _island_progression_revision = cur_rev
-            _cached_total_beats_valid = false
-        end
+        island_store.LoadNotesFromProgression(seq_store)
+        _island_progression_revision = cur_rev
+        _cached_total_beats_valid = false
     end
 
     -- Sync playback position from sequencer during playback
@@ -119,12 +175,14 @@ function m.Draw(char)
         _island_progression_revision = seq_store.GetProgressionRevision()
         island_store.ClearSelection()
         _cached_total_beats_valid = false
+        _focus_pending = true
     end
     if sync_requested then
-        island_store.SyncNotesToProgression(seq_store, require("state.preferences"))
+        island_store.SyncNotesToProgression(seq_store, prefs)
         island_store.SetNotesState(island_store.NOTES_STATE_SYNCED)
         _island_progression_revision = seq_store.GetProgressionRevision()
         _cached_total_beats_valid = false
+        _focus_pending = true
     end
 
     -- 3. Layout Calculations
@@ -154,6 +212,12 @@ function m.Draw(char)
     local ve_h = base_ve_h + excess
     local sb_y = y + h - SB_SIZE
     local grid_w = right_w - LABEL_W - SB_SIZE
+
+    -- Auto-focus piano roll on notes if pending (after progression load/sync)
+    if _focus_pending then
+        _focus_pending = false
+        AutoFocusNotes(grid_w, pr_h)
+    end
 
     -- Zoom toggle logic (deferred: stores target, applied at start of next Draw call)
     local panel_visible = island_store.GetPresetPanelVisible()
@@ -261,7 +325,7 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
         
         -- Thumb with hover/active states (opaque → fast path, avoids blit artifacts)
         local is_hover = mx >= bar_x and mx <= bar_x + bar_w and my >= sb_y and my <= sb_y + SB_SIZE
-        if _sb_dragging then
+        if island_store.GetSbDragging() then
             helpers.SetColor({0.25, 0.50, 0.85, 1.0}) -- Blue active when dragging
         elseif is_hover then
             helpers.SetColor({0.6, 0.6, 0.6, 1.0}) -- Brighter on hover
@@ -272,11 +336,13 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
         
         -- Click detection
         if ui_store.GetMouseClick() and mx >= bar_x and mx <= bar_x + bar_w and my >= sb_y and my <= sb_y + SB_SIZE then
-            _sb_dragging, _sb_drag_start_x, _sb_scroll_at_drag_start = true, mx, math.min(scroll_x, max_scroll_x)
+            island_store.SetSbDragging(true)
+            island_store.SetSbDragStartX(mx)
+            island_store.SetSbScrollAtDragStart(math.min(scroll_x, max_scroll_x))
         end
-        if _sb_dragging then
-            if (gfx.mouse_cap & 1) == 0 then _sb_dragging = false
-            else island_store.SetScrollOffsetX(math.max(0, math.min(max_scroll_x, _sb_scroll_at_drag_start + ((mx - _sb_drag_start_x) / grid_w) * total_beats))) end
+        if island_store.GetSbDragging() then
+            if (gfx.mouse_cap & 1) == 0 then island_store.SetSbDragging(false)
+            else island_store.SetScrollOffsetX(math.max(0, math.min(max_scroll_x, island_store.GetSbScrollAtDragStart() + ((mx - island_store.GetSbDragStartX()) / grid_w) * total_beats))) end
         end
     end
 
@@ -298,7 +364,7 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
         
         -- Thumb with hover/active states (opaque → fast path, avoids blit artifacts)
         local is_v_hover = mx >= vsb_x and mx <= vsb_x + vsb_w and my >= bar_y and my <= bar_y + bar_h
-        if _vsb_dragging then
+        if island_store.GetVsbDragging() then
             helpers.SetColor({0.25, 0.50, 0.85, 1.0}) -- Blue active when dragging
         elseif is_v_hover then
             helpers.SetColor({0.6, 0.6, 0.6, 1.0}) -- Brighter on hover
@@ -309,11 +375,13 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
         
         -- Click detection
         if ui_store.GetMouseClick() and mx >= vsb_x and mx <= vsb_x + vsb_w and my >= bar_y and my <= bar_y + bar_h then
-            _vsb_dragging, _vsb_drag_start_y, _vsb_scroll_at_drag_start = true, my, math.min(scroll_y, max_scroll_y)
+            island_store.SetVsbDragging(true)
+            island_store.SetVsbDragStartY(my)
+            island_store.SetVsbScrollAtDragStart(math.min(scroll_y, max_scroll_y))
         end
-        if _vsb_dragging then
-            if (gfx.mouse_cap & 1) == 0 then _vsb_dragging = false
-            else island_store.SetScrollOffsetY(math.max(0, math.min(max_scroll_y, _vsb_scroll_at_drag_start + ((my - _vsb_drag_start_y) / vsb_h) * max_scroll_y))) end
+        if island_store.GetVsbDragging() then
+            if (gfx.mouse_cap & 1) == 0 then island_store.SetVsbDragging(false)
+            else island_store.SetScrollOffsetY(math.max(0, math.min(max_scroll_y, island_store.GetVsbScrollAtDragStart() + ((my - island_store.GetVsbDragStartY()) / vsb_h) * max_scroll_y))) end
         end
     end
 end

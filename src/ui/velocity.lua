@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 -- GROVE Scale Runner: Velocity Editor
 -- Per-note velocity bars rendered below the piano roll grid.
 -- Supports click-and-drag to edit velocity values in real-time.
@@ -10,12 +10,13 @@ local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local layout = require("ui.layout")
 local components = require("ui.components")
+local grid = require("ui.piano-roll.grid")
 
 local velocity = {}
 
 -- Configuration
 velocity.EDITOR_H = 100                -- Increased height for better precision
-velocity.COLLAPSED_H = 15              -- Comfortable height for the 'Blade'
+velocity.COLLAPSED_H = 10              -- Compact collapsed height for the 'Blade'
 velocity.COLLAPSE_HANDLE_H = 15        -- Easier to grab handle
 velocity.VELOCITY_MIN_H = 4            -- Head height
 velocity.VELOCITY_MAX_H = 80           -- Max height
@@ -24,7 +25,7 @@ velocity.VELOCITY_MAX_H = 80           -- Max height
 local GRID_LINE_COLOR = {0.2, 0.2, 0.2, 0.2}
 local VEL_LABEL_COLOR = {1.0, 1.0, 1.0, 0.9}
 local BAR_SELECTED_BORDER = {1.0, 1.0, 1.0, 1.0}
-local PIN_HEAD_COLOR = {1.0, 1.0, 1.0, 0.8}
+local PIN_HEAD_COLOR = {1.0, 1.0, 1.0, 1.0}
 
 -- Module-local drag state (alive only during a drag operation within a frame)
 local drag_active = false
@@ -45,9 +46,13 @@ local function VelocityGradient(velocity)
 end
 
 --- Draw a single velocity bar.
---- @param x number Left pixel
+--- The vertical stem starts at the note's start X (left edge).
+--- The horizontal duration bar spans the full note width (from note start to note end).
+--- The circle pinhead sits at the top of the stem (note start).
+--- Draw order: duration bar → stem glow → stem core → circle → selected glow.
+--- @param x number Left pixel (note start)
 --- @param y number Bottom baseline pixel
---- @param w number Width in pixels
+--- @param w number Width in pixels (note duration * zoom_x)
 --- @param h number Height in pixels (bar grows upward from baseline)
 --- @param velocity number 0-127
 --- @param selected boolean Whether this bar is selected
@@ -62,35 +67,40 @@ function velocity.DrawVelocityBar(x, y, w, h, velocity_val, selected, muted)
         color = VelocityGradient(velocity_val)
     end
 
-    local centerX = math.floor(x + w/2)
-    local pinW = 2
-    local headH = 5
-    local headW = math.max(4, math.min(10, w - 2))
+    local pinR = math.max(2, math.min(4, math.floor(w / 6)))  -- Circle pinhead radius
+    local circle_y = y - h         -- Circle center Y (top of velocity bar)
 
-    -- Stem (Glassy Glow)
-    helpers.SetColor(color, 0.3)
-    gfx.rect(centerX - 1, y - h, pinW, h, 1)
-    helpers.SetColor(color)
-    gfx.rect(centerX, y - h, 1, h, 1)
-
-    -- Head (Blade Pin)
-    local head_y = y - h
-    helpers.SetColor(selected and theme.colors.btn_active or PIN_HEAD_COLOR)
-    components.DrawRoundedRect(centerX - headW/2, head_y, headW, headH, 2, true)
-
-    -- Selected note: subtle glow/indicator
-    if selected then
-        helpers.SetColor(BAR_SELECTED_BORDER, 0.3)
-        components.DrawRoundedRect(centerX - headW/2 - 2, head_y - 2, headW + 4, headH + 4, 3, false)
+    -- Duration bar (drawn FIRST, behind everything): spans full note width
+    -- from note start (x) to note end (x + w), at circle center Y.
+    if w > 2 then
+        helpers.SetColor(color, 0.3)
+        gfx.rect(x, circle_y - 1, w, 2, 1)
     end
 
-    -- Value label (only if hovered or selected and enough room)
+    -- Stem (Glassy Glow) — at note start X, from bottom of circle down to baseline y
+    local stem_top = circle_y + pinR
+    helpers.SetColor(color, 0.3)
+    gfx.rect(x, stem_top, 2, h - pinR, 1)
+    helpers.SetColor(color)
+    gfx.rect(x + 1, stem_top, 1, h - pinR, 1)
+
+    -- Head (Round Pin) — circle at the top of stem (note start, circle center Y)
+    helpers.SetColor(selected and theme.colors.btn_active or PIN_HEAD_COLOR)
+    gfx.circle(x, circle_y, pinR, 1, 1)
+
+    -- Selected note: subtle glow circle outline
+    if selected then
+        helpers.SetColor(BAR_SELECTED_BORDER, 0.3)
+        gfx.circle(x, circle_y, pinR + 2, 1, 0)
+    end
+
+    -- Value label (above the circle top)
     if selected and h > 20 then
         helpers.SetColor(VEL_LABEL_COLOR)
         gfx.setfont(1, "Calibri", 10)
         local label = tostring(velocity_val)
         local lw, lh = gfx.measurestr(label)
-        gfx.x, gfx.y = centerX - lw/2, y - h - lh - 2
+        gfx.x, gfx.y = x - lw/2, circle_y - pinR - lh - 4
         gfx.drawstr(label)
     end
 end
@@ -110,15 +120,14 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
     if w <= 0 or h <= 0 then return end
 
     local expanded = island_store.GetVelocityPanelExpanded()
-    local LABEL_W = 48  -- must match piano-roll PITCH_LABEL_W
+    local LABEL_W = grid.PITCH_LABEL_W  -- single source: piano-roll/grid.lua
     local grid_x = x + LABEL_W
     local grid_w = w - LABEL_W
     if grid_w <= 0 then return end
 
-    -- Velocity editor background (Restored rounding at the bottom as requested)
+    -- Velocity editor background (left edges always flat — chassis handles outer corner)
     helpers.SetColor(theme.colors.island_velocity_bg)
-    local has_presets = island_store.GetPresetPanelVisible()
-    components.DrawRoundedRectEx(x, y, w, h, 10, {bl=not has_presets, br=true, tl=not has_presets, tr=false})
+    components.DrawRoundedRectEx(x, y, w, h, 10, {bl=false, br=true, tl=false, tr=false})
     
     -- Sub-border/Glass highlight
     helpers.SetColor({1, 1, 1, 0.05})
@@ -135,10 +144,10 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
         gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2
         gfx.drawstr(label)
 
-        -- Interaction area hint on hover (Rounded base)
+        -- Interaction area hint on hover
         if gfx.mouse_y >= y and gfx.mouse_y <= y + h then
             helpers.SetColor({1, 1, 1, 0.08})
-            components.DrawRoundedRectEx(x, y, w, h, 10, {bl=not has_presets, br=true, tl=not has_presets, tr=false})
+            components.DrawRoundedRectEx(x, y, w, h, 10, {bl=false, br=true, tl=false, tr=false})
         end
         return 
     end
@@ -166,9 +175,8 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
     local beat_vis_start = scroll_x - 1
     local beat_vis_end = scroll_x + math.ceil(grid_w / zoom_x) + 1
 
-    local pad_bot = 4
-    local bar_area_bottom = y + content_h - pad_bot
-    local bar_area_height = content_h - pad_bot * 2
+    local bar_area_bottom = y + content_h  -- baseline at handle boundary (blue glow line)
+    local bar_area_height = content_h
 
     if notes and #notes > 0 then
         -- 1. PRE-CULL: Only process notes within visible range for grouping and layout
@@ -212,24 +220,29 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
                 local nvel = note.velocity or 100
                 local is_selected = island_store.IsNoteSelected(i)
 
+                -- X clip velocity bar to grid bounds (PR: revision-isla-midi-bugs)
+                local clip_nx = math.max(grid_x, math.floor(nx))
+                local clip_nw = math.max(1, math.min(nw, grid_x + grid_w - clip_nx))
+
                 -- Bar height proportional to velocity
                 local bar_h = velocity.VELOCITY_MIN_H + (nvel / 127) * (velocity.VELOCITY_MAX_H - velocity.VELOCITY_MIN_H)
                 bar_h = math.min(bar_h, bar_area_height)
 
-                velocity.DrawVelocityBar(nx, bar_area_bottom, nw, bar_h, nvel, is_selected, note.muted)
+                velocity.DrawVelocityBar(clip_nx, bar_area_bottom, clip_nw, bar_h, nvel, is_selected, note.muted)
         end
     end
 
     -- Collapse handle at bottom (Glass style with rounded base)
+    -- No background rect — velocity_bg handles bottom-right rounding.
+    -- Only glow separator + center indicator. Hover feedback on glow line.
     local handle_y = y + h - handle_h
-    helpers.SetColor({1, 1, 1, 0.05})
-    if gfx.mouse_y >= handle_y and gfx.mouse_y <= handle_y + handle_h and gfx.mouse_x >= x and gfx.mouse_x <= x + w then
-        helpers.SetColor({1, 1, 1, 0.1}) -- Brighter on hover
-    end
-    components.DrawRoundedRectEx(x, handle_y, w, handle_h, 10, {bl=not has_presets, br=true, tl=false, tr=false})
 
-    -- Glow line separator
-    helpers.SetColor(theme.colors.btn_active, 0.3)
+    -- Subtle separator line (brighter on hover for feedback)
+    if gfx.mouse_y >= handle_y and gfx.mouse_y <= handle_y + handle_h and gfx.mouse_x >= x and gfx.mouse_x <= x + w then
+        helpers.SetColor({1, 1, 1, 0.15})
+    else
+        helpers.SetColor({0.3, 0.3, 0.3, 0.35})
+    end
     gfx.line(x, handle_y, x + w, handle_y)
 
     -- Centered handle indicator
@@ -282,9 +295,8 @@ end
 --- @param new_vel number Computed velocity from mouse position
 --- @param drag_initial_vel number|nil Velocity at drag start (for delta)
 local function ApplyVelocity(notes, idx, new_vel)
+    local sel_count = island_store.GetSelectionCount()
     local selected = island_store.GetSelectedIndices()
-    local sel_count = 0
-    for _ in pairs(selected) do sel_count = sel_count + 1 end
 
     if sel_count > 1 and drag_initial_vel ~= nil then
         -- Bulk: apply delta relative to initial click
@@ -320,8 +332,24 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
     local notes = island_store.GetNotes()
     local expanded = island_store.GetVelocityPanelExpanded()
 
+    -- Safety: if drag state is stale (prev drag interrupted by focus loss, mode switch, etc.),
+    -- reset before proceeding. This prevents stuck drag state from corrupting future interactions.
+    if drag_active and not mouse_down then
+        drag_active = false
+        drag_note_index = nil
+        drag_initial_vel = nil
+        drag_initial_my = nil
+    end
+
     if not expanded then
-        -- COLLAPSED: any click in the velocity area toggles expand
+        -- COLLAPSED: reset stale drag on collapse
+        if drag_active then
+            drag_active = false
+            drag_note_index = nil
+            drag_initial_vel = nil
+            drag_initial_my = nil
+        end
+        -- any click in the velocity area toggles expand
         if click and mouse_down and my >= ed_y and my <= ed_y + ed_h then
             island_store.SetVelocityPanelExpanded(true)
             return true
@@ -332,11 +360,27 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
     -- EXPANDED: check collapse handle at bottom first
     local handle_h = velocity.COLLAPSE_HANDLE_H
     if click and mouse_down and my >= ed_y + ed_h - handle_h and my <= ed_y + ed_h then
+        -- Reset stale drag before collapsing
+        if drag_active then
+            drag_active = false
+            drag_note_index = nil
+            drag_initial_vel = nil
+            drag_initial_my = nil
+        end
         island_store.SetVelocityPanelExpanded(false)
         return true
     end
 
-    if not notes or #notes == 0 then return false end
+    if not notes or #notes == 0 then
+        -- Reset stale drag when no notes exist
+        if drag_active then
+            drag_active = false
+            drag_note_index = nil
+            drag_initial_vel = nil
+            drag_initial_my = nil
+        end
+        return false
+    end
 
     -- Start drag on fresh click
     if click and mouse_down then
@@ -368,15 +412,21 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
     -- Continue drag while button is held
     if drag_active and mouse_down and drag_note_index then
         local idx = drag_note_index
-        if idx >= 1 and idx <= #notes then
-            local padding = 4
-            local bar_area_bot = ed_y + ed_h - padding
-            local bar_area_top = ed_y + padding
-            local bar_area_h = math.max(1, bar_area_bot - bar_area_top)
-            local ratio = (bar_area_bot - my) / bar_area_h
-            local new_vel = math.max(0, math.min(127, math.floor(ratio * 127 + 0.5)))
-            ApplyVelocity(notes, idx, new_vel)
+        -- Safety: validate note index is still in bounds (notes array may have changed)
+        if idx < 1 or idx > #notes then
+            drag_active = false
+            drag_note_index = nil
+            drag_initial_vel = nil
+            drag_initial_my = nil
+            return false
         end
+        local padding = 4
+        local bar_area_bot = ed_y + ed_h - padding
+        local bar_area_top = ed_y + padding
+        local bar_area_h = math.max(1, bar_area_bot - bar_area_top)
+        local ratio = (bar_area_bot - my) / bar_area_h
+        local new_vel = math.max(0, math.min(127, math.floor(ratio * 127 + 0.5)))
+        ApplyVelocity(notes, idx, new_vel)
         return true
     end
 
@@ -388,8 +438,7 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
             local undo_uuids = {}
             local undo_prev = {}
             local undo_new = {}
-            local sel_count = 0
-            for _ in pairs(selected) do sel_count = sel_count + 1 end
+            local sel_count = island_store.GetSelectionCount()
             if sel_count > 1 and drag_initial_vel ~= nil then
                 -- Bulk: capture all selected notes
                 local delta = (notes[drag_note_index].velocity or 100) - drag_initial_vel

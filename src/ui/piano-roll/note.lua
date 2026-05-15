@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 -- GROVE Scale Runner: Piano Roll Note Blocks
 -- Renders note blocks with gradient strips and velocity-based opacity.
 -- Handles hit testing, rect selection, and dirty cache.
@@ -11,6 +11,7 @@ local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
 local grid = require("ui.piano-roll.grid")
+local coord = require("ui.piano-roll.coord")
 
 local m = {}
 
@@ -22,8 +23,8 @@ local NOTE_MUTED = {0.4, 0.4, 0.4, 0.4}
 local NOTE_MUTED_OPAQUE = {0.4, 0.4, 0.4, 1.0}
 
 local WHITE_KEY_PCS = {[0]=true, [2]=true, [4]=true, [5]=true, [7]=true, [9]=true, [11]=true}
-local NOTE_WHITE = {0.55, 0.72, 0.88, 0.92}  -- light blue-gray for white keys
-local NOTE_BLACK = {0.22, 0.38, 0.55, 0.92}  -- deeper blue for black keys
+local NOTE_WHITE = {0.55, 0.72, 0.88, 1.0}  -- light blue-gray for white keys
+local NOTE_BLACK = {0.22, 0.38, 0.55, 1.0}  -- deeper blue for black keys
 
 -- =========================================================
 -- Internal helpers
@@ -69,33 +70,17 @@ local function DrawNoteWithGradient(nx, ny, nw, nh, pitch, velocity, muted)
 
     local base_color = NoteColorForPitch(pitch)
     local vel_alpha = 0.35 + (velocity / 127) * 0.65
-    local strips = math.max(1, math.floor(nh / 4))
-    
-    -- Optimization: Draw all strips into the alpha-safe buffer in one go
-    -- We'll use components.DrawRoundedRect's logic but manually here to avoid multiple blits
-    helpers.SetColor({base_color[1], base_color[2], base_color[3], vel_alpha})
-    
-    -- Instead of calling DrawRoundedRect per strip, we draw the WHOLE note 
-    -- as one supersampled block, and then we'll overlay the strips if needed.
-    -- Or simpler: use DrawRoundedRect for the base and draw simple opaque rects for strips.
-    
-    -- Let's use DrawRoundedRect for the background and then draw the gradient strips
+
+    -- Draw opaque rounded rect first (fast path, no blit artifacts)
+    helpers.SetColor({base_color[1], base_color[2], base_color[3], 1.0})
     components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
-    
-    -- Add subtle gradient overlays (Draw directly since base is already blitted with alpha)
-    -- We use gfx.mode = 1 (additive) or just lower alpha to avoid destroying the corners
-    for i = 0, strips - 1 do
-        local t = i / strips
-        local darken = 0.1 - t * 0.2 -- subtle darkening
-        if math.abs(darken) > 0.01 then
-            gfx.set(0, 0, 0, math.abs(darken))
-            gfx.mode = (darken > 0) and 1 or 0 -- additive for highlight, normal for shadow
-            local sy = ny + math.floor(i * nh / strips)
-            local ey = ny + math.floor((i + 1) * nh / strips)
-            gfx.rect(nx + 2, sy + 1, math.max(1, nw - 4), ey - sy - 1, 1)
-        end
+
+    -- Apply velocity dimming as a flat overlay (no rounded corners → no alpha-safe path)
+    local dim = 1.0 - vel_alpha
+    if dim > 0.01 then
+        helpers.SetColor({0, 0, 0, dim})
+        gfx.rect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 1)
     end
-    gfx.mode = 0
 end
 
 -- =========================================================
@@ -112,13 +97,21 @@ end
 function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
     if nw < 1 or nh < 1 then return end
 
+    -- Split note: create a 1px visual gap at the split point (note's start_beat)
+    -- by offsetting the draw rect 1px right and reducing width by 1.
+    local draw_nx, draw_nw = nx, nw
+    if note.split and nw > 1 then
+        draw_nx = nx + 1
+        draw_nw = nw - 1
+    end
+
     -- Draw gradient note (handles muted internally)
-    DrawNoteWithGradient(nx, ny, nw, nh, note.pitch, note.velocity or 100, note.muted)
+    DrawNoteWithGradient(draw_nx, ny, draw_nw, nh, note.pitch, note.velocity or 100, note.muted)
 
     -- Selected note: draw a bright border
     if selected then
         helpers.SetColor(NOTE_SELECTED_BORDER)
-        gfx.roundrect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, 0)
+        gfx.roundrect(draw_nx + 1, ny + 1, math.max(1, draw_nw - 2), math.max(1, nh - 2), 3, 0)
     end
 
     -- Note label (only when wide enough)
@@ -128,7 +121,7 @@ function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
         gfx.setfont(1, "Calibri", fs)
         local lw, lh = gfx.measurestr(label)
         helpers.SetColor(theme.colors.text_dark)
-        gfx.x, gfx.y = nx + (nw - lw) / 2, ny + (nh - lh) / 2
+        gfx.x, gfx.y = draw_nx + (draw_nw - lw) / 2, ny + (nh - lh) / 2
         gfx.drawstr(label)
     end
 end
@@ -137,9 +130,8 @@ end
 --- Kept for external callers; internal drawing always renders each frame
 --- because the framebuffer is cleared by DrawFullView's background fill.
 function m.MarkNotesDirty()
-    -- Intentionally empty — notes always redraw.
-    -- Cache was removed in PR1a refactor because background fill clears
-    -- the framebuffer every frame, causing notes to "disappear" on frame 2.
+    -- Mark notes as user-edited so progression auto-reload is suppressed.
+    island_store.SetNotesState(island_store.NOTES_STATE_EDITED)
 end
 
 --- Render all visible note blocks from island store.
@@ -182,10 +174,14 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
                 local gy = y + (top_pitch - op) * PITCH_ROW_H - scroll_px_offset
                 local gw = od * zoom_x
                 local gh = PITCH_ROW_H
+
+                -- X clip ghost note to grid bounds (PR: revision-isla-midi-bugs)
+                local clip_gx = math.max(x, math.floor(gx))
+                local clip_gw = math.max(1, math.min(gw, x + w - clip_gx))
                 
                 if gy < y + h and gy + gh > y then
                     helpers.SetColor(theme.colors.note_ghost or {1, 1, 1, 0.2})
-                    components.DrawRoundedRect(gx + 1, gy + 1, math.max(1, gw - 2), math.max(1, gh - 2), 3, true)
+                    components.DrawRoundedRect(clip_gx + 1, gy + 1, math.max(1, clip_gw - 2), math.max(1, gh - 2), 3, true)
                 end
             end
         end
@@ -207,10 +203,14 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
             local nw = nd * zoom_x
             local nh = PITCH_ROW_H
 
+            -- X clipping: ensure note doesn't render left of grid or past right edge (PR: revision-isla-midi-bugs)
+            local clip_nx = math.max(x, math.floor(nx))
+            local clip_nw = math.max(1, math.min(nw, x + w - clip_nx))
+
             -- Clip note height to viewport bottom
             if ny < y + h and ny + nh > y then
                 local clipped_nh = math.min(nh, y + h - ny)
-                m.DrawNoteBlock(note, nx, ny, nw, clipped_nh, island_store.IsNoteSelected(i))
+                m.DrawNoteBlock(note, clip_nx, ny, clip_nw, clipped_nh, island_store.IsNoteSelected(i))
             end
         end
     end
@@ -303,7 +303,7 @@ function m.GetNotesInRect(x1, y1, x2, y2, grid_x, grid_y, scroll_y, scroll_x, zo
     local pitch_low  = math.max(MIN_PITCH, top_pitch - pitch_row_bot)
 
     local beat_start = (rx1 - grid_x) / zoom_x + scroll_x
-    local beat_end   = (rx2 - grid_x) / zoom_x + scroll_x
+    local beat_end   = (rx2 - grid_x + 0.5) / zoom_x + scroll_x
 
     local results = {}
     local notes = island_store.GetNotes()

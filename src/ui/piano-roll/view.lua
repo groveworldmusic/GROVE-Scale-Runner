@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Piano Roll View Coordinator
 -- DrawPianoRoll entry point: computes visible ranges, calls grid/note/lasso.
 -- Extracted from piano-roll.lua barrel (PR1b).
@@ -32,19 +32,24 @@ function m.DrawPianoRoll(x, y, w, h)
     local LABEL_W = grid.PITCH_LABEL_W
 
     -- Compute visible ranges ONCE per frame (shared between grid + notes, P5-05)
+    -- Use grid_w (not w) so beat_end doesn't overestimate visible beats (CVR fix, PR: revision-isla-midi-bugs)
     local visible_rows, pitch_start, pitch_end, top_pitch, beat_start, beat_end =
-        ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, w)
+        ComputeVisibleRanges(y, h, scroll_y, scroll_x, zoom_x, grid_w)
+
+    -- Clamp scroll_y to max so sub-pixel offset doesn't leave a gap at bottom when over-scrolled
+    local max_scroll = grid.TOTAL_ROWS - h / grid.PITCH_ROW_H
+    local clamped_scroll_y = math.max(0, math.min(max_scroll, scroll_y))
 
     -- Draw grid (to the right of labels)
     local grid_x = x + LABEL_W
     local grid_w = w - LABEL_W
     if grid_w <= 0 then return end
 
-    grid.DrawPianoRollGrid(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x,
+    grid.DrawPianoRollGrid(grid_x, y, grid_w, h, clamped_scroll_y, scroll_x, zoom_x,
                            visible_rows, pitch_start, pitch_end, top_pitch)
 
     -- Draw note blocks (uses shared pitch/beat ranges)
-    note.DrawNoteBlocks(grid_x, y, grid_w, h, scroll_y, scroll_x, zoom_x,
+    note.DrawNoteBlocks(grid_x, y, grid_w, h, clamped_scroll_y, scroll_x, zoom_x,
                         pitch_start, pitch_end, beat_start, beat_end, top_pitch)
 
     -- (VSB is drawn by views.lua in the 7px right margin)
