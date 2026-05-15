@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Theme extracted from SVGs
 local theme = {}
 
@@ -41,6 +41,7 @@ theme.colors = {
     island_panel_bg = hex2rgb("#242424"),    -- Preset browser panel background (darker than island_bg)
     island_ruler_bg = hex2rgb("#3a3a3a"),    -- Timeline ruler background tint
     island_velocity_bg = hex2rgb("#2a2a2a"), -- Velocity editor background tint
+    island_scrollbar_bg = {0.4, 0.4, 0.4, 0.35}, -- MIDI island scrollbar thumb background
 
     -- Grid hierarchy colors (4-tier: measure, beat, 1/8, 1/16)
     grid_measure = {0.5, 0.5, 0.5, 0.60},     -- Measure lines: alpha 0.60, bold

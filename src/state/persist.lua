@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Preference Persistence
 -- Read/writes user preferences via reaper.SetExtState/GetExtState.
 -- Canonical namespace: GROVE_Scale_Runner

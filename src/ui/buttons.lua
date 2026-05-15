@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Button UI Components (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Scale Pad UI (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
@@ -117,7 +117,8 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
         local mps = midi_store.GetMousePadState()
         if mps.active_degree ~= degree then
             mps.active_degree = degree
-            mps.midi_notes = midi.TriggerChord(degree, true, nil, nil, prefs.GetInversionIndex())
+            local vel = midi_store.GetUseVelocity() and (85 + math.random(30)) or 100
+            mps.midi_notes = midi.TriggerChord(degree, true, nil, vel, prefs.GetInversionIndex())
         end
     elseif not disabled and midi_store.GetMousePadState().active_degree == degree and (gfx.mouse_cap & 1) == 0 then
         -- Only turn off mouse-pad notes, not all notes (avoids killing QWERTY-held notes)

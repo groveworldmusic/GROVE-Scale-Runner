@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local buttons = require("ui.buttons")
@@ -51,11 +51,11 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
             gfx.circle(x + w - r, y + r, r, 1, 1)
             gfx.circle(x + r, y + h - r, r, 1, 1)
             gfx.circle(x + w - r, y + h - r, r, 1, 1)
-            gfx.rect(x + r, y, math.max(0, w - r * 2) + 1, h + 1, 1)
-            gfx.rect(x, y + r, w + 1, math.max(0, h - r * 2) + 1, 1)
+            gfx.rect(x, y + r, w, math.max(0, h - r * 2) + 1, 1)
+            gfx.rect(x + r, y, math.max(0, w - r * 2) + 1, r + 1, 1)
+            gfx.rect(x + r, y + h - r, math.max(0, w - r * 2) + 1, r + 1, 1)
         else
             -- Alpha-safe path: 2x SUPERSAMPLING with Smart Buffer Management
-            local gr, gg, gb = gfx.r, gfx.g, gfx.b
             local rw, rh = w * 2 + 8, h * 2 + 8
             
             gfx.dest = _temp_buf
@@ -78,14 +78,15 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
             gfx.circle(bw - br, br, br, 1, 1)
             gfx.circle(br, bh - br, br, 1, 1)
             gfx.circle(bw - br, bh - br, br, 1, 1)
-            gfx.rect(br, 0, math.max(0, bw - br * 2) + 1, bh + 1, 1)
-            gfx.rect(0, br, bw + 1, math.max(0, bh - br * 2) + 1, 1)
+            gfx.rect(0, br, bw, math.max(0, bh - br * 2) + 1, 1)
+            gfx.rect(br, 0, math.max(0, bw - br * 2) + 1, br + 1, 1)
+            gfx.rect(br, bh - br, math.max(0, bw - br * 2) + 1, br + 1, 1)
             
-            -- 3. BLIT BACK TO SCREEN (Downscale 2x -> 1x for AA)
+            -- 3. BLIT BACK TO SCREEN (Downscale 2x -> 1x for exact 2:1 AA)
             gfx.dest = -1
             gfx.set(gr, gg, gb, a)
             gfx.mode = 0
-            gfx.blit(_temp_buf, 1, 0, 0, 0, bw + 1, bh + 1, x, y, w + 1, h + 1)
+            gfx.blit(_temp_buf, 1, 0, 0, 0, bw, bh, x, y, w, h)
         end
     else
         gfx.roundrect(x, y, w, h, r, 1)
@@ -127,7 +128,6 @@ function components.DrawRoundedRectEx(x, y, w, h, r, corners)
         if not br then gfx.rect(x + w - r, y + h - r, r, r, 1) end
     else
         -- Alpha-safe path: 2x SUPERSAMPLING with Smart Buffer Management
-        local gr, gg, gb = gfx.r, gfx.g, gfx.b
         local rw, rh = w * 2 + 8, h * 2 + 8
         
         gfx.dest = _temp_buf
@@ -158,11 +158,11 @@ function components.DrawRoundedRectEx(x, y, w, h, r, corners)
         if not bl then gfx.rect(0, bh - brr, brr, brr, 1) end
         if not br then gfx.rect(bw - brr, bh - brr, brr, brr, 1) end
         
-        -- 3. BLIT BACK TO SCREEN (Downscale 2x -> 1x for AA)
+        -- 3. BLIT BACK TO SCREEN (Downscale 2x -> 1x for exact 2:1 AA)
         gfx.dest = -1
         gfx.set(gr, gg, gb, a)
         gfx.mode = 0
-        gfx.blit(_temp_buf, 1, 0, 0, 0, bw + 1, bh + 1, x, y, w + 1, h + 1)
+        gfx.blit(_temp_buf, 1, 0, 0, 0, bw, bh, x, y, w, h)
     end
 end
 

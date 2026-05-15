@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Keyboard UI (extracted from components.lua)
 local config = require("config")
 local midi_store = require("state.midi")

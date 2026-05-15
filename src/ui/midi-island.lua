@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik on the beat
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 local config = require("config")
 local layout = require("ui.layout")
 local theme = require("ui.theme")
@@ -32,6 +32,8 @@ local _island_progression_revision = -1
 -- Guard: preset_browser.Init() should only run once (T3)
 local _preset_init_attempted = false
 
+local THUMB_SIZE = 3  -- Scrollbar thumb size (centers exactly in 7px track: offset=(7-3)/2=2)
+
 -- Scrollbar drag states
 local _sb_dragging = false
 local _sb_drag_start_x = 0
@@ -45,7 +47,7 @@ local function DrawPresetPanel(island_x, y, preset_w, h)
     if preset_w > 0 then
         local p_radius = 10
         helpers.SetColor(theme.colors.island_panel_bg)
-        components.DrawRoundedRectEx(island_x, y, preset_w, h, p_radius, {tl=true})
+        components.DrawRoundedRectEx(island_x, y, preset_w, h, p_radius, {tl=true, bl=true})
 
         local browser_y = y + 4
         local browser_h = h - 4
@@ -136,7 +138,7 @@ function m.Draw(char)
         if ve_h > 0 then
             velocity.DrawVelocityEditor(right_x, ve_y, right_w - SB_SIZE, ve_h, island_store.GetNotes(), island_store.GetScrollOffsetX(), island_store.GetZoomX(), island_store.GetSelectedNoteIndex())
         end
-        timeline.DrawTimelineRuler(right_x, y, right_w + 1, tl_h, pr_h, grid_w, not has_presets)
+        timeline.DrawTimelineRuler(right_x, y, right_w, tl_h, pr_h, grid_w, not has_presets)
         
         -- 5. Mouse Dispatch
         local ctx = {
@@ -152,6 +154,7 @@ function m.Draw(char)
 end
 
 function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_SIZE)
+    local thumb_offset = math.floor((SB_SIZE - THUMB_SIZE) / 2) + 1
     local scroll_x = island_store.GetScrollOffsetX()
     local zoom_x = island_store.GetZoomX()
     local total_beats = 64
@@ -178,7 +181,7 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
             else island_store.SetScrollOffsetX(math.max(0, math.min(max_scroll_x, _sb_scroll_at_drag_start + ((mx - _sb_drag_start_x) / grid_w) * total_beats))) end
         end
         helpers.SetColor(theme.colors.island_scrollbar_bg or {0.4, 0.4, 0.4, 0.35})
-        components.DrawRoundedRect(bar_x, sb_y, bar_w, SB_SIZE, 2, true)
+        components.DrawRoundedRect(bar_x, sb_y + thumb_offset, bar_w, THUMB_SIZE, 2, true)
     end
 
     -- Vertical
@@ -205,7 +208,7 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
             else island_store.SetScrollOffsetY(math.max(0, math.min(max_scroll_y, _vsb_scroll_at_drag_start + ((my - _vsb_drag_start_y) / vsb_h) * max_scroll_y))) end
         end
         helpers.SetColor(theme.colors.island_scrollbar_bg or {0.4, 0.4, 0.4, 0.35})
-        components.DrawRoundedRect(vsb_x, bar_y, vsb_w, bar_h, 2, true)
+        components.DrawRoundedRect(vsb_x + thumb_offset, bar_y, THUMB_SIZE, bar_h, 2, true)
     end
 end
 
