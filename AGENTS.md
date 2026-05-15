@@ -19,7 +19,7 @@ Sos el **orquestador principal** del proyecto. Tu responsabilidad es coordinar a
 | Core modules | 6 (midi, keyboard, sequencer, progression, api-guard, snap) |
 | UI modules | 37 (29 root + 6 piano-roll/ + 2 midi-island/) |
 | Tests | 14 test files in runner, 497 check() calls, 1 static-test outside runner |
-| Referencias a `config.state.*` runtime | ~138 (12+ files) |
+| Referencias a `config.state.*` runtime | ~17 (view_offset_x/y only) |
 | Total archivos en proyecto | ~90 (src/ + tests/ + docs/ + config) |
 
 ## Jerarquía de Agentes
@@ -154,22 +154,15 @@ views.lua ──require──► sequencer (para sequencer.Stop() en play/stop t
 
 ## Remnant Keys (config.state)
 
-Keys que NO fueron extraídas a stores y permanecen como root keys de `config.state`. La mayoría ahora se leen via `preferences_store.*` — ~138 runtime reads directos remanentes en 12+ archivos:
+Keys que permanecen como root keys de `config.state`. Las 7 preference keys (root_index, scale_index, octave, chord_mode_index, inversion_index, inversion_direction, subdivision_index) ya fueron migradas a `preferences_store` (Sprint 1). Solo view_offset_x/y y use_scroll permanecen como remnant runtime reads directos:
 
 | Key | Rango | Propósito |
 |-----|-------|-----------|
-| `root_index` | 1-12 | Nota raíz seleccionada |
-| `scale_index` | 1-21 | Escala seleccionada |
-| `octave` | 0-8 | Octava base |
-| `chord_mode_index` | 1-4 | Modo de acorde (Off/Tri/7ma/9na) |
-| `inversion_index` | 1-4 | Inversión seleccionada |
-| `inversion_direction` | 0-1 | Dirección de inversión (UP/DN) |
-| `subdivision_index` | 1-6 | Subdivisión de grilla |
 | `view_offset_x` | number | Posición X de ventana GFX |
 | `view_offset_y` | number | Posición Y de ventana GFX |
 | `use_scroll` | boolean | Scroll habilitado |
 
-~138 runtime reads remanentes en 12+ archivos fuente (views.lua, compact-menu.lua, piano.lua, grid.lua, pads.lua, midi.lua, sequencer.lua, compact-init.lua, main.lua, entre otros). La mayoría son reads de `config.state.{root_index, scale_index, octave, chord_mode_index}` para rendering. El acceso directo más notable: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`.
+~17 runtime reads remanentes en 5+ archivos (views.lua, main.lua, midi.lua, compact-init.lua, compact-menu.lua). Todos son reads/escrituras de `config.state.view_offset_x/y` para posicionamiento de ventana GFX. `use_scroll` se lee via `ui_store.GetUseScroll()` — sin reads directos remanentes.
 
 ## Issue Registry
 

@@ -249,19 +249,12 @@ Init desde ~15 root keys de `config.state.*`. `pad_flash` mergeado recursivament
 
 ## Remnant Keys (config.state)
 
-Keys que persisten como root keys de `config.state` por compatibilidad con código legacy. La mayoría ahora se leen vía `preferences_store.*` para escritura, pero el almacenamiento subyacente sigue siendo `config.state`. Migración completa pendiente (Phase 2, PR #2 del cambio que-ves-incompleto).
+Keys que persisten como root keys de `config.state` por compatibilidad con código legacy. Las 7 preference keys (root_index, scale_index, octave, chord_mode_index, inversion_index, inversion_direction, subdivision_index) ya fueron migradas completamente a `preferences_store` (Sprint 1) — todos los reads ahora usan `prefs.Get*()` getters. Solo las siguientes keys permanecen:
 
 | Key | Rango | Propósito |
 |-----|-------|-----------|
-| `root_index` | 1-12 | Nota raíz seleccionada |
-| `scale_index` | 1-21 | Escala seleccionada |
-| `octave` | 0-8 | Octava base |
-| `chord_mode_index` | 1-4 | Modo de acorde (Off/Tri/7ma/9na) |
-| `inversion_index` | 1-4 | Inversión seleccionada |
-| `inversion_direction` | 0-1 | Dirección de inversión (UP/DN) |
-| `subdivision_index` | 1-6 | Subdivisión de grilla |
 | `view_offset_x` | number | Posición X de ventana GFX |
 | `view_offset_y` | number | Posición Y de ventana GFX |
 | `use_scroll` | boolean | Scroll habilitado |
 
-0 runtime reads remanentes directos a `config.state` desde stores (migrados a preferences_store / note-store). Quedan ~138 reads en core/ y ui/ que pasan por `ctx` o stores. **NO agregar nuevas keys a `config.state`** — las stores son el mecanismo correcto.
+~17 runtime reads remanentes directos a `config.state` en 5+ archivos de core/ y ui/. Todos son de `config.state.view_offset_x/y` para posicionamiento de ventana GFX. `use_scroll` se lee via `ui_store.GetUseScroll()` — sin reads directos remanentes. **NO agregar nuevas keys a `config.state`** — las stores son el mecanismo correcto.

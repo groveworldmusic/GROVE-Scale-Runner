@@ -125,7 +125,7 @@ end)
 
 **VKEY_MAP physical rows**: Row1 (0x31-0x37, oct+1), Row2 QWERTYU (0x51/57/45/52/54/59/55, oct 0), Row3 ASDFGHJ (0x41/53/44/46/47/48/4A, oct-1), Row4 ZXCVBNM (0x5A/58/43/56/42/4E/4D, oct-2). Grado wrappea si > scale length.
 
-**config.state remnants**: `root_index`(1-12), `scale_index`(1-21), `octave`(0-8), `chord_mode_index`(1-4), `inversion_index`(1-4), `inversion_direction`(0-1), `subdivision_index`(1-6), `view_offset_x/y`, `use_scroll`. ~138 runtime reads remanentes en 12+ archivos (midi.lua:94, views.lua, piano.lua, grid.lua, pads.lua, compact-menu.lua, compact-init.lua, main.lua, y otros). El más notable: `midi.lua:94` — `local c = ctx or config.state` en `TriggerChord`.
+**config.state remnants**: Prefere nce keys (root_index, scale_index, octave, chord_mode_index, inversion_index, inversion_direction, subdivision_index) migradas a `preferences_store` (Sprint 1). Solo quedan `view_offset_x/y` y `use_scroll`. ~17 runtime reads remanentes en 5+ archivos (views.lua, main.lua, midi.lua, compact-init.lua, compact-menu.lua). Todos son de `config.state.view_offset_x/y` para posicionamiento de ventana GFX.
 
 ## External Requirements
 
