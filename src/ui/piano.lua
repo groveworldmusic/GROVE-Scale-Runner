@@ -7,6 +7,7 @@ local ui_store = require("state.ui")
 local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 local colors = require("ui.colors")
+local prefs = require("state.preferences")
 
 -- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
 -- to avoid circular require at load time (components.lua also requires piano.lua)
@@ -60,10 +61,10 @@ function m.DrawPianoKeyboard(x, y, w, h, font_size)
     local mx, my = gfx.mouse_x, gfx.mouse_y
 
     -- Cached scale note sets (Issue 13 pattern, shared helper)
-    if cached_scale_root ~= config.state.root_index or cached_scale_idx ~= config.state.scale_index then
-        cached_scale_notes, cached_note_to_degree = helpers.ComputeScaleNotes(config.state.root_index, config.state.scale_index)
-        cached_scale_root = config.state.root_index
-        cached_scale_idx = config.state.scale_index
+    if cached_scale_root ~= prefs.GetRootIndex() or cached_scale_idx ~= prefs.GetScaleIndex() then
+        cached_scale_notes, cached_note_to_degree = helpers.ComputeScaleNotes(prefs.GetRootIndex(), prefs.GetScaleIndex())
+        cached_scale_root = prefs.GetRootIndex()
+        cached_scale_idx = prefs.GetScaleIndex()
     end
     local scale_notes = cached_scale_notes
     local note_to_degree = cached_note_to_degree
@@ -77,7 +78,7 @@ function m.DrawPianoKeyboard(x, y, w, h, font_size)
     -- Draw White Keys first
     for i, wk in ipairs(PIANO_LAYOUT.white_key_note_indices) do
         local wx = x_off + (i-1) * white_w
-        local is_root = (config.state.root_index == wk)
+        local is_root = (prefs.GetRootIndex() == wk)
         local in_scale = scale_notes[wk]
 
         if is_root then
@@ -113,7 +114,7 @@ function m.DrawPianoKeyboard(x, y, w, h, font_size)
     -- Draw Black Keys on top with text
     for _, bk in ipairs(PIANO_LAYOUT.black_key_specs) do
         local bx = x_off + (bk.pos * white_w) - black_w/2
-        local is_root = (config.state.root_index == bk.idx)
+        local is_root = (prefs.GetRootIndex() == bk.idx)
         local in_scale = scale_notes[bk.idx]
 
         if is_root then

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordov�
 -- GROVE Scale Runner: Piano Roll Grid
 -- Renders the pitch×time grid background, beat lines, and vertical keyboard strip.
 -- Extracted from piano-roll.lua monolith (PR1a).
@@ -10,6 +10,7 @@ local island_store = require("state.island")
 local midi_store = require("state.midi")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
+local prefs = require("state.preferences")
 
 local m = {}
 
@@ -139,9 +140,9 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
     local scroll_px_offset = (scroll_y - scroll_int) * RH
 
     -- Refresh scale cache (Issue 13 pattern)
-    if _vpk_scale_root ~= config.state.root_index or _vpk_scale_idx ~= config.state.scale_index then
-        _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(config.state.root_index, config.state.scale_index)
-        _vpk_scale_root, _vpk_scale_idx = config.state.root_index, config.state.scale_index
+    if _vpk_scale_root ~= prefs.GetRootIndex() or _vpk_scale_idx ~= prefs.GetScaleIndex() then
+        _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(prefs.GetRootIndex(), prefs.GetScaleIndex())
+        _vpk_scale_root, _vpk_scale_idx = prefs.GetRootIndex(), prefs.GetScaleIndex()
     end
 
     -- Active note pitch-class O(1) lookup (Issue 18)
@@ -176,7 +177,7 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
             if clip_h > 0 then
                 local pc = (pitch % 12) + 1
                 local is_white = WHITE_KEY_SET[pitch % 12]
-                local root = config.state.root_index == pc
+                local root = prefs.GetRootIndex() == pc
 
                 if is_white then
                     helpers.SetColor(root and theme.colors.btn_active or theme.colors.piano_white)
@@ -207,7 +208,7 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
                 local is_white = WHITE_KEY_SET[pitch % 12]
                 local sc = _vpk_scale_notes[pc]
                 local am = am12[pc]
-                local root = config.state.root_index == pc
+                local root = prefs.GetRootIndex() == pc
 
                 -- Scale indicator (right edge)
                 if not root and sc then
@@ -296,9 +297,9 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
     end
 
     -- Refresh scale cache (Issue 13 pattern)
-    if _vpk_scale_root ~= config.state.root_index or _vpk_scale_idx ~= config.state.scale_index then
-        _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(config.state.root_index, config.state.scale_index)
-        _vpk_scale_root, _vpk_scale_idx = config.state.root_index, config.state.scale_index
+    if _vpk_scale_root ~= prefs.GetRootIndex() or _vpk_scale_idx ~= prefs.GetScaleIndex() then
+        _vpk_scale_notes, _vpk_note_to_degree = helpers.ComputeScaleNotes(prefs.GetRootIndex(), prefs.GetScaleIndex())
+        _vpk_scale_root, _vpk_scale_idx = prefs.GetRootIndex(), prefs.GetScaleIndex()
     end
 
     -- Draw pitch row backgrounds + horizontal lines
@@ -386,7 +387,7 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
     -- Subdivision lines — filtered by snap resolution when snap enabled
     -- Uses snap_res to determine which tiers to show; falls back to
     -- config.state.subdivision_index when snap is disabled.
-    local sub_idx = config.state.subdivision_index or 1
+    local sub_idx = prefs.GetSubdivisionIndex() or 1
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
 
     -- When snap is enabled, calculate effective subdivision from snap_res

@@ -13,6 +13,7 @@ local helpers = require("ui.helpers")
 local components = require("ui.components")
 local ui_store = require("state.ui")
 local seq_store = require("state.sequencer")
+local prefs = require("state.preferences")
 local layout = require("ui.layout")
 
 local browser = {}
@@ -194,10 +195,10 @@ function browser.SavePreset(file_path, preset_name)
     table.insert(lines, "    },")
 
     -- Context fields for full restoration
-    table.insert(lines, string.format("    root_index = %d,", config.state.root_index or 1))
-    table.insert(lines, string.format("    scale_index = %d,", config.state.scale_index or 1))
-    table.insert(lines, string.format("    octave = %d,", config.state.octave or 4))
-    table.insert(lines, string.format("    chord_mode_index = %d,", config.state.chord_mode_index or 1))
+    table.insert(lines, string.format("    root_index = %d,", prefs.GetRootIndex() or 1))
+    table.insert(lines, string.format("    scale_index = %d,", prefs.GetScaleIndex() or 1))
+    table.insert(lines, string.format("    octave = %d,", prefs.GetOctave() or 4))
+    table.insert(lines, string.format("    chord_mode_index = %d,", prefs.GetChordModeIndex() or 1))
 
     -- Serialize progression entries (with optional velocity/duration)
     local progression = seq_store.GetProgression()

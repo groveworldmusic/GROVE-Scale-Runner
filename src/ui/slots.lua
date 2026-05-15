@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Progression Slot UI (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
@@ -12,6 +12,7 @@ local format = require("ui.format")
 local midi = require("core.midi")
 local midi_store = require("state.midi")
 local progression = require("core.progression")
+local prefs = require("state.preferences")
 
 -- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
 -- to avoid circular require at load time (components.lua also requires this module)
@@ -66,7 +67,7 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
     end
 
     -- SUBDIVISION DOTS at slot bottom (show fill state always, active sub during play)
-    local sub_idx = config.state.subdivision_index or 1
+    local sub_idx = prefs.GetSubdivisionIndex() or 1
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
     if slot and subdivision > 1 then
         local active_sub = play and (seq_store.GetCurrentSubStep() or 0) or -1
@@ -182,7 +183,7 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
     if (gfx.mouse_cap & 1) == 0 and drag_store.GetPendingSlotIdx() == global_idx then
         -- LEFT CLICK TO PLAY NOTE (no drag happened)
         if slot then
-            local inv = config.state.inversion_index
+            local inv = prefs.GetInversionIndex()
             local click_degree = slot.degree
             if slot.subs and #slot.subs > 0 then
                 click_degree = slot.subs[1].degree
@@ -207,7 +208,7 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
                 entry_velocity = nil  -- falls back to 100 in materializer
             end
             
-            local sub_idx = config.state.subdivision_index or 1
+            local sub_idx = prefs.GetSubdivisionIndex() or 1
             local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
             
             if subdivision > 1 then
@@ -236,10 +237,10 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
                     else
                         entry = {
                             degree = drag_store.GetSourceDegree(),
-                            root_index = config.state.root_index,
-                            scale_index = config.state.scale_index,
-                            octave = config.state.octave,
-                            chord_mode_index = config.state.chord_mode_index,
+                            root_index = prefs.GetRootIndex(),
+                            scale_index = prefs.GetScaleIndex(),
+                            octave = prefs.GetOctave(),
+                            chord_mode_index = prefs.GetChordModeIndex(),
                             velocity = entry_velocity,
                             duration = 4,
                             subs = {},
@@ -254,10 +255,10 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
             else
                 progression.Add(global_idx, { 
                     degree = drag_store.GetSourceDegree(), 
-                    root_index = config.state.root_index, 
-                    scale_index = config.state.scale_index, 
-                    octave = config.state.octave, 
-                    chord_mode_index = config.state.chord_mode_index,
+                    root_index = prefs.GetRootIndex(), 
+                    scale_index = prefs.GetScaleIndex(), 
+                    octave = prefs.GetOctave(), 
+                    chord_mode_index = prefs.GetChordModeIndex(),
                     velocity = entry_velocity,
                     duration = 4,
                 })
