@@ -15,72 +15,25 @@ local m = {}
 function m.DrawToolIcon(type, x, y, size, active)
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + size and gfx.mouse_y >= y and gfx.mouse_y <= y + size
     local col = active and theme.colors.text or theme.colors.text_dim
-    local cx, cy = x + size / 2, y + size / 2
     
-    -- Glyph-based icons (Unicode)
-    local glyphs = { help = "?", settings = "\226\154\153", view = "\226\138\159" }  -- ? ⚙ ⊟
+    -- All icons render as Unicode glyphs via gfx.drawstr (same as MIDI island PAINT/KNIFE)
+    local glyphs = {
+        help = "?",
+        settings = "\226\154\153",    -- U+2699 ⚙
+        view = "\226\138\159",         -- U+229F ⊟
+        clear = "\226\156\151",        -- U+2717 ✗ (ballot X, same Dingbats block as ✎)
+        export = "\226\153\170",       -- U+266A ♪ (eighth note, represents MIDI export)
+    }
     local glyph = glyphs[type]
-    if glyph then
-        helpers.SetColor(col)
-        gfx.setfont(1, "Calibri", math.floor(size * 0.75))
-        local gw, gh = gfx.measurestr(glyph)
-        gfx.x, gfx.y = x + (size - gw) / 2, y + (size - gh) / 2
-        gfx.drawstr(glyph)
+    if not glyph then
         return ui_store.GetMouseClick() and hover
     end
     
-    -- Procedural icons (no suitable Unicode glyph)
-    if type == "clear" then
-        -- Trash can: lid + body outline
-        helpers.SetColor(col)
-        local pad = size * 0.22
-        local bw = size - pad * 2
-        local bh = size * 0.42
-        local bx = x + pad
-        local by = y + size * 0.34
-        -- Lid line
-        gfx.line(bx - size * 0.04, by - size * 0.04, bx + bw + size * 0.04, by - size * 0.04)
-        -- Handle
-        gfx.line(bx + bw * 0.3, by - size * 0.04, bx + bw * 0.3, y + size * 0.16)
-        gfx.line(bx + bw * 0.7, by - size * 0.04, bx + bw * 0.7, y + size * 0.16)
-        gfx.line(bx + bw * 0.3, y + size * 0.16, bx + bw * 0.7, y + size * 0.16)
-        -- Body outline (open top)
-        gfx.line(bx, by, bx, by + bh)
-        gfx.line(bx + bw, by, bx + bw, by + bh)
-        gfx.line(bx, by + bh, bx + bw, by + bh)
-        -- Two inner vertical lines
-        gfx.line(bx + bw * 0.3, by + size * 0.05, bx + bw * 0.3, by + bh - size * 0.05)
-        gfx.line(bx + bw * 0.7, by + size * 0.05, bx + bw * 0.7, by + bh - size * 0.05)
-        return ui_store.GetMouseClick() and hover
-    end
-    
-    if type == "export" then
-        -- Piano keyboard: white key body + black keys
-        helpers.SetColor(col)
-        local kw = size * 0.56
-        local kh = size * 0.52
-        local kx = cx - kw / 2
-        local ky = cy - kh / 2 + size * 0.05
-        -- White keys body (3 horizontal lines: top, bottom, bottom outline)
-        gfx.line(kx, ky, kx + kw, ky)
-        gfx.line(kx, ky + kh, kx + kw, ky + kh)
-        gfx.line(kx, ky, kx, ky + kh)
-        gfx.line(kx + kw, ky, kx + kw, ky + kh)
-        -- White key dividers (vertical lines)
-        local wkeys = 6
-        for i = 1, wkeys - 1 do
-            local xk = kx + (i / wkeys) * kw
-            gfx.line(xk, ky, xk, ky + kh)
-        end
-        -- Black keys (shorter rects at top)
-        local bk_w = kw / wkeys * 0.6
-        local bk_h = kh * 0.55
-        for i = 0, 4 do
-            local bxk = kx + ((i + 0.5) / wkeys) * kw - bk_w / 2
-            gfx.rect(bxk, ky, bk_w, bk_h, 1)
-        end
-        return ui_store.GetMouseClick() and hover
-    end
+    helpers.SetColor(col)
+    gfx.setfont(1, "Calibri", math.floor(size * 0.75))
+    local gw, gh = gfx.measurestr(glyph)
+    gfx.x, gfx.y = x + (size - gw) / 2, y + (size - gh) / 2
+    gfx.drawstr(glyph)
     
     return ui_store.GetMouseClick() and hover
 end
