@@ -14,6 +14,7 @@ local components = require("ui.components")
 local ui_store = require("state.ui")
 local seq_store = require("state.sequencer")
 local prefs = require("state.preferences")
+local persist = require("state.persist")
 local layout = require("ui.layout")
 
 local browser = {}
@@ -289,10 +290,10 @@ function browser.LoadPreset(file_path)
 
     -- v2 format: restore progression and context for full state reconstruction
     if result.version and result.version >= 2 then
-        if result.root_index then config.state.root_index = result.root_index end
-        if result.scale_index then config.state.scale_index = result.scale_index end
-        if result.octave then config.state.octave = result.octave end
-        if result.chord_mode_index then config.state.chord_mode_index = result.chord_mode_index end
+        if result.root_index then config.state.root_index = result.root_index; prefs.SetRootIndex(result.root_index); persist.Save("root_index", result.root_index) end
+        if result.scale_index then config.state.scale_index = result.scale_index; prefs.SetScaleIndex(result.scale_index); persist.Save("scale_index", result.scale_index) end
+        if result.octave then config.state.octave = result.octave; prefs.SetOctave(result.octave); persist.Save("octave", result.octave) end
+        if result.chord_mode_index then config.state.chord_mode_index = result.chord_mode_index; prefs.SetChordModeIndex(result.chord_mode_index); persist.Save("chord_mode_index", result.chord_mode_index) end
         if result.progression and type(result.progression) == "table" then
             seq_store.SetProgression(result.progression)
         end
