@@ -213,20 +213,20 @@ function m.HandlePanel()
     local r = components.DrawDropdown(piano_key_left, cy, scale_w, ch, nil,
         helpers.CompactAbbreviateScale(config.SCALES[si].name),
         panel.SCALE_FULL, si, 16, open_up)
-    if r then config.state.scale_index = r; persist.Save("scale_index", r) end
+    if r then config.state.scale_index = r; prefs.SetScaleIndex(r); persist.Save("scale_index", r) end
 
     -- Octave dropdown
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap, cy, octave_w, ch, nil,
         "C" .. math.floor(prefs.GetOctave()),
         panel.OCTAVE_OPTIONS, prefs.GetOctave() + 1, 16, open_up)
-    if r then local ov = math.floor(r - 1); config.state.octave = ov; persist.Save("octave", ov) end
+    if r then local ov = math.floor(r - 1); config.state.octave = ov; prefs.SetOctave(ov); persist.Save("octave", ov) end
 
     -- Chord dropdown
     local ci = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     r = components.DrawDropdown(piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap, cy, chord_w, ch, nil,
         config.CHORD_MODES[ci].name,
         panel.CHORD_OPTIONS, ci, 16, open_up)
-    if r then config.state.chord_mode_index = r; persist.Save("chord_mode_index", r) end
+    if r then config.state.chord_mode_index = r; prefs.SetChordModeIndex(r); persist.Save("chord_mode_index", r) end
 
     -- VEL toggle
     local vx = piano_key_left + scale_w + ctrl_gap + octave_w + ctrl_gap + chord_w + ctrl_gap
