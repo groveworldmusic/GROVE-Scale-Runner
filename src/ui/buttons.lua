@@ -17,23 +17,24 @@ function m.DrawToolIcon(type, x, y, size, active)
     local col = active and theme.colors.text or theme.colors.text_dim
     
     -- All icons render as Unicode glyphs via gfx.drawstr (same as MIDI island PAINT/KNIFE)
-    local glyphs = {
-        help = "?",
-        settings = "\226\154\153",    -- U+2699 ⚙
-        view = "\226\138\159",         -- U+229F ⊟
-        clear = "\226\140\171",        -- U+232B ⌫ (erase to the left / backspace)
-        export = "\226\158\166",       -- U+27A6 ➦ (arrow tail rightwards)
+    -- Each icon has a glyph + size scale (larger for clearer visibility)
+    local icons = {
+        help = { g = "?", s = 0.75 },
+        settings = { g = "\226\154\153", s = 0.75 },  -- U+2699 ⚙
+        view = { g = "\226\138\159", s = 0.9 },        -- U+229F ⊟
+        clear = { g = "\226\140\171", s = 0.9 },       -- U+232B ⌫
+        export = { g = "\226\158\166", s = 0.9 },      -- U+27A6 ➦
     }
-    local glyph = glyphs[type]
-    if not glyph then
+    local icon = icons[type]
+    if not icon then
         return ui_store.GetMouseClick() and hover
     end
     
     helpers.SetColor(col)
-    gfx.setfont(1, "Calibri", math.floor(size * 0.75))
-    local gw, gh = gfx.measurestr(glyph)
+    gfx.setfont(1, "Calibri", math.floor(size * icon.s))
+    local gw, gh = gfx.measurestr(icon.g)
     gfx.x, gfx.y = x + (size - gw) / 2, y + (size - gh) / 2
-    gfx.drawstr(glyph)
+    gfx.drawstr(icon.g)
     
     return ui_store.GetMouseClick() and hover
 end
