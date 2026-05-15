@@ -21,9 +21,9 @@ function m.DrawToolIcon(type, x, y, size, active)
     local icons = {
         help = { g = "?", s = 0.75 },
         settings = { g = "\226\154\153", s = 0.75 },  -- U+2699 ⚙
-        view = { g = "\226\138\159", s = 0.9 },        -- U+229F ⊟
+        view = { g = "\226\138\159", s = 1.05 },       -- U+229F ⊟
         clear = { g = "\226\140\171", s = 0.9 },       -- U+232B ⌫
-        export = { g = "\226\158\166", s = 0.9 },      -- U+27A6 ➦
+        export = { g = "\226\158\166", s = 1.05 },      -- U+27A6 ➦
     }
     local icon = icons[type]
     if not icon then
