@@ -9,6 +9,7 @@
 local config = require("config")
 local api_guard = require("core.api-guard")
 local note_store = require("state.note-store")
+local preset_store = require("state.preset-store")
 
 local m = {}
 local island_state = {
@@ -24,22 +25,12 @@ local island_state = {
     lasso_active = false,
     lasso_start_x = 0, lasso_start_y = 0,
     lasso_end_x = 0, lasso_end_y = 0,
-    current_directory = "",
-    preset_root = "",
-    preset_tree = {},
-    preset_files = {},
-    selected_preset_idx = nil,
-    browser_scroll = 0,
-    browser_error = nil,
-    favorites = {},
-    bookmarks = {},
     velocity_panel_expanded = false,
     island_transition_in_progress = false,
     pre_toggle_dock = 0,
     pre_toggle_rect = nil,
     snap_enabled = false,
     snap_resolution = 4,
-    folder_scroll = 0,
     note_drag_origins = {},
 }
 
@@ -55,11 +46,11 @@ function m.Init(defaults)
         island_state.selected_indices = {[defaults.selected_note_index] = true}
         island_state._last_selected_idx = defaults.selected_note_index
     end
-    if defaults.current_directory ~= nil then island_state.current_directory = defaults.current_directory end
-    if defaults.preset_root ~= nil then island_state.preset_root = defaults.preset_root end
     if defaults.velocity_panel_expanded ~= nil then island_state.velocity_panel_expanded = defaults.velocity_panel_expanded end
     -- Delegate notes + undo/redo init to note-store
     note_store.Init(defaults)
+    -- Delegate preset browser init to preset-store
+    preset_store.Init(defaults)
 end
 
 -- Island active state
@@ -214,27 +205,27 @@ function m.RemoveNoteAtIndex(idx)
     end
 end
 
--- Preset browser state
-function m.GetCurrentDirectory() return island_state.current_directory end
-function m.SetCurrentDirectory(v) island_state.current_directory = v or "" end
-function m.GetPresetRoot() return island_state.preset_root end
-function m.SetPresetRoot(v) island_state.preset_root = v or "" end
-function m.GetPresetTree() return island_state.preset_tree end
-function m.SetPresetTree(t) island_state.preset_tree = t or {} end
-function m.GetPresetFiles() return island_state.preset_files end
-function m.SetPresetFiles(t) island_state.preset_files = t or {} end
-function m.GetSelectedPresetIdx() return island_state.selected_preset_idx end
-function m.SetSelectedPresetIdx(v) island_state.selected_preset_idx = v end
-function m.GetBrowserScroll() return island_state.browser_scroll end
-function m.SetBrowserScroll(v) island_state.browser_scroll = math.max(0, v or 0) end
-function m.GetFolderScroll() return island_state.folder_scroll end
-function m.SetFolderScroll(v) island_state.folder_scroll = math.max(0, v or 0) end
-function m.GetBrowserError() return island_state.browser_error end
-function m.SetBrowserError(v) island_state.browser_error = v end
-function m.GetFavorites() return island_state.favorites end
-function m.SetFavorites(t) island_state.favorites = t or {} end
-function m.GetBookmarks() return island_state.bookmarks end
-function m.SetBookmarks(t) island_state.bookmarks = t or {} end
+-- Preset browser state — delegated to preset-store
+function m.GetCurrentDirectory() return preset_store.GetCurrentDirectory() end
+function m.SetCurrentDirectory(v) preset_store.SetCurrentDirectory(v) end
+function m.GetPresetRoot() return preset_store.GetPresetRoot() end
+function m.SetPresetRoot(v) preset_store.SetPresetRoot(v) end
+function m.GetPresetTree() return preset_store.GetPresetTree() end
+function m.SetPresetTree(t) preset_store.SetPresetTree(t) end
+function m.GetPresetFiles() return preset_store.GetPresetFiles() end
+function m.SetPresetFiles(t) preset_store.SetPresetFiles(t) end
+function m.GetSelectedPresetIdx() return preset_store.GetSelectedPresetIdx() end
+function m.SetSelectedPresetIdx(v) preset_store.SetSelectedPresetIdx(v) end
+function m.GetBrowserScroll() return preset_store.GetBrowserScroll() end
+function m.SetBrowserScroll(v) preset_store.SetBrowserScroll(v) end
+function m.GetFolderScroll() return preset_store.GetFolderScroll() end
+function m.SetFolderScroll(v) preset_store.SetFolderScroll(v) end
+function m.GetBrowserError() return preset_store.GetBrowserError() end
+function m.SetBrowserError(v) preset_store.SetBrowserError(v) end
+function m.GetFavorites() return preset_store.GetFavorites() end
+function m.SetFavorites(t) preset_store.SetFavorites(t) end
+function m.GetBookmarks() return preset_store.GetBookmarks() end
+function m.SetBookmarks(t) preset_store.SetBookmarks(t) end
 
 -- Velocity panel expanded state
 function m.GetVelocityPanelExpanded() return island_state.velocity_panel_expanded end
@@ -292,12 +283,7 @@ function m.ResetNoteDrag()
 end
 
 function m.ClearBrowserState()
-    island_state.current_directory = ""
-    island_state.preset_tree = {}
-    island_state.preset_files = {}
-    island_state.selected_preset_idx = nil
-    island_state.browser_scroll = 0
-    island_state.browser_error = nil
+    preset_store.ClearBrowserState()
 end
 
 -- =========================================================

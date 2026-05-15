@@ -32,6 +32,7 @@
 --   src/state/island.lua
 --   src/state/midi.lua
 --   src/state/note-store.lua
+--   src/state/preset-store.lua
 --   src/state/persist.lua
 --   src/state/sequencer.lua
 --   src/state/ui.lua
@@ -97,6 +98,8 @@ local island_store = require("state.island")
 island_store.Init(config.state)
 local note_store = require("state.note-store")
 -- note_store.Init is called inside island_store.Init(config.state)
+local preset_store = require("state.preset-store")
+preset_store.Init(config.state)
 local preferences_store = require("state.preferences")
 preferences_store.Init(config.state)
 local theme = require("ui.theme")

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz Cordovï¿½
 -- GROVE Scale Runner: Preset Browser
 -- Filesystem-based preset browser for saving/loading island note configurations.
 -- Uses io.* for file I/O and reaper.GetResourcePath() for base directory.
@@ -7,6 +7,7 @@
 
 local config = require("config")
 local island_store = require("state.island")
+local preset_store = require("state.preset-store")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
@@ -43,11 +44,11 @@ local DIVIDER_COLOR = {0.25, 0.25, 0.25, 0.5}
 function browser.Init()
     local ok, root = pcall(reaper.GetResourcePath)
     if not ok or not root then
-        island_store.SetBrowserError("Could not get REAPER resource path")
+        preset_store.SetBrowserError("Could not get REAPER resource path")
         return
     end
     local preset_dir = root .. "/grove-presets"
-    island_store.SetPresetRoot(preset_dir)
+    preset_store.SetPresetRoot(preset_dir)
 
     -- Create directory on first access
     local dir_exists = false
@@ -60,13 +61,13 @@ function browser.Init()
     if not dir_exists then
         local ok3 = pcall(reaper.RecursiveCreateDirectory, preset_dir, 0)
         if not ok3 then
-            island_store.SetBrowserError("Could not create grove-presets directory")
+            preset_store.SetBrowserError("Could not create grove-presets directory")
             return
         end
     end
 
-    island_store.SetCurrentDirectory(preset_dir)
-    island_store.SetBrowserError(nil)
+    preset_store.SetCurrentDirectory(preset_dir)
+    preset_store.SetBrowserError(nil)
     browser.ScanDirectory(preset_dir)
 
     -- Load favorites from persistent storage
@@ -109,11 +110,11 @@ function browser.ScanDirectory(dir_path)
     -- Sort files alphabetically
     table.sort(files, function(a, b) return a.name:lower() < b.name:lower() end)
 
-    island_store.SetPresetTree({path = dir_path, dirs = dirs, files_count = #files})
-    island_store.SetPresetFiles(files)
-    island_store.SetSelectedPresetIdx(nil)
-    island_store.SetBrowserScroll(0)
-    island_store.SetBrowserError(nil)
+    preset_store.SetPresetTree({path = dir_path, dirs = dirs, files_count = #files})
+    preset_store.SetPresetFiles(files)
+    preset_store.SetSelectedPresetIdx(nil)
+    preset_store.SetBrowserScroll(0)
+    preset_store.SetBrowserError(nil)
 end
 
 --- Load favorites from REAPER persistent storage.
@@ -126,14 +127,14 @@ function browser.LoadFavorites()
             for _, path in ipairs(t) do
                 favs[path] = true
             end
-            island_store.SetFavorites(favs)
+            preset_store.SetFavorites(favs)
         end
     end
 end
 
 --- Save favorites to REAPER persistent storage.
 function browser.SaveFavorites()
-    local favs = island_store.GetFavorites()
+    local favs = preset_store.GetFavorites()
     local paths = {}
     for path, _ in pairs(favs) do
         table.insert(paths, path)
@@ -151,13 +152,13 @@ end
 --- @param file_path string
 function browser.ToggleFavorite(file_path)
     if not file_path then return end
-    local favs = island_store.GetFavorites()
+    local favs = preset_store.GetFavorites()
     if favs[file_path] then
         favs[file_path] = nil
     else
         favs[file_path] = true
     end
-    island_store.SetFavorites(favs)
+    preset_store.SetFavorites(favs)
     browser.SaveFavorites()
 end
 
@@ -166,7 +167,7 @@ end
 --- @return boolean
 function browser.IsFavorite(file_path)
     if not file_path then return false end
-    local favs = island_store.GetFavorites()
+    local favs = preset_store.GetFavorites()
     return favs[file_path] == true
 end
 
@@ -225,15 +226,15 @@ function browser.SavePreset(file_path, preset_name)
 
     local ok, f = pcall(io.open, file_path, "w")
     if not ok or not f then
-        island_store.SetBrowserError("Could not write file: " .. tostring(file_path))
+        preset_store.SetBrowserError("Could not write file: " .. tostring(file_path))
         return false
     end
     f:write(content)
     f:close()
 
     -- Refresh file list
-    browser.ScanDirectory(island_store.GetCurrentDirectory())
-    island_store.SetBrowserError(nil)
+    browser.ScanDirectory(preset_store.GetCurrentDirectory())
+    preset_store.SetBrowserError(nil)
     return true
 end
 
@@ -242,23 +243,23 @@ end
 --- @return boolean true on success
 function browser.LoadPreset(file_path)
     if not file_path then
-        island_store.SetBrowserError("No preset selected")
+        preset_store.SetBrowserError("No preset selected")
         return false
     end
 
     local ok, result = pcall(dofile, file_path)
     if not ok then
-        island_store.SetBrowserError("Error loading preset: " .. tostring(result))
+        preset_store.SetBrowserError("Error loading preset: " .. tostring(result))
         return false
     end
 
     if type(result) ~= "table" then
-        island_store.SetBrowserError("Invalid preset file: expected table, got " .. type(result))
+        preset_store.SetBrowserError("Invalid preset file: expected table, got " .. type(result))
         return false
     end
 
     if not result.notes or type(result.notes) ~= "table" then
-        island_store.SetBrowserError("Invalid preset: missing 'notes' array")
+        preset_store.SetBrowserError("Invalid preset: missing 'notes' array")
         return false
     end
 
@@ -278,7 +279,7 @@ function browser.LoadPreset(file_path)
     end
 
     if #valid_notes == 0 then
-        island_store.SetBrowserError("Preset contains no valid notes")
+        preset_store.SetBrowserError("Preset contains no valid notes")
         return false
     end
 
@@ -296,17 +297,17 @@ function browser.LoadPreset(file_path)
         end
     end
 
-    island_store.SetBrowserError(nil)
+    preset_store.SetBrowserError(nil)
     return true
 end
 
 --- Rename the currently selected preset via GetUserInputs() + os.rename().
 --- @return boolean true on success
 function browser.RenamePreset()
-    local files = island_store.GetPresetFiles()
-    local idx = island_store.GetSelectedPresetIdx()
+    local files = preset_store.GetPresetFiles()
+    local idx = preset_store.GetSelectedPresetIdx()
     if not idx or idx < 1 or idx > #files then
-        island_store.SetBrowserError("No preset selected to rename")
+        preset_store.SetBrowserError("No preset selected to rename")
         return false
     end
 
@@ -319,11 +320,11 @@ function browser.RenamePreset()
     -- Sanitize: remove invalid chars and strip .grove extension if user typed it
     new_name = new_name:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
     if #new_name == 0 then
-        island_store.SetBrowserError("Invalid preset name")
+        preset_store.SetBrowserError("Invalid preset name")
         return false
     end
 
-    local dir = island_store.GetCurrentDirectory()
+    local dir = preset_store.GetCurrentDirectory()
     local old_path = entry.path
     local new_path = dir .. "\\" .. new_name .. ".grove"
 
@@ -331,19 +332,19 @@ function browser.RenamePreset()
     local f = io.open(new_path, "r")
     if f then
         f:close()
-        island_store.SetBrowserError("A preset with that name already exists")
+        preset_store.SetBrowserError("A preset with that name already exists")
         return false
     end
 
     local ok, err = os.rename(old_path, new_path)
     if not ok then
-        island_store.SetBrowserError("Could not rename preset: " .. tostring(err or "unknown error"))
+        preset_store.SetBrowserError("Could not rename preset: " .. tostring(err or "unknown error"))
         return false
     end
 
     -- Refresh the file list and clear selection
     browser.ScanDirectory(dir)
-    island_store.SetBrowserError(nil)
+    preset_store.SetBrowserError(nil)
     return true
 end
 
@@ -379,9 +380,9 @@ function browser.DrawActionButtons(x, y, btn_w, h)
     if DrawActionButton(save_x, btn_y, btn_w, h, "SAVE", save_hover) then
         local ret, csv = reaper.GetUserInputs("Save Preset", 1, "Preset name:", "Untitled")
         if ret and csv and #csv > 0 then
-            local dir = island_store.GetCurrentDirectory()
+            local dir = preset_store.GetCurrentDirectory()
             if not dir or #dir == 0 then
-                dir = island_store.GetPresetRoot()
+                dir = preset_store.GetPresetRoot()
             end
             local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove$", "")
             if #filename > 0 then
@@ -404,8 +405,8 @@ function browser.DrawActionButtons(x, y, btn_w, h)
     local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
     if DrawActionButton(load_x, btn_y, btn_w, h, "LOAD", load_hover) then
-        local files = island_store.GetPresetFiles()
-        local idx = island_store.GetSelectedPresetIdx()
+        local files = preset_store.GetPresetFiles()
+        local idx = preset_store.GetSelectedPresetIdx()
         if idx and idx >= 1 and idx <= #files then
             browser.LoadPreset(files[idx].path)
         end
@@ -631,7 +632,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
     -- ===========================
     -- Error banner (if any)
     -- ===========================
-    local err = island_store.GetBrowserError()
+    local err = preset_store.GetBrowserError()
     if err then
         local err_h = 30
         helpers.SetColor(ERROR_COLOR)
@@ -646,7 +647,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
     current_y = current_y + 4
 
     -- Preset count label (below Rename, above divider â€” clearly separated)
-    local files = island_store.GetPresetFiles()
+    local files = preset_store.GetPresetFiles()
     gfx.setfont(1, "Calibri", 9)
     helpers.SetColor(theme.colors.text_dim)
     local hdr = "PRESETS (" .. tostring(#(files or {})) .. ")"
@@ -681,20 +682,20 @@ function browser.DrawPresetBrowser(x, y, w, h)
         -- ===========================
         if left_w > 40 then
             local dirs = {}
-            local tree = island_store.GetPresetTree()
+            local tree = preset_store.GetPresetTree()
             if tree and tree.dirs then
                 dirs = tree.dirs
             end
 
             local nav_result
             local folder_scroll
-            folder_scroll, _, nav_result = DrawFolderList(x + 2, current_y, left_w - 2, content_h, dirs, island_store.GetFolderScroll())
-            island_store.SetFolderScroll(folder_scroll)
+            folder_scroll, _, nav_result = DrawFolderList(x + 2, current_y, left_w - 2, content_h, dirs, preset_store.GetFolderScroll())
+            preset_store.SetFolderScroll(folder_scroll)
 
             if nav_result then
                 local action, path = nav_result:match("^(.-):(.+)$")
                 if action == "navigate" and path then
-                    island_store.SetCurrentDirectory(path)
+                    preset_store.SetCurrentDirectory(path)
                     browser.ScanDirectory(path)
                 end
             end
@@ -704,16 +705,16 @@ function browser.DrawPresetBrowser(x, y, w, h)
         -- Preset list (RIGHT side)
         -- ===========================
         if right_w > 40 then
-            local files = island_store.GetPresetFiles()
-            local scroll = island_store.GetBrowserScroll()
-            local sel_idx = island_store.GetSelectedPresetIdx()
+            local files = preset_store.GetPresetFiles()
+            local scroll = preset_store.GetBrowserScroll()
+            local sel_idx = preset_store.GetSelectedPresetIdx()
 
             local _, list_result = DrawPresetList(right_x, current_y, right_w, content_h, files, scroll, sel_idx)
 
             if list_result then
                 local action, value = list_result:match("^(.-):(.+)$")
                 if action == "select" and value then
-                    island_store.SetSelectedPresetIdx(tonumber(value))
+                    preset_store.SetSelectedPresetIdx(tonumber(value))
                 elseif action == "fav" and value then
                     browser.ToggleFavorite(value)
                 end
@@ -725,7 +726,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
                 local wheel = ui_store.ConsumeMouseWheelDelta()
                 if wheel ~= 0 then
                     local max_scroll = math.max(0, (#files or 0) - math.floor(content_h / ITEM_H))
-                    island_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
+                    preset_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
                 end
             end
         end
@@ -743,10 +744,10 @@ function browser.HandleBrowserWheel(x, y, w, h)
        and gfx.mouse_y >= y and gfx.mouse_y <= y + h then
         local wheel = ui_store.ConsumeMouseWheelDelta()
         if wheel ~= 0 then
-            local scroll = island_store.GetBrowserScroll()
-            local files = island_store.GetPresetFiles()
+            local scroll = preset_store.GetBrowserScroll()
+            local files = preset_store.GetPresetFiles()
             local max_scroll = math.max(0, (#files or 0) - math.floor(h / ITEM_H))
-            island_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
+            preset_store.SetBrowserScroll(math.max(0, math.min(max_scroll, scroll - wheel)))
         end
     end
 end

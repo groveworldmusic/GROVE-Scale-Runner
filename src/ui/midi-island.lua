@@ -6,6 +6,7 @@ local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
 local island_store = require("state.island")
+local preset_store = require("state.preset-store")
 local ui_store = require("state.ui")
 local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
@@ -28,6 +29,9 @@ local _prev_panel_visible = false
 -- Track progression revision
 local _island_progression_revision = -1
 
+-- Guard: preset_browser.Init() should only run once (T3)
+local _preset_init_attempted = false
+
 -- Scrollbar drag states
 local _sb_dragging = false
 local _sb_drag_start_x = 0
@@ -45,8 +49,11 @@ local function DrawPresetPanel(island_x, y, preset_w, h)
 
         local browser_y = y + 4
         local browser_h = h - 4
-        local root = island_store.GetPresetRoot()
-        if not root or #root == 0 then preset_browser.Init() end
+        local root = preset_store.GetPresetRoot()
+        if not _preset_init_attempted then
+            _preset_init_attempted = true
+            if not root or #root == 0 then preset_browser.Init() end
+        end
         preset_browser.DrawPresetBrowser(island_x, browser_y, preset_w, browser_h)
     end
 end
