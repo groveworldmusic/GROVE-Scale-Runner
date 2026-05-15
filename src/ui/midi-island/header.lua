@@ -8,9 +8,9 @@ local components = require("ui.components")
 local island_store = require("state.island")
 local ui_store = require("state.ui")
 local drag_store = require("state.drag")
+local seq_store = require("state.sequencer")
 local midi = require("core.midi")
 local velocity = require("ui.velocity")
-local preset_browser = require("ui.preset-browser")
 
 local m = {}
 
@@ -97,17 +97,17 @@ local function DrawSnapControls(x, b_w, b_h, header_y)
     return stp_x + snap_trip_w
 end
 
---- Draw Tool Mode Row (Pointer, Pencil, Eraser)
+--- Draw Tool Mode Row (Paint, Knife) — Phase 5
 local function DrawToolModeRow(x, b_w, b_h, header_y)
     local tool_btn_w = math.floor(b_w * 0.55)
     local tool_btn_gap = 4
     local tool_x = x
-    local tool_labels = {"→", "✎", "✕"}
-    local tool_hints = {"Pointer (select)", "Pencil (draw notes)", "Eraser (delete notes)"}
+    local tool_labels = {"✎", "✂"}
+    local tool_hints = {"Paint (draw/delete notes)", "Knife (split notes)"}
     local cur_tool = island_store.GetToolMode()
-    local tool_modes = {"pointer", "pencil", "eraser"}
+    local tool_modes = {"paint", "knife"}
 
-    for ti = 1, 3 do
+    for ti = 1, 2 do
         local t_active = cur_tool == tool_modes[ti]
         local tx = tool_x + (ti - 1) * (tool_btn_w + tool_btn_gap)
         local t_hover = gfx.mouse_x >= tx and gfx.mouse_x <= tx + tool_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
@@ -129,7 +129,7 @@ local function DrawToolModeRow(x, b_w, b_h, header_y)
             helpers.DrawTooltip(tool_hints[ti], layout.US(700))
         end
     end
-    return tool_x + (tool_btn_w * 3 + tool_btn_gap * 2)
+    return tool_x + (tool_btn_w * 2 + tool_btn_gap)
 end
 
 function m.DrawHeader(content_w)
@@ -141,7 +141,10 @@ function m.DrawHeader(content_w)
     local main_gap = 6
     local tool_btn_w = math.floor(b_w * 0.55)
     local tool_gap = 2
-    local tools_w = tool_btn_w * 3 + tool_gap * 2
+    local tools_w = tool_btn_w * 2 + tool_gap
+
+    local rl_btn_w = math.floor(b_w)
+    local ps_btn_w = math.floor(b_w * 1.2)
     
     local snap_toggle_w = math.floor(b_w * 0.65)
     local snap_res_w = math.floor(b_w * 0.50)
@@ -149,14 +152,11 @@ function m.DrawHeader(content_w)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w + snap_gap + snap_trip_w
 
-    local action_btn_w = math.floor(b_w * 0.55)
-    local action_gap = 4
-    local actions_w = action_btn_w * 3 + action_gap * 2
-
-    local total_header_w = tools_w + main_gap + b_w + main_gap + b_w + main_gap + actions_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + rl_btn_w + main_gap + rl_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
+    local reload_requested = false
 
-    -- 1. Tools
+    -- 1. Tools (Paint / Knife)
     cur_x = DrawToolModeRow(cur_x, b_w, b_h, header_y) + main_gap
 
     -- 2. MIDI CH
@@ -184,30 +184,85 @@ function m.DrawHeader(content_w)
     cur_x = cur_x + b_w + main_gap
 
     -- 3. PRESETS Toggle
-    local ps_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + b_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local ps_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + ps_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     local ps_active = island_store.GetPresetPanelVisible()
     helpers.SetColor(ps_hover and theme.colors.btn_hover or (ps_active and theme.colors.btn_active or theme.colors.island_bg))
-    components.DrawRoundedRect(cur_x, header_y, b_w, b_h, 10, true)
+    components.DrawRoundedRect(cur_x, header_y, ps_btn_w, b_h, 10, true)
     if ui_store.GetMouseClick() and ps_hover and not drag_store.GetIsDragging() then
         ui_store.ConsumeMouseClick()
         island_store.SetPresetPanelVisible(not ps_active)
     end
     helpers.SetColor(ps_active and theme.colors.text or theme.colors.text_dim)
     gfx.setfont(1, "Calibri", layout.US(1500))
-    local ps_label = "PANEL"
+    local ps_label = "PRESETS"
     local ps_lw, ps_lh = gfx.measurestr(ps_label)
-    gfx.x, gfx.y = cur_x + (b_w - ps_lw)/2, header_y + (b_h - ps_lh)/2
+    gfx.x, gfx.y = cur_x + (ps_btn_w - ps_lw)/2, header_y + (b_h - ps_lh)/2
     gfx.drawstr(ps_label)
     if ps_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip(ps_active and "Hide preset panel" or "Show preset panel", layout.US(700))
     end
-    cur_x = cur_x + b_w + main_gap
+    cur_x = cur_x + ps_btn_w + main_gap
 
-    -- 4. PRESET ACTIONS
-    cur_x = cur_x + preset_browser.DrawActionButtons(cur_x, header_y, action_btn_w, b_h) + main_gap
+    -- 4. RELOAD from Progression (discards manual edits)
+    local rl_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + rl_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local rl_bg = rl_hover and theme.colors.btn_hover or theme.colors.island_bg
+    helpers.SetColor(rl_bg)
+    components.DrawRoundedRect(cur_x, header_y, rl_btn_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and rl_hover and not drag_store.GetIsDragging() then
+        ui_store.ConsumeMouseClick()
+        -- Confirmation popup before discarding edits
+        local ret = reaper.MB("Reload all notes from the progression?\n\nThis will discard any manual edits you made.", "Reload from Progression", 4)
+        if ret == 6 then
+            reload_requested = true
+        end
+    end
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(1500))
+    local rl_label = "RELOAD"
+    local rl_lw, rl_lh = gfx.measurestr(rl_label)
+    gfx.x, gfx.y = cur_x + (rl_btn_w - rl_lw) / 2, header_y + (b_h - rl_lh) / 2
+    gfx.drawstr(rl_label)
+    if rl_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip("Reload notes from progression (discards edits)", layout.US(700))
+    end
+    cur_x = cur_x + rl_btn_w + main_gap
 
-    -- 5. SNAP
+    -- 4b. SYNC to Progression (Phase 4: writes notes back to progression slots)
+    local sync_requested = false
+    local notes_state = island_store.GetNotesState()
+    local has_edits = notes_state == island_store.NOTES_STATE_EDITED
+    local sync_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + rl_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local sync_bg = (sync_hover and has_edits) and theme.colors.btn_hover or (has_edits and theme.colors.island_bg or theme.colors.island_bg)
+    helpers.SetColor(sync_bg)
+    components.DrawRoundedRect(cur_x, header_y, rl_btn_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and sync_hover and has_edits and not drag_store.GetIsDragging() then
+        ui_store.ConsumeMouseClick()
+        sync_requested = true
+    end
+    -- Dim label if no edits to sync
+    if has_edits then
+        helpers.SetColor(theme.colors.text)
+    else
+        helpers.SetColor(theme.colors.text_dim)
+    end
+    gfx.setfont(1, "Calibri", layout.US(1500))
+    local sync_label = "SYNC"
+    local sync_lw, sync_lh = gfx.measurestr(sync_label)
+    gfx.x, gfx.y = cur_x + (rl_btn_w - sync_lw) / 2, header_y + (b_h - sync_lh) / 2
+    gfx.drawstr(sync_label)
+    if sync_hover and not drag_store.GetIsDragging() then
+        if has_edits then
+            helpers.DrawTooltip("Sync notes to progression slots", layout.US(700))
+        else
+            helpers.DrawTooltip("No edits to sync", layout.US(700))
+        end
+    end
+    cur_x = cur_x + rl_btn_w + main_gap
+
+    -- 5. SNAP (preset actions moved to right-click context menu in preset-browser)
     cur_x = DrawSnapControls(cur_x, b_w, b_h, header_y)
+
+    return cur_x, reload_requested, sync_requested
 end
 
 return m
