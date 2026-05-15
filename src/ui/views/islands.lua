@@ -301,7 +301,7 @@ function m.DrawIslands()
         helpers.SetColor(p_col)
         gfx.setfont(1, "Calibri", math.floor(b_h * 0.9))
         local pw, ph = gfx.measurestr(play_icon)
-        gfx.x, gfx.y = play_x + (r - pw) / 2 + 2, r1_y + (b_h - ph) / 2 - 1
+        gfx.x, gfx.y = play_x + (r - pw) / 2 + 1, r1_y + (b_h - ph) / 2 - 1
         gfx.drawstr(play_icon)
         if p_hover and not drag_store.GetIsDragging() then
             helpers.DrawTooltip("Play/Stop progression", layout.US(700))
