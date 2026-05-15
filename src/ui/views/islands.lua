@@ -289,22 +289,20 @@ function m.DrawIslands()
         end
         if ui_store.GetMouseClick() and cc_hover and not drag_store.GetIsDragging() then midi.ToggleModulation() end
         
-        -- PLAY (right, acortado al ancho de MOD)
+        -- PLAY/STOP — Unicode glyphs (same approach as tool icons)
         local is_playing = seq_store.GetIsPlaying()
         local p_hover = gfx.mouse_x >= play_x and gfx.mouse_x <= play_x + r and gfx.mouse_y >= r1_y and gfx.mouse_y <= r1_y + b_h
         local p_bg = is_playing and theme.colors.slot_playing or (p_hover and theme.colors.btn_hover or theme.colors.island_bg)
         helpers.SetColor(p_bg)
         components.DrawRoundedRect(play_x, r1_y, r, b_h, 10, true)
         if ui_store.GetMouseClick() and p_hover and not drag_store.GetIsDragging() then PressOverlay(play_x, r1_y, r, b_h) end
-        local cx, cy = play_x + r/2, r1_y + b_h/2
-        local s = layout.US(1000)
-        if is_playing then
-            helpers.SetColor({0,0,0,0.4})
-            gfx.rect(cx-s/2, cy-s/2, s, s, 1)
-        else
-            helpers.SetColor(theme.colors.slot_playing)
-            gfx.triangle(cx-s/2, cy-s/2, cx-s/2, cy+s/2, cx+s/2, cy)
-        end
+        local play_icon = is_playing and "\226\150\160" or "\226\150\182"  -- ■ U+25A0 or ▶ U+25B6
+        local p_col = is_playing and theme.colors.text or theme.colors.slot_playing
+        helpers.SetColor(p_col)
+        gfx.setfont(1, "Calibri", math.floor(b_h * 0.6))
+        local pw, ph = gfx.measurestr(play_icon)
+        gfx.x, gfx.y = play_x + (r - pw) / 2, r1_y + (b_h - ph) / 2
+        gfx.drawstr(play_icon)
         if p_hover and not drag_store.GetIsDragging() then
             helpers.DrawTooltip("Play/Stop progression", layout.US(700))
         end
