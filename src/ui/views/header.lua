@@ -31,21 +31,13 @@ local function ShowQuickConfigMenu()
     gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
     local choice = gfx.showmenu(m)
     if choice == 1 then
-        config.state.root_index = (prefs.GetRootIndex() % 12) + 1
-        prefs.SetRootIndex(config.state.root_index)
-        persist.Save("root_index", config.state.root_index)
+        prefs.SetRootIndex((prefs.GetRootIndex() % 12) + 1)
     elseif choice == 2 then
-        config.state.scale_index = (prefs.GetScaleIndex() % #config.SCALES) + 1
-        prefs.SetScaleIndex(config.state.scale_index)
-        persist.Save("scale_index", config.state.scale_index)
+        prefs.SetScaleIndex((prefs.GetScaleIndex() % #config.SCALES) + 1)
     elseif choice == 3 then
-        config.state.octave = math.floor((prefs.GetOctave() + 1) % 9)
-        prefs.SetOctave(config.state.octave)
-        persist.Save("octave", config.state.octave)
+        prefs.SetOctave(math.floor((prefs.GetOctave() + 1) % 9))
     elseif choice == 4 then
-        config.state.chord_mode_index = (prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1
-        prefs.SetChordModeIndex(config.state.chord_mode_index)
-        persist.Save("chord_mode_index", config.state.chord_mode_index)
+        prefs.SetChordModeIndex((prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1)
     elseif choice == 5 then
         midi_store.SetUseVelocity(not midi_store.GetUseVelocity())
     elseif choice == 6 then
@@ -121,7 +113,9 @@ function m.DrawHeader()
         local compact_label = (ui_store.GetAutoStartCompact() and "✓ " or "") .. "Iniciar en Vista Mini"
         local reaper_label = (ui_store.GetAutoStartReaper() and "✓ " or "") .. "Iniciar con REAPER"
         local track_label = (ui_store.GetAutoTrackSetup() and "✓ " or "") .. "Auto armar pista al seleccionar"
-        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label
+        local af_label = (prefs.GetAutoFocusEnabled() and "✓ " or " ") .. "Auto-focus al cambiar Slot"
+        local ssh_label = (prefs.GetScaleSnapHighlight() and "✓ " or " ") .. "Scale Snap Grid Highlight"
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label .. "|" .. af_label .. "|" .. ssh_label
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
@@ -163,6 +157,10 @@ function m.DrawHeader()
             ui_store.SetAutoTrackSetup(not ui_store.GetAutoTrackSetup())
             reaper.SetExtState("GROVE_Scale_Runner", "auto_track_setup",
                 ui_store.GetAutoTrackSetup() and "1" or "0", true)
+        elseif choice == 8 then
+            prefs.SetAutoFocusEnabled(not prefs.GetAutoFocusEnabled())
+        elseif choice == 9 then
+            prefs.SetScaleSnapHighlight(not prefs.GetScaleSnapHighlight())
         end
     end
     

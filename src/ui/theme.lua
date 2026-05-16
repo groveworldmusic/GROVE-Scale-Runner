@@ -41,7 +41,7 @@ theme.colors = {
     island_panel_bg = hex2rgb("#242424"),    -- Preset browser panel background (darker than island_bg)
     island_ruler_bg = hex2rgb("#3a3a3a"),    -- Timeline ruler background tint
     island_velocity_bg = hex2rgb("#2a2a2a"), -- Velocity editor background tint
-    island_scrollbar_bg = {0.4, 0.4, 0.4, 0.35}, -- MIDI island scrollbar thumb background
+    island_scrollbar_bg = {0.5, 0.5, 0.5, 1.0}, -- MIDI island scrollbar thumb background
 
     -- Grid hierarchy colors (4-tier: measure, beat, 1/8, 1/16)
     grid_measure = {0.5, 0.5, 0.5, 0.60},     -- Measure lines: alpha 0.60, bold
@@ -61,6 +61,7 @@ theme.colors = {
     -- Scale Highlighting (Phase 5)
     grid_scale_row = {1.0, 1.0, 1.0, 0.03},    -- Very subtle white highlight for scale rows
     grid_black_key_row = {0.0, 0.0, 0.0, 0.15},-- Darker tint for non-scale rows (black keys)
+    grid_scale_snap = {0.30, 0.70, 0.30, 0.40},-- Green highlight for scale-aligned vertical grid lines
     note_ghost = {1.0, 1.0, 1.0, 0.3},         -- Semi-transparent ghost for dragging/resizing
 
     grade_colors = {

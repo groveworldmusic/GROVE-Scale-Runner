@@ -25,6 +25,8 @@ local PREF_KEYS = {
     subdivision_index  = "subdivision_index",
     volume            = { "sequencer", "volume" },
     color_mode        = "color_mode",
+    auto_focus_enabled = "auto_focus_enabled",
+    scale_snap_highlight = "scale_snap_highlight",
 }
 
 local m = {}
