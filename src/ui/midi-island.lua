@@ -45,18 +45,20 @@ local _cached_total_beats = 64
 local _cached_total_beats_valid = false
 local _cached_notes_count = 0
 
--- Auto-focus piano roll: tracks last progression revision that triggered a focus.
--- When the progression revision changes (user adds/edits a slot), the viewport
--- auto-centers on the notes so the island behaves as an inspector.
+-- Tracks last progression revision that was auto-focused.
+-- When revision changes (progression slot added/edited) and toggle is ON,
+-- AutoFocusNotes runs to center the piano roll on all notes.
 local _last_focused_revision = -1
 
--- Pending auto-focus flag: set after progression load/sync, consumed at layout calc.
--- Was leaking as a global (missing `local`) — fixed in PR: revision-isla-midi-bugs.
-local _focus_pending = false
+-- Cached minimum island content height in pixels, captured on first draw.
+-- This prevents the minimum from shifting when gfx.w changes the scale factor.
+-- ToggleIsland() always recreates the window at 720×793, so first draw
+-- captures the correct default height regardless of prior resize.
+local _min_island_px = nil
 
 -- Layout constants (virtual coordinate system, canvas 39914×29162)
 local CANVAS_W = layout.CANVAS_W                       -- Canvas width in virtual units
-local ISLAND_CONTENT_H = 14000                          -- Island content area height
+local ISLAND_CONTENT_H = 14000                              -- Min island height in virtual units (clamped)
 local BTN_TOP_V = 27738                                 -- Button area top Y in virtual coords
 local BTN_Y_OFFSET = 428                                -- Offset from button area top to buttons
 local BTN_H = 1980                                      -- Single button height in virtual coords
@@ -66,6 +68,11 @@ local BTN_GAP_EXTRA = 1422                              -- Extra gap spacing adj
 -- (T3 resolved: preset_browser.Init() is called once at module load)
 
 local THUMB_SIZE = 5  -- Thumb size: 5px in 7px track → 1px margin each side, exact center
+
+-- Window height when MIDI island is expanded (matches gfx-window.lua EXPANDED_H)
+-- Enforced directly in MainLoop via JS_Window_SetPosition after gfx.getchar(),
+-- NOT from within Draw() — window resize events may not trigger a redraw.
+local EXPANDED_H = 793
 
 -- Scrollbar drag states (Phase 5: moved to island_store — kept as local refs for perf, synced on demand)
 -- NOTE: Use island_store.GetSbDragging/SetSbDragging for persistence across island toggle.
@@ -107,33 +114,73 @@ local function AutoFocusNotes(grid_w, pr_h)
     if max_pitch < min_pitch then return end
     if max_beat <= min_beat then max_beat = min_beat + 1 end
 
-    -- Vertical centering
     local PITCH_ROW_H = piano_roll.PITCH_ROW_H
-    local visible_pitches = pr_h / PITCH_ROW_H
+    local MAX_PITCH = piano_roll.MAX_PITCH
+    local MIN_PITCH = piano_roll.MIN_PITCH
+    local pitch_count = max_pitch - min_pitch + 1
+
+    -- Calculamos PITCH_ROW_H para que entren todas las notas + 1 fila de margen
+    -- arriba y 1 abajo (target = count + 2). Ajustamos paridad para que extra sea
+    -- par y los márgenes queden exactamente iguales.
+    -- visible_pitches = floor(pr_h / PITCH_ROW_H) para trabajar con filas completas.
+    local DEFAULT_ROW_H = 16
+    local target_rows = pitch_count + 2
+    local optimal_h = math.floor(pr_h / target_rows)
+    optimal_h = math.max(6, math.min(DEFAULT_ROW_H, optimal_h))
+
+    -- Buscar PITCH_ROW_H que dé extra par (márgenes iguales)
+    local candidates = {optimal_h}
+    if optimal_h > 6 then table.insert(candidates, optimal_h - 1) end
+    if optimal_h < DEFAULT_ROW_H then table.insert(candidates, optimal_h + 1) end
+    for _, h in ipairs(candidates) do
+        local full_rows = math.floor(pr_h / h)
+        if full_rows - pitch_count > 0 and (full_rows - pitch_count) % 2 == 0 then
+            optimal_h = h
+            break
+        end
+    end
+
+    -- Aplicar y recalcular con filas exactas
+    if optimal_h ~= PITCH_ROW_H then
+        piano_roll.SetPitchRowH(optimal_h)
+        PITCH_ROW_H = optimal_h
+    end
+    local full_rows = math.floor(pr_h / PITCH_ROW_H)
+
+    -- Centramos usando SOLO filas completas. Así visible_pitches es entero y
+    -- los cálculos de extra/márgenes son exactos.
+    local visible_pitches = full_rows
     local center_pitch = (min_pitch + max_pitch) / 2
-    local target_scroll_y = center_pitch - visible_pitches / 2
+    local top_pitch = math.min(MAX_PITCH, center_pitch + visible_pitches / 2)
+    local target_scroll_y = math.floor(MAX_PITCH - top_pitch + 0.5)
     local max_scroll = piano_roll.TOTAL_ROWS - visible_pitches
     target_scroll_y = math.max(0, math.min(max_scroll, target_scroll_y))
     island_store.SetScrollOffsetY(target_scroll_y)
 
-    -- Horizontal: fit notes with comfortable margin (80% of grid width)
+    -- Horizontal: zoom para que las notas ocupen todo el ancho del grid,
+    -- desde el primer beat (borde izquierdo) hasta el último (borde derecho).
+    -- Si el zoom excede 200, se clampa (notas más angostas de lo ideal).
+    -- Si es menor a 10, se clampa (notas entran sobradas, sobran bordes).
     local beat_span = max_beat - min_beat
-    local target_zoom_x = grid_w * 0.8 / beat_span
+    local target_zoom_x = grid_w / beat_span
     target_zoom_x = math.max(10, math.min(200, target_zoom_x))
     island_store.SetZoomX(target_zoom_x)
 
-    local center_beat = (min_beat + max_beat) / 2
-    local target_scroll_x = center_beat - (grid_w / target_zoom_x) / 2
-    target_scroll_x = math.max(0, target_scroll_x)
-    island_store.SetScrollOffsetX(target_scroll_x)
+    -- Scroll para que la primera nota arranque en el borde izquierdo del grid.
+    -- Con zoom = grid_w/beat_span, la última nota termina exactamente en el borde derecho.
+    island_store.SetScrollOffsetX(min_beat)
+
+    -- Invalidate visible ranges cache so grid/notes re-render at new zoom/scroll
+    piano_roll.InvalidateVisibleRangesCache()
 end
 
 function m.Draw(char)
     if not island_store.GetMidiIslandExpanded() then
         _island_progression_revision = -1
+        _last_focused_revision = -1
         island_store.ResetScrollbarDragState()
         if island_store.GetLassoActive() then island_store.SetLassoActive(false) end
-        island_store.SetNotesState(island_store.NOTES_STATE_LOADED)  -- Reset state on island close
+        island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
         return
     end
 
@@ -175,14 +222,12 @@ function m.Draw(char)
         _island_progression_revision = seq_store.GetProgressionRevision()
         island_store.ClearSelection()
         _cached_total_beats_valid = false
-        _focus_pending = true
     end
     if sync_requested then
         island_store.SyncNotesToProgression(seq_store, prefs)
         island_store.SetNotesState(island_store.NOTES_STATE_SYNCED)
         _island_progression_revision = seq_store.GetProgressionRevision()
         _cached_total_beats_valid = false
-        _focus_pending = true
     end
 
     -- 3. Layout Calculations
@@ -192,7 +237,10 @@ function m.Draw(char)
     local island_y_v = btn_y_v + b_h + gap_v - BTN_Y_OFFSET
     local y = layout.UY(island_y_v)
     local w = layout.US(CANVAS_W)
-    local h = layout.US(ISLAND_CONTENT_H)
+    if _min_island_px == nil then                           -- Capture minimum on first draw
+        _min_island_px = layout.US(ISLAND_CONTENT_H)
+    end
+    local h = math.max(_min_island_px, gfx.h - y - 10)      -- 10px bottom margin
     
     local SB_SIZE = 7
     local LABEL_W = piano_roll.PITCH_LABEL_W
@@ -206,16 +254,19 @@ function m.Draw(char)
     local base_ve_h = vel_expanded and velocity.EDITOR_H or velocity.COLLAPSED_H
     local pr_y = y + tl_h
     local pr_h_full = h - tl_h - base_ve_h - SB_SIZE
-    local excess = pr_h_full % piano_roll.PITCH_ROW_H
-    local pr_h = pr_h_full - excess
+    -- Give any leftover pixels from the pitch row alignment to pr_h
+    -- so ve_h stays at its fixed base height (PR: midi-island-header-icons)
+    local pr_h = pr_h_full
     local ve_y = pr_y + pr_h
-    local ve_h = base_ve_h + excess
+    local ve_h = base_ve_h
     local sb_y = y + h - SB_SIZE
     local grid_w = right_w - LABEL_W - SB_SIZE
 
-    -- Auto-focus piano roll on notes if pending (after progression load/sync)
-    if _focus_pending then
-        _focus_pending = false
+    -- Auto-focus piano roll on progression revision change (inspector mode).
+    -- Compares last focused revision with current. When they differ (user added/edited
+    -- a progression slot), centers the viewport on all notes. Only runs when toggle is ON.
+    if prefs.GetAutoFocusEnabled() and _island_progression_revision ~= _last_focused_revision then
+        _last_focused_revision = _island_progression_revision
         AutoFocusNotes(grid_w, pr_h)
     end
 
@@ -386,4 +437,11 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
     end
 end
 
+--- Consume deferred window minimum height signal. Called from MainLoop
+--- AFTER gfx.getchar() and DrawFullView, outside the Draw path.
+--- Uses JS_Window_SetPosition to non-destructively constrain the window
+--- height to EXPANDED_H — no gfx.quit()+gfx.init() flicker.
+--- JS_Window_GetRect → (ret, left, top, right, bottom)
+--- JS_Window_SetPosition → (hwnd, left, top, width, height)
+--- Debounced (60ms) to avoid fighting the OS during active drag.
 return m
