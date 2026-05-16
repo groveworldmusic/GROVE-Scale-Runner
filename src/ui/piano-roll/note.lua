@@ -175,8 +175,8 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
                 local gw = od * zoom_x
                 local gh = PITCH_ROW_H
 
-                -- X clip ghost note to grid bounds (PR: revision-isla-midi-bugs)
-                local clip_gx = math.max(x, math.floor(gx))
+                -- X clip ghost note to grid bounds + keyboard strip (PR: revision-isla-midi-bugs)
+                local clip_gx = math.max(x - grid.PITCH_LABEL_W, math.floor(gx))
                 local clip_gw = math.max(1, math.min(gw, x + w - clip_gx))
                 
                 if gy < y + h and gy + gh > y then
@@ -203,8 +203,9 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
             local nw = nd * zoom_x
             local nh = PITCH_ROW_H
 
-            -- X clipping: ensure note doesn't render left of grid or past right edge (PR: revision-isla-midi-bugs)
-            local clip_nx = math.max(x, math.floor(nx))
+            -- X clipping: extend left clip into keyboard strip area so notes
+            -- near the left edge don't abruptly vanish at the grid boundary
+            local clip_nx = math.max(x - grid.PITCH_LABEL_W, math.floor(nx))
             local clip_nw = math.max(1, math.min(nw, x + w - clip_nx))
 
             -- Clip note height to viewport bottom
