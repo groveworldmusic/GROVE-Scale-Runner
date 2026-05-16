@@ -69,7 +69,7 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
                 local label_end = label_x + lw
                 if label_x > last_label_end + 8 then
                     helpers.SetColor(MEASURE_TEXT_COLOR)
-                    gfx.x, gfx.y = label_x, y + h - lh
+                    gfx.x, gfx.y = label_x, y + MEASURE_TICK_H + 2
                     gfx.drawstr(label)
                     last_label_end = label_end
                 end
@@ -186,7 +186,7 @@ function timeline.DrawTimelineRuler(x, y, w, h, grid_h, round_tl)
 
     -- 2. "BEATS" label (drawn directly over the master spine)
     helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", 10)
+    gfx.setfont(1, "Calibri", 13)
     local lw, lh = gfx.measurestr("BEATS")
     gfx.x, gfx.y = x + (LABEL_W - lw) / 2, y + (h - lh) / 2
     gfx.drawstr("BEATS")
