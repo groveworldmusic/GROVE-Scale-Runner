@@ -235,6 +235,7 @@ local function MainLoop()
     sequencer.Run()
     keyboard.HandleKeyboard()
     preferences_store.TickSaveDebounce()
+    sequencer_store.TickVolumeSave()  -- debounced volume persist (slider drag)
 
     -- Compact mode (no GFX window)
     if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
@@ -294,10 +295,13 @@ local function MainLoop()
 
     -- Dirty-flag: set to true when any visual state changes
     if mwd ~= 0 then gfx_needs_redraw = true end
-    -- Always redraw while sequencer is running or timers are active (state changes every frame)
+    -- Always redraw while sequencer is running, notes are dirty, or timers are active (state changes every frame)
     if sequencer_store.GetIsPlaying() then gfx_needs_redraw = true end
     if midi_store.GetActiveNoteDrawTimer() > 0 then gfx_needs_redraw = true end
     if sequencer_store.GetPageOverrideTimer() > 0 then gfx_needs_redraw = true end
+    -- Notes state: force redraw when notes are modified (drag, nudge, undo/redo, paint, knife)
+    -- Tri-state: EDITED and SYNCED both need redraw; LOADED means fresh from progression (no redraw needed for this flag alone).
+    if island_store.GetNotesState() ~= island_store.NOTES_STATE_LOADED then gfx_needs_redraw = true end
 
     local prev_dock = last_dock_state
     CheckDockState()
@@ -317,16 +321,41 @@ local function MainLoop()
 
     ui_store.SetLastMouseCap(gfx.mouse_cap)
 
+    -- Window dimension persistence: poll gfx.w/gfx.h and save on change
+    if gfx.w and gfx.w > 0 and gfx.w ~= ui_store.GetLastWindowW() then
+        ui_store.SetLastWindowW(gfx.w)
+        persist.Save("window_w", gfx.w)
+    end
+    if gfx.h and gfx.h > 0 and gfx.h ~= ui_store.GetLastWindowH() then
+        ui_store.SetLastWindowH(gfx.h)
+        persist.Save("window_h", gfx.h)
+    end
+
     -- Re-check: DrawFullView may have called SwitchViewMode() or midi.ToggleIsland()
     if ui_store.GetViewMode() == config.VIEW_MODES.COMPACT then
         reaper.defer(MainLoop)
         return
     end
-    if midi.midi_island_toggled then
-        midi.midi_island_toggled = false
+    if island_store.GetMidiIslandToggled() then
+        island_store.SetMidiIslandToggled(false)
         gfx_needs_redraw = true  -- window was recreated by gfx.quit()+gfx.init()
         reaper.defer(MainLoop)
         return
+    end
+
+    -- Enforce minimum window height when MIDI island is expanded.
+    -- Uses gfx.quit()+gfx.init() — same reliable pattern as ToggleIsland().
+    -- JS_Window_GetRect returns 5 values: (bool, left, top, right, bottom)
+    -- Run EVERY frame — window may be shrunk while MainLoop is deferred.
+    if island_store.GetMidiIslandExpanded() and gfx.h < 793 then
+        local dock = gfx.dock(-1)
+        local _, l, t, r, b = reaper.JS_Window_GetRect(gfx.hwnd)
+        if l then  -- l = actual left coordinate (second return, truthy when valid)
+            gfx.quit()
+            gfx.init(config.script_title, r - l, 793, dock, l, t)
+            gfx.setfont(1, "Calibri", 16)
+            gfx_needs_redraw = true
+        end
     end
 
     -- Ctrl+D toggle dock
@@ -367,7 +396,19 @@ local function Init()
     persist.Load(config.state)
     preferences_store.SyncFromState(config.state)
 
-    gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
+    -- Load persisted window dimensions from ExtState
+    local ext_win_w = reaper.GetExtState("GROVE_Scale_Runner", "window_w")
+    if ext_win_w ~= "" then
+        local nw = tonumber(ext_win_w)
+        if nw and nw >= 400 then ui_store.SetLastWindowW(nw) end
+    end
+    local ext_win_h = reaper.GetExtState("GROVE_Scale_Runner", "window_h")
+    if ext_win_h ~= "" then
+        local nh = tonumber(ext_win_h)
+        if nh and nh >= 400 then ui_store.SetLastWindowH(nh) end
+    end
+
+    gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", ui_store.GetLastWindowW(), ui_store.GetLastWindowH(), 0, config.state.view_offset_x, config.state.view_offset_y)
     gfx.setfont(1, "Calibri", 16)
 
     -- Load extra auto-start preferences from REAPER ExtState
