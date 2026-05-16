@@ -11,6 +11,7 @@ local drag_store = require("state.drag")
 local seq_store = require("state.sequencer")
 local midi = require("core.midi")
 local velocity = require("ui.velocity")
+local prefs = require("state.preferences")
 
 local m = {}
 
@@ -59,13 +60,18 @@ local function DrawSnapControls(x, b_w, b_h, header_y)
     gfx.x, gfx.y = sr_x + (snap_res_w - rlw) / 2, header_y + (b_h - rlh) / 2
     gfx.drawstr(snap_res_label)
     if ui_store.GetMouseClick() and sr_hover and not drag_store.GetIsDragging() then
-        local res_menu = "1/1|1/2|1/4|1/8|1/16|1/32"
+        local snap_trip = island_store.GetSnapTriplet()
+        local res_menu = "1/1|1/2|1/4|1/8|1/16|1/32||Triplet: " .. (snap_trip and "ON" or "OFF")
         gfx.x, gfx.y = sr_x, header_y + b_h
         local choice = gfx.showmenu(res_menu)
         if choice and choice > 0 then
-            local res_values = {1, 2, 4, 8, 16, 32}
-            island_store.SetSnapResolution(res_values[choice])
-            if not island_store.GetSnapEnabled() then island_store.SetSnapEnabled(true) end
+            if choice <= 6 then
+                local res_values = {1, 2, 4, 8, 16, 32}
+                island_store.SetSnapResolution(res_values[choice])
+                if not island_store.GetSnapEnabled() then island_store.SetSnapEnabled(true) end
+            elseif choice == 8 then
+                island_store.SetSnapTriplet(not snap_trip)
+            end
         end
         ui_store.ConsumeMouseClick()
     end
@@ -73,28 +79,7 @@ local function DrawSnapControls(x, b_w, b_h, header_y)
         helpers.DrawTooltip("Snap resolution: " .. snap_res_label, layout.US(700))
     end
 
-    -- Triplet toggle
-    local stp_x = sr_x + snap_res_w + snap_gap
-    local stp_hover = gfx.mouse_x >= stp_x and gfx.mouse_x <= stp_x + snap_trip_w
-                  and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
-    local stp_bg = snap_trip and theme.colors.btn_active or (stp_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    helpers.SetColor(stp_bg)
-    components.DrawRoundedRect(stp_x, header_y, snap_trip_w, b_h, 10, true)
-    helpers.SetColor(snap_trip and theme.colors.text or theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1300))
-    local trip_label = snap_trip and "3" or "·"
-    local tlw2, tlh2 = gfx.measurestr(trip_label)
-    gfx.x, gfx.y = stp_x + (snap_trip_w - tlw2) / 2, header_y + (b_h - tlh2) / 2
-    gfx.drawstr(trip_label)
-    if ui_store.GetMouseClick() and stp_hover and not drag_store.GetIsDragging() then
-        island_store.SetSnapTriplet(not snap_trip)
-        ui_store.ConsumeMouseClick()
-    end
-    if stp_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip(snap_trip and "Triplet: ON" or "Triplet: OFF", layout.US(700))
-    end
-
-    return stp_x + snap_trip_w
+    return sr_x + snap_res_w
 end
 
 --- Draw Tool Mode Row (Paint, Knife) — Phase 5
@@ -148,10 +133,8 @@ function m.DrawHeader(content_w)
     
     local snap_toggle_w = math.floor(b_w * 0.65)
     local snap_res_w = math.floor(b_w * 0.50)
-    local snap_trip_w = math.floor(b_w * 0.35)
     local snap_gap = 4
-    local snap_w = snap_toggle_w + snap_gap + snap_res_w + snap_gap + snap_trip_w
-
+    local snap_w = snap_toggle_w + snap_gap + snap_res_w
     local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + rl_btn_w + main_gap + rl_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
