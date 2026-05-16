@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Preset Browser
 -- Filesystem-based preset browser for saving/loading island note configurations.
 -- Uses io.* for file I/O and reaper.GetResourcePath() for base directory.
@@ -7,6 +7,7 @@
 
 local config = require("config")
 local island_store = require("state.island")
+local note_store = require("state.note-store")
 local preset_store = require("state.preset-store")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
@@ -335,7 +336,7 @@ function browser.LoadPreset(file_path)
                 duration = n.duration or 4,
                 velocity = n.velocity or 100,
                 muted = n.muted == true,
-                uuid = island_store.AllocNoteUUID(),
+                uuid = note_store.AllocNoteUUID(),
             })
         end
     end
@@ -346,7 +347,7 @@ function browser.LoadPreset(file_path)
     end
 
     island_store.SetNotes(valid_notes)
-    island_store.ClearUndoStacks()
+    note_store.ClearUndoStacks()
 
     -- v2 format: restore progression and context for full state reconstruction
     if result.version and result.version >= 2 then
@@ -666,12 +667,22 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, la
             end
             -- Show context menu at cursor position
             local dir = preset_store.GetCurrentDirectory()
-            local choice = gfx.showmenu("Rename|Duplicate|Delete|Show in Explorer")
+            local choice = gfx.showmenu("Load|Rename|Duplicate|Delete|Show in Explorer")
             if choice and choice > 0 then
                 if choice == 1 then
+                    -- Load selected preset
+                    local files = preset_store.GetPresetFiles()
+                    local idx = preset_store.GetSelectedPresetIdx()
+                    if idx and idx >= 1 and idx <= #files then
+                        if browser.LoadPreset(files[idx].path) then
+                            island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
+                            island_store.ClearSelection()
+                        end
+                    end
+                elseif choice == 2 then
                     -- Rename
                     browser.RenamePreset()
-                elseif choice == 2 then
+                elseif choice == 3 then
                     -- Duplicate: copy file with _copy.grove suffix
                     local path = entry.path
                     if path then
@@ -694,7 +705,7 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, la
                             preset_store.SetBrowserError("Could not duplicate preset")
                         end
                     end
-                elseif choice == 3 then
+                elseif choice == 4 then
                     -- Delete: prompt then remove
                     local ret = reaper.MB("Delete preset \"" .. entry.name .. "\"?", "Delete Preset", 4) -- 4 = Yes/No
                     if ret == 6 then -- 6 = Yes
@@ -706,7 +717,7 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, la
                             preset_store.SetBrowserError("Could not delete preset: " .. tostring(err or "unknown error"))
                         end
                     end
-                elseif choice == 4 then
+                elseif choice == 5 then
                     -- Show in Explorer
                     local path = entry.path
                     if path then

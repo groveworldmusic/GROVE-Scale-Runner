@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Views — Docked Transport Bar
 -- DrawDockedTransportBar: compact 50px horizontal strip.
 -- Extracted from views.lua (Sprint 2).
@@ -12,7 +12,7 @@ local prefs = require("state.preferences")
 local theme = require("ui.theme")
 local components = require("ui.components")
 local helpers = require("ui.helpers")
-local persist = require("state.persist")
+-- persist removed; prefs.SetKey marks dirty_key, TickSaveDebounce() flushes
 local sequencer = require("core.sequencer")
 local progression = require("core.progression")
 local gfx_safe = require("ui.gfx-safe")
@@ -33,9 +33,7 @@ function m.DrawDockedTransportBar(dock_w, dock_h)
 
     -- [ROOT] button - cycles through root notes
     if components.DrawTransportButton(config.NOTE_NAMES[api_guard.ClampIndex(prefs.GetRootIndex(), 1, 12)], x_pos, btn_y, btn_w, btn_h) then
-        config.state.root_index = (prefs.GetRootIndex() % 12) + 1
-        prefs.SetRootIndex(config.state.root_index)
-        persist.Save("root_index", config.state.root_index)
+        prefs.SetRootIndex((prefs.GetRootIndex() % 12) + 1)
     end
     x_pos = x_pos + btn_w + gap
 
@@ -43,25 +41,19 @@ function m.DrawDockedTransportBar(dock_w, dock_h)
     local si_dt = api_guard.ClampIndex(prefs.GetScaleIndex(), 1, #config.SCALES)
     local scale_abbr = helpers.AbbreviateScale(config.SCALES[si_dt].name)
     if components.DrawTransportButton(scale_abbr, x_pos, btn_y, btn_w + 20, btn_h) then
-        config.state.scale_index = (prefs.GetScaleIndex() % #config.SCALES) + 1
-        prefs.SetScaleIndex(config.state.scale_index)
-        persist.Save("scale_index", config.state.scale_index)
+        prefs.SetScaleIndex((prefs.GetScaleIndex() % #config.SCALES) + 1)
     end
     x_pos = x_pos + btn_w + 20 + gap
 
     -- [OCT−] button
     if components.DrawTransportButton("−", x_pos, btn_y, 30, btn_h) then
-        config.state.octave = math.floor(math.max(0, prefs.GetOctave() - 1))
-        prefs.SetOctave(config.state.octave)
-        persist.Save("octave", config.state.octave)
+        prefs.SetOctave(math.floor(math.max(0, prefs.GetOctave() - 1)))
     end
     x_pos = x_pos + 30 + gap
 
     -- [OCT+] button
     if components.DrawTransportButton("+", x_pos, btn_y, 30, btn_h) then
-        config.state.octave = math.floor(math.min(8, prefs.GetOctave() + 1))
-        prefs.SetOctave(config.state.octave)
-        persist.Save("octave", config.state.octave)
+        prefs.SetOctave(math.floor(math.min(8, prefs.GetOctave() + 1)))
     end
     x_pos = x_pos + 30 + gap
 
@@ -69,9 +61,7 @@ function m.DrawDockedTransportBar(dock_w, dock_h)
     local ci_dt = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     local chord_label = config.CHORD_MODES[ci_dt].name
     if components.DrawTransportButton(chord_label, x_pos, btn_y, btn_w, btn_h) then
-        config.state.chord_mode_index = (prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1
-        prefs.SetChordModeIndex(config.state.chord_mode_index)
-        persist.Save("chord_mode_index", config.state.chord_mode_index)
+        prefs.SetChordModeIndex((prefs.GetChordModeIndex() % #config.CHORD_MODES) + 1)
     end
     x_pos = x_pos + btn_w + gap
 
@@ -122,7 +112,7 @@ function m.DrawDockedTransportBar(dock_w, dock_h)
         ui_store.SetDockedMode(false)
         ui_store.SetDockId(0)
         -- Resize back to normal window
-        gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, config.state.view_offset_x, config.state.view_offset_y)
+        gfx_safe.SafeGfxInit("GROVE SCALE RUNNER", 720, 497, 0, ui_store.GetViewOffsetX(), ui_store.GetViewOffsetY())
     end
 end
 

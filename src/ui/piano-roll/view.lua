@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll View Coordinator
 -- DrawPianoRoll entry point: computes visible ranges, calls grid/note/lasso.
 -- Extracted from piano-roll.lua barrel (PR1b).
@@ -30,6 +30,8 @@ function m.DrawPianoRoll(x, y, w, h)
     local scroll_x = island_store.GetScrollOffsetX()
     local zoom_x = island_store.GetZoomX()
     local LABEL_W = grid.PITCH_LABEL_W
+    local grid_x = x + LABEL_W
+    local grid_w = w - LABEL_W
 
     -- Compute visible ranges ONCE per frame (shared between grid + notes, P5-05)
     -- Use grid_w (not w) so beat_end doesn't overestimate visible beats (CVR fix, PR: revision-isla-midi-bugs)
@@ -41,8 +43,6 @@ function m.DrawPianoRoll(x, y, w, h)
     local clamped_scroll_y = math.max(0, math.min(max_scroll, scroll_y))
 
     -- Draw grid (to the right of labels)
-    local grid_x = x + LABEL_W
-    local grid_w = w - LABEL_W
     if grid_w <= 0 then return end
 
     grid.DrawPianoRollGrid(grid_x, y, grid_w, h, clamped_scroll_y, scroll_x, zoom_x,

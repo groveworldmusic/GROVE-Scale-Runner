@@ -13,6 +13,7 @@ local midi = require("core.midi")
 local velocity = require("ui.velocity")
 local prefs = require("state.preferences")
 local preset_browser = require("ui.preset-browser")
+local preset_store = require("state.preset-store")
 
 local m = {}
 
@@ -136,7 +137,7 @@ function m.DrawHeader(content_w)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w
-    local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
 
@@ -203,40 +204,14 @@ function m.DrawHeader(content_w)
             end
         end
     end
-    helpers.SetColor(theme.colors.text)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local sv_label = "💾"
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(2400))
+    local sv_label = "\226\135\147"  -- ↓ (U+21D3) save / download arrow
     local sv_lw, sv_lh = gfx.measurestr(sv_label)
-    gfx.x, gfx.y = cur_x + (icon_btn_w - sv_lw) / 2, header_y + (b_h - sv_lh) / 2
+    gfx.x, gfx.y = cur_x + (icon_btn_w - sv_lw) / 2, header_y + (b_h - sv_lh) / 2 - 2
     gfx.drawstr(sv_label)
     if save_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip("Save notes as preset file", layout.US(700))
-    end
-    cur_x = cur_x + icon_btn_w + main_gap
-
-    -- 5. LOAD preset from file
-    local ld_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
-    helpers.SetColor(ld_hover and theme.colors.btn_hover or theme.colors.island_bg)
-    components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)
-    if ui_store.GetMouseClick() and ld_hover and not drag_store.GetIsDragging() then
-        ui_store.ConsumeMouseClick()
-        local files = preset_store.GetPresetFiles()
-        local idx = preset_store.GetSelectedPresetIdx()
-        if idx and idx >= 1 and idx <= #files then
-            if preset_browser.LoadPreset(files[idx].path) then
-                island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
-                island_store.ClearSelection()
-            end
-        end
-    end
-    helpers.SetColor(theme.colors.text)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local ld_label = "📂"
-    local ld_lw, ld_lh = gfx.measurestr(ld_label)
-    gfx.x, gfx.y = cur_x + (icon_btn_w - ld_lw) / 2, header_y + (b_h - ld_lh) / 2
-    gfx.drawstr(ld_label)
-    if ld_hover and not drag_store.GetIsDragging() then
-        helpers.DrawTooltip("Load selected preset file", layout.US(700))
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
@@ -254,17 +229,17 @@ function m.DrawHeader(content_w)
         end
     end
     helpers.SetColor(theme.colors.text_dim)
-    gfx.setfont(1, "Calibri", layout.US(1500))
-    local rl_label = "\226\135\187"  -- ↻ (U+21BB)
+    gfx.setfont(1, "Calibri", layout.US(2400))
+    local rl_label = "\226\134\186"  -- ↺ (U+21BA anticlockwise)
     local rl_lw, rl_lh = gfx.measurestr(rl_label)
-    gfx.x, gfx.y = cur_x + (icon_btn_w - rl_lw) / 2, header_y + (b_h - rl_lh) / 2
+    gfx.x, gfx.y = cur_x + (icon_btn_w - rl_lw) / 2, header_y + (b_h - rl_lh) / 2 - 4
     gfx.drawstr(rl_label)
     if rl_hover and not drag_store.GetIsDragging() then
         helpers.DrawTooltip("Reload notes from progression (discards edits)", layout.US(700))
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
-    -- 6b. SYNC to Progression (writes notes back to progression slots)
+    -- 7. SYNC to Progression (writes notes back to progression slots)
     local sync_requested = false
     local notes_state = island_store.GetNotesState()
     local has_edits = notes_state == island_store.NOTES_STATE_EDITED
@@ -282,10 +257,10 @@ function m.DrawHeader(content_w)
     else
         helpers.SetColor(theme.colors.text_dim)
     end
-    gfx.setfont(1, "Calibri", layout.US(1500))
+    gfx.setfont(1, "Calibri", layout.US(2400))
     local sync_label = "\226\135\132"  -- ⇄ (U+21C4)
     local sync_lw, sync_lh = gfx.measurestr(sync_label)
-    gfx.x, gfx.y = cur_x + (icon_btn_w - sync_lw) / 2, header_y + (b_h - sync_lh) / 2
+    gfx.x, gfx.y = cur_x + (icon_btn_w - sync_lw) / 2, header_y + (b_h - sync_lh) / 2 - 3
     gfx.drawstr(sync_label)
     if sync_hover and not drag_store.GetIsDragging() then
         if has_edits then
@@ -296,7 +271,7 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
-    -- 7. SNAP controls
+    -- 8. SNAP controls
     cur_x = DrawSnapControls(cur_x, b_w, b_h, header_y)
 
     return cur_x, reload_requested, sync_requested

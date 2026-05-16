@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Mouse Interception
 -- WM_LBUTTONDOWN/WM_RBUTTONDOWN routing and zone hit-testing.
 -- Exports ProcessMouseInterception (called from main.lua's MainLoop)
@@ -61,19 +61,21 @@ function m.ProcessMouseInterception()
         intercept_active_l = true
     end
 
-    -- Right-click intercept (dynamic, passthrough=false — transport does NOT get the click)
-    if is_on_bar and not intercept_active_r then
-        reaper.JS_WindowMessage_Intercept(hwnd, "WM_RBUTTONDOWN", false)
-        intercept_active_r = true
-    elseif not is_on_bar and intercept_active_r then
-        reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
-        intercept_active_r = false
-    end
-
-    -- Post-menu guard: ignore clicks within 200ms of context menu dismissal
+    -- Post-menu guard: compute early so both intercept setup and processing use it
     local now = reaper.time_precise()
     local compact_menu = require("ui.compact-menu")
     local post_menu = (now - compact_menu.GetMenuDismissTime()) < 0.2
+
+    -- Right-click intercept (dynamic, passthrough=false — transport does NOT get the click)
+    -- Issue B4: do NOT intercept right-click during post-menu guard window (200ms after menu dismissal)
+    -- so the native transport context menu works when the user clicks rapidly after menu dismiss.
+    if is_on_bar and not intercept_active_r and not post_menu then
+        reaper.JS_WindowMessage_Intercept(hwnd, "WM_RBUTTONDOWN", false)
+        intercept_active_r = true
+    elseif (not is_on_bar or post_menu) and intercept_active_r then
+        reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
+        intercept_active_r = false
+    end
 
     -- Process left-click
     local l_peak, _, l_time = reaper.JS_WindowMessage_Peek(hwnd, "WM_LBUTTONDOWN")
@@ -109,8 +111,14 @@ function m.ProcessMouseInterception()
                         reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
                         intercept_active_r = false
                     end
-                    local compact_menu = require("ui.compact-menu")
                     compact_menu.ShowContextMenu()
+                else
+                    -- Passthrough zone: right-click outside restore/content → release intercept
+                    -- so REAPER handles the right-click natively (transport context menu).
+                    if intercept_active_r then
+                        reaper.JS_WindowMessage_Release(hwnd, "WM_RBUTTONDOWN")
+                        intercept_active_r = false
+                    end
                 end
             end
         end

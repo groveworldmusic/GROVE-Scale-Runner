@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Keyboard Handling — VKeys intercept, focus detection, key dispatch
 local config = require("config")
 local midi = require("core.midi")
@@ -7,6 +7,7 @@ local midi_store = require("state.midi")
 local sequencer = require("core.sequencer")
 local api_guard = require("core.api-guard")
 local prefs = require("state.preferences")
+local ui_store = require("state.ui")
 
 local keyboard = {}
 
@@ -67,8 +68,8 @@ function keyboard.IsPluginOrScriptFocused()
     local hwnd = reaper.JS_Window_GetFocus()
     if not hwnd then return false end
     
-    -- Our own script window has focus
-    if hwnd == gfx.hwnd then return true end
+    -- Our own script window has focus (only valid in FULL mode; gfx.hwnd is stale after COMPACT gfx.quit())
+    if ui_store.GetViewMode() == config.VIEW_MODES.FULL and hwnd == gfx.hwnd then return true end
     
     -- GetFocusedFX2() retval bitmask:
     --   bit 1 (& 1): track FX is focused
@@ -88,7 +89,7 @@ end
 
 function keyboard.CheckFocus()
     local now = reaper.time_precise()
-    if now - last_focus_check > 0.2 then  -- ~3 frames at 60fps, matches REAPER's typical defer cycle
+    if now - last_focus_check > 0.1 then  -- ~6 frames at 60fps; halved from 0.2s to reduce stuck-note window on alt-tab
         last_focus_check = now
         
         local should_intercept = keyboard.IsPluginOrScriptFocused()
@@ -102,7 +103,7 @@ function keyboard.CheckFocus()
             -- Stop sequencer FIRST, then silence MIDI notes (Issue 22):
             -- Stop() sends per-note note-offs and resets playback state.
             sequencer.Stop()
-            midi.AllNotesOff()
+            midi.AllNotesOff(true)  -- Issue B2: force=true so note-offs bypass sustain/ref-count gate on focus loss
         end
     end
 end

@@ -1,26 +1,54 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 local config = require("config")
-local compact_store = require("state.compact")
 local sequencer_store = require("state.sequencer")
 local midi_store = require("state.midi")
 local prefs = require("state.preferences")
-local ui_store = require("state.ui")
-local island_store = require("state.island")
 local api_guard = require("core.api-guard")
-local persist = require("state.persist")
 -- NOTE: do NOT require core.sequencer here — creates circular dependency (sequencer → midi → sequencer)
-local COLLAPSED_H = 497
-local EXPANDED_H = 793
 local midi = {}
 
 -- MIDI state fields (moved from config.state)
-midi.midi_island_expanded = false
+-- midi_island_expanded/ toggled migrated to island_store (PR: midi-island-critical-fixes)
 midi.midi_channel = 1
-midi.midi_island_toggled = false
+
+-- MIDI CC Modulation (Feature 4)
+midi._modulation_value = 0
+
+-- Sustain Pedal (Feature 5)
+midi._sustain_held = false
+midi._pending_note_offs = {}
 
 function midi.GetMidiChannel() return midi.midi_channel end
 function midi.SetMidiChannel(v) midi.midi_channel = v end
+
+-- Modulation Wheel (CC 1)
+function midi.GetModulation() return midi._modulation_value end
+function midi.SetModulation(v)
+    midi._modulation_value = math.max(0, math.min(127, v))
+    reaper.StuffMIDIMessage(midi.midi_channel - 1, 0xB0, 1, midi._modulation_value)
+end
+function midi.ToggleModulation()
+    if midi._modulation_value > 0 then
+        midi.SetModulation(0)
+    else
+        midi.SetModulation(80)
+    end
+end
+
+-- Sustain Pedal (CC 64)
+function midi.GetSustain() return midi._sustain_held end
+function midi.SetSustain(held)
+    midi._sustain_held = held
+    reaper.StuffMIDIMessage(midi.midi_channel - 1, 0xB0, 64, held and 127 or 0)
+    if not held then
+        -- Flush all pending note-offs
+        for _, note in ipairs(midi._pending_note_offs) do
+            reaper.StuffMIDIMessage(midi.midi_channel - 1, 0x80, note, 0)
+        end
+        midi._pending_note_offs = {}
+    end
+end
 
 function midi.GetMidiNote(root_idx, scale_idx, degree_idx, octave_val)
     local root = (api_guard.ClampIndex(root_idx, 1, 12) or root_idx) - 1
@@ -59,7 +87,12 @@ function midi.SendMidi(note, on, velocity, force)
                 midi_store.SetActiveNote(note, cur)
             end
             if cur <= 0 or force then
-                reaper.StuffMIDIMessage(ch, 0x80, note, 0)
+                if midi._sustain_held and not force then
+                    -- Sustain is on: defer note-off until sustain is released
+                    table.insert(midi._pending_note_offs, note)
+                else
+                    reaper.StuffMIDIMessage(ch, 0x80, note, 0)
+                end
             end
         end
     end
@@ -139,6 +172,14 @@ function midi.AllNotesOff(force)
     
     midi_store.ClearActiveNotes()
     
+    -- Flush any pending sustain note-offs
+    if midi._pending_note_offs and #midi._pending_note_offs > 0 then
+        for _, pn in ipairs(midi._pending_note_offs) do
+            reaper.StuffMIDIMessage(midi.midi_channel - 1, 0x80, pn, 0)
+        end
+        midi._pending_note_offs = {}
+    end
+    
     -- NOTE: sequencer.Stop() is called at each AllNotesOff call site in main.lua
     -- to avoid circular dependency (sequencer → midi → sequencer)
 end
@@ -204,39 +245,6 @@ function midi.ExportToMidi()
     reaper.MIDI_Sort(take)
     reaper.UpdateArrange()
     reaper.Undo_EndBlock("Export MIDI", -1)
-end
-
--- Toggle the MIDI island expanded/collapsed state (moved from ui/views.lua)
--- Resizes window via gfx.quit()+gfx.init(). Docked mode is not supported.
--- Saves pre-toggle state to island_store for resilience (PR1b).
-function midi.ToggleIsland()
-    if ui_store.GetDockedMode() then return end
-    midi.midi_island_expanded = not midi.midi_island_expanded
-    midi.midi_island_toggled = true
-    local dock = gfx.dock(-1)
-    local gs = compact_store.GetLastGfxState()
-    local hwnd = gfx.hwnd
-    
-    if hwnd then
-        local l, t, r, b = reaper.JS_Window_GetRect(hwnd)
-        gs.x, gs.y = l, t
-        -- Persist to config.state so it's saved across sessions
-        config.state.view_offset_x = l
-        config.state.view_offset_y = t
-        persist.Save("view_offset_x", l)
-        persist.Save("view_offset_y", t)
-        
-        -- Save to island_store for resilience across toggle
-        island_store.SetPreToggleDock(dock)
-        island_store.SetPreToggleRect({x = l, y = t})
-    end
-    
-    island_store.SetIslandTransitioning(true)
-    local new_h = midi.midi_island_expanded and EXPANDED_H or COLLAPSED_H
-    gfx.quit()
-    gfx.init(config.script_title, 720, new_h, dock, config.state.view_offset_x, config.state.view_offset_y)
-    gfx.setfont(1, "Calibri", 16)
-    island_store.SetIslandTransitioning(false)
 end
 
 return midi

@@ -46,12 +46,15 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
         local gr, gg, gb = gfx.r, gfx.g, gfx.b
         local a = gfx.a
         if a >= 0.99 then
-            -- Opaque fast path: use overlapping geometry (unnoticeable)
+            -- Opaque fast path: +1 overshoot on rects prevents 1px seams at
+            -- rect-circle boundaries. REAPER gfx.circle anti-aliasing leaves
+            -- gaps when two shapes meet at an exact edge — the overshoots
+            -- make rects overlap circles by 1px, filling those gaps.
             gfx.circle(x + r, y + r, r, 1, 1)
             gfx.circle(x + w - r, y + r, r, 1, 1)
             gfx.circle(x + r, y + h - r, r, 1, 1)
             gfx.circle(x + w - r, y + h - r, r, 1, 1)
-            gfx.rect(x, y + r, w, math.max(0, h - r * 2) + 1, 1)
+            gfx.rect(x, y + r, w + 1, math.max(0, h - r * 2) + 1, 1)
             gfx.rect(x + r, y, math.max(0, w - r * 2) + 1, r + 1, 1)
             gfx.rect(x + r, y + h - r, math.max(0, w - r * 2) + 1, r + 1, 1)
         else
@@ -71,6 +74,8 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
             gfx.rect(0, 0, rw, rh, 1)
             
             -- 2. DRAW SHAPE (at 2x scale)
+            -- Same +1 overshoot as opaque path (harmless here: the blit below
+            -- reads only bw/bh pixels, so extras are discarded).
             gfx.set(gr, gg, gb, 1.0)
             local br = r * 2
             local bw, bh = w * 2, h * 2
@@ -78,7 +83,7 @@ function components.DrawRoundedRect(x, y, w, h, r, fill)
             gfx.circle(bw - br, br, br, 1, 1)
             gfx.circle(br, bh - br, br, 1, 1)
             gfx.circle(bw - br, bh - br, br, 1, 1)
-            gfx.rect(0, br, bw, math.max(0, bh - br * 2) + 1, 1)
+            gfx.rect(0, br, bw + 1, math.max(0, bh - br * 2) + 1, 1)
             gfx.rect(br, 0, math.max(0, bw - br * 2) + 1, br + 1, 1)
             gfx.rect(br, bh - br, math.max(0, bw - br * 2) + 1, br + 1, 1)
             
@@ -114,12 +119,12 @@ function components.DrawRoundedRectEx(x, y, w, h, r, corners)
 
     local a = gfx.a
     if a >= 0.99 then
-        -- Opaque fast path
+        -- Opaque fast path: +1 overshoot prevents 1px GFX seam artifacts
         if tl then gfx.circle(x + r, y + r, r, 1, 1) end
         if tr then gfx.circle(x + w - r, y + r, r, 1, 1) end
         if bl then gfx.circle(x + r, y + h - r, r, 1, 1) end
         if br then gfx.circle(x + w - r, y + h - r, r, 1, 1) end
-        gfx.rect(x, y + r, w, math.max(0, h - r * 2) + 1, 1)
+        gfx.rect(x, y + r, w + 1, math.max(0, h - r * 2) + 1, 1)
         gfx.rect(x + r, y, math.max(0, w - r * 2) + 1, r + 1, 1)
         gfx.rect(x + r, y + h - r, math.max(0, w - r * 2) + 1, r + 1, 1)
         if not tl then gfx.rect(x, y, r, r, 1) end
@@ -143,6 +148,7 @@ function components.DrawRoundedRectEx(x, y, w, h, r, corners)
         gfx.rect(0, 0, rw, rh, 1)
         
         -- 2. DRAW SELECTIVE SHAPE (at 2x scale)
+        -- +1 overshoot matches opaque path; harmless here (blit clips to bw/bh)
         gfx.set(gr, gg, gb, 1.0)
         local brr = r * 2
         local bw, bh = w * 2, h * 2
@@ -150,7 +156,7 @@ function components.DrawRoundedRectEx(x, y, w, h, r, corners)
         if tr then gfx.circle(bw - brr, brr, brr, 1, 1) end
         if bl then gfx.circle(brr, bh - brr, brr, 1, 1) end
         if br then gfx.circle(bw - brr, bh - brr, brr, 1, 1) end
-        gfx.rect(0, brr, bw, math.max(0, bh - brr * 2) + 1, 1)
+        gfx.rect(0, brr, bw + 1, math.max(0, bh - brr * 2) + 1, 1)
         gfx.rect(brr, 0, math.max(0, bw - brr * 2) + 1, brr + 1, 1)
         gfx.rect(brr, bh - brr, math.max(0, bw - brr * 2) + 1, brr + 1, 1)
         if not tl then gfx.rect(0, 0, brr, brr, 1) end

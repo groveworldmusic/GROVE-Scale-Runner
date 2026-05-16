@@ -2,7 +2,7 @@
 
 ## Purpose
 
-State store init, window lifecycle, and toggle behavior for the island.
+State store init, window lifecycle, and toggle behavior for the island. Expanded header toolbar with icon-based RELOAD/SYNC buttons, SAVE/LOAD preset controls, and window position persistence across collapse/expand cycles.
 
 ## Overview
 
@@ -113,6 +113,102 @@ The store MUST declare `local MAX_UNDO = 50`.
 - WHEN expanded, height SHALL match the layout constant
 - WHEN collapsed, height SHALL match the header constant
 
+### Requirement: Dynamic Island Content Height
+
+The island content pixel height `h` in `m.Draw()` SHALL be computed from available window vertical space instead of a fixed virtual constant. A minimum-height guard SHALL prevent island collapse below the original expanded height.
+
+The system MUST compute `h` as `math.max(MIN_ISLAND_H, gfx.h - y - 10)`, where:
+- `MIN_ISLAND_H` is `layout.US(ISLAND_CONTENT_H)` — the original expanded island height in pixels
+- `ISLAND_CONTENT_H = 14000` is a virtual-coordinate constant used as minimum reference
+- `gfx.h` is the current REAPER GFX window height
+- `y` is the pixel-space top edge of the island content area
+- `10` is the bottom margin in pixels
+
+The internal pixel layout (timeline 30px → piano roll → velocity editor 10–100px → scrollbar 7px) SHALL distribute the dynamic height without modification — the piano roll receives all remaining height after subtracting fixed sub-component sizes.
+
+#### Scenario: Island grows with vertical window resize
+
+- GIVEN the REAPER window height is 793px and the island is expanded
+- WHEN the user stretches the window to 1000px
+- THEN island height `h` SHALL be approximately `1000 - y - 10` pixels
+- AND the piano roll SHALL display proportionally more visible pitch rows
+
+#### Scenario: Minimum height guard prevents collapse
+
+- GIVEN a very short window (e.g., 400px total height)
+- WHEN the island is expanded
+- THEN `h` SHALL be at least `MIN_ISLAND_H` pixels (`math.max(MIN_ISLAND_H, gfx.h - y - 10)`)
+- AND all sub-components SHALL render within that minimum height
+
+#### Scenario: Sub-component layout unaffected
+
+- GIVEN the island height changes dynamically
+- WHEN the new height is applied
+- THEN timeline SHALL remain 30px, velocity editor SHALL keep its collapsed/expanded height (10/100px), scrollbar SHALL remain 7px
+- AND only the piano roll SHALL receive the additional height
+
+### Requirement: Scale System Invariant
+
+The 500px base height constant for the virtual coordinate system SHALL remain the authoritative scale reference. Dynamic island height MUST NOT change the scale calculation — only pixel-space island height is affected.
+
+#### Scenario: Scale unchanged by window height
+
+- GIVEN the scale `s` is computed as `min(gfx.w / 39914, 500 / 29162) * 1.025`
+- WHEN `gfx.h` changes
+- THEN `s` SHALL remain unchanged (500px constant, NOT `gfx.h`)
+- AND existing content above the island SHALL maintain its size and proportion
+
+### Requirement: RELOAD/SYNC → Icon Buttons
+
+The RELOAD (discard edits, reload from progression) and SYNC (write notes to progression slots) buttons SHALL render as Unicode glyphs inside rounded rects instead of text labels. RELOAD SHALL use `↺` (U+21BA, clockwise open circle arrow) and SYNC SHALL use `⇄` (U+21C4, rightwards arrow over leftwards arrow). The action and confirmation logic SHALL remain unchanged — only the visual representation changes.
+
+Button containers SHALL shrink from `math.floor(b_w)` to `math.floor(b_w * 0.55)` (matching tool button width). The two extra pixels per button SHALL be redistributed as gap between adjacent controls, keeping the total header width unchanged.
+
+#### Scenario: RELOAD renders as glyph
+
+- GIVEN the MIDI island header renders
+- WHEN `DrawHeader` draws the button area
+- THEN the text "RELOAD" SHALL NOT appear and a glyph `↺` appears centered in a rounded rect at the same position
+- AND the rounded rect width SHALL be `math.floor(b_w * 0.55)`
+
+#### Scenario: SYNC renders differently when disabled
+
+- GIVEN no edits have been made (notes_state == NOTES_STATE_LOADED)
+- WHEN the header renders
+- THEN the SYNC button SHALL show `⇄` in `text_dim` color (was `text` color on has_edits)
+- AND clicking it SHALL produce no action (unchanged behavior)
+
+### Requirement: SAVE/LOAD Header Buttons
+
+Two new icon buttons SHALL appear next to the PRESETS toggle button (after the RELOAD/SYNC group, before snap controls). SAVE SHALL use `💾` (U+1F4BE, floppy disk) or a simple `⎙` (U+2399, print screen symbol for save). LOAD SHALL use `📂` (U+1F4C2, open file folder) or `⬆` (U+2B06, upload arrow icon).
+
+SAVE SHALL call `preset_browser.SavePreset()` with a `reaper.GetUserInputs` dialog when clicked. LOAD SHALL prompt a file selection or call `preset_browser.LoadPreset()` for the currently selected preset.
+
+#### Scenario: SAVE opens naming dialog
+
+- GIVEN the MIDI island header is visible
+- WHEN user clicks the SAVE icon button
+- THEN `reaper.GetUserInputs("Save Preset", ...)` SHALL appear
+- AND on confirmation `browser.SavePreset(filepath, name)` SHALL be called
+- AND the preset list SHALL refresh if the panel is open
+
+#### Scenario: LOAD loads selected preset
+
+- GIVEN a preset is selected in the preset list
+- WHEN user clicks the LOAD icon button
+- THEN `browser.LoadPreset(files[idx].path)` SHALL be called
+- AND island notes SHALL be replaced with the loaded preset
+
+### Requirement: Window Position Persistence
+
+The GFX window position (`gfx.w`, `gfx.h`, `config.state.view_offset_x/y`) SHALL be polled and saved to persist via `persist.Save()` during island toggle AND periodically (every ~60 frames or on resize). On ToggleIsland, the saved position SHALL be restored to `gfx.init()` parameters.
+
+#### Scenario: Position restored after toggle
+
+- GIVEN the window was at position (200, 150) when last saved
+- WHEN user collapses and re-expands the MIDI island
+- THEN the window SHALL reappear at (200, 150) rather than the default position
+
 ## Acceptance Criteria
 
 - [ ] Notes, selection, scroll, zoom, tool mode, snap state all survive toggle
@@ -125,3 +221,10 @@ The store MUST declare `local MAX_UNDO = 50`.
 - [ ] _uuid_to_idx is local (no global leak)
 - [ ] Folder list scrolls when content exceeds visible height
 - [ ] Window heights derived from local constants (793/497 not hardcoded)
+- [ ] Island grows/shrinks dynamically when window is resized vertically (10px bottom margin)
+- [ ] Minimum island height equals original expanded height — no collapse below `MIN_ISLAND_H`
+- [ ] Scale system unchanged (500px base constant, not gfx.h) — header, islands, performance area maintain size
+- [ ] RELOAD/SYNC render as glyphs, not text, with smaller buttons
+- [ ] SAVE/LOAD icon buttons exist next to PRESETS in the header
+- [ ] SAVE triggers preset save dialog, LOAD triggers preset load
+- [ ] Window position survives ToggleIsland collapse/expand

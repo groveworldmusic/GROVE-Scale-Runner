@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Drag State Store
 -- Encapsulates drag-and-drop state with getters/setters.
 -- Extracted from config.state.drag.
@@ -52,6 +52,10 @@ function m.Reset()
     drag_state.source_slot_idx = -1
     drag_state.pending_degree = nil
     drag_state.pending_slot_idx = nil
+    drag_state.start_x = 0  -- Issue A6: also clear coordinates for complete reset
+    drag_state.start_y = 0
+    drag_state.x = 0
+    drag_state.y = 0
 end
 
 return m

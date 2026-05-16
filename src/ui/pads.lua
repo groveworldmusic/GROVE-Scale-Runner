@@ -33,6 +33,9 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
         if midi_store.GetMousePadState().active_degree == degree then active = true end
     end
 
+    -- Capture click once per frame (Issue A4): read at top, reuse in both drag and chord-play branches
+    local click = ui_store.GetMouseClick()
+
     -- Flash trigger on pad activation
     if degree >= 1 and degree <= 7 then
         local prev = ui_store.GetPadFlashPrevActive()[degree]
@@ -57,8 +60,9 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
 
         -- Bug fix: only start drag after moving 8px (distinguish click from drag)
         if (gfx.mouse_cap & 1) == 1 and not drag_store.GetIsDragging() and not ui_store.GetSliderDragging() then
-            if not drag_store.GetPendingDegree() then
+            if not drag_store.GetPendingDegree() and click then
                 drag_store.SetPendingDegree(degree)
+                drag_store.SetPendingSlotIdx(nil)  -- Issue B3: cross-clear pending_slot_idx
                 drag_store.SetStartX(gfx.mouse_x)
                 drag_store.SetStartY(gfx.mouse_y)
             else
@@ -73,6 +77,7 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
                         midi.SendMidi(n, false)
                     end
                     mps.midi_notes = {}
+                    mps.active_degree = -1  -- Issue A2: reset active_degree so pad can be clicked again after drag
                 end
             end
         end
@@ -113,7 +118,7 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
         gfx.drawstr(key_label)
     end
 
-    if not disabled and ui_store.GetMouseClick() and hover then
+    if not disabled and click and hover then
         local mps = midi_store.GetMousePadState()
         if mps.active_degree ~= degree then
             mps.active_degree = degree

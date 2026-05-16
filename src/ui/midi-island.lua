@@ -6,6 +6,7 @@ local theme = require("ui.theme")
 local helpers = require("ui.helpers")
 local components = require("ui.components")
 local island_store = require("state.island")
+local note_store = require("state.note-store")
 local preset_store = require("state.preset-store")
 local ui_store = require("state.ui")
 local drag_store = require("state.drag")
@@ -68,11 +69,6 @@ local BTN_GAP_EXTRA = 1422                              -- Extra gap spacing adj
 -- (T3 resolved: preset_browser.Init() is called once at module load)
 
 local THUMB_SIZE = 5  -- Thumb size: 5px in 7px track → 1px margin each side, exact center
-
--- Window height when MIDI island is expanded (matches gfx-window.lua EXPANDED_H)
--- Enforced directly in MainLoop via JS_Window_SetPosition after gfx.getchar(),
--- NOT from within Draw() — window resize events may not trigger a redraw.
-local EXPANDED_H = 793
 
 -- Scrollbar drag states (Phase 5: moved to island_store — kept as local refs for perf, synced on demand)
 -- NOTE: Use island_store.GetSbDragging/SetSbDragging for persistence across island toggle.
@@ -224,7 +220,7 @@ function m.Draw(char)
         _cached_total_beats_valid = false
     end
     if sync_requested then
-        island_store.SyncNotesToProgression(seq_store, prefs)
+        note_store.SyncNotesToProgression(seq_store, prefs)
         island_store.SetNotesState(island_store.NOTES_STATE_SYNCED)
         _island_progression_revision = seq_store.GetProgressionRevision()
         _cached_total_beats_valid = false
@@ -437,11 +433,4 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
     end
 end
 
---- Consume deferred window minimum height signal. Called from MainLoop
---- AFTER gfx.getchar() and DrawFullView, outside the Draw path.
---- Uses JS_Window_SetPosition to non-destructively constrain the window
---- height to EXPANDED_H — no gfx.quit()+gfx.init() flicker.
---- JS_Window_GetRect → (ret, left, top, right, bottom)
---- JS_Window_SetPosition → (hwnd, left, top, width, height)
---- Debounced (60ms) to avoid fighting the OS during active drag.
 return m

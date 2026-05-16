@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- API Guard: Central module for REAPER API validation and index clamping
 
 local m = {}

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact bar drawing
 -- Renders the transport bar composite (key, scale, octave, chord, restore button)
 -- Dependencies: config, theme, helpers, lice, positioning, state.compact

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Preset Browser State Store
 -- Encapsulates preset browser state with getters/setters.
 -- Extracted from island.lua (PR 2 of critical-areas-refactor).
@@ -13,6 +13,7 @@ local state = {
     preset_files = {},
     selected_preset_idx = nil,
     browser_scroll = 0,
+    folder_scroll = 0,
     browser_error = nil,
     favorites = {},
     bookmarks = {},
@@ -46,6 +47,10 @@ function m.SetSelectedPresetIdx(v) state.selected_preset_idx = v end
 -- Browser scroll offset
 function m.GetBrowserScroll() return state.browser_scroll end
 function m.SetBrowserScroll(v) state.browser_scroll = math.max(0, v or 0) end
+
+-- Folder scroll offset (for preset browser folder navigation)
+function m.GetFolderScroll() return state.folder_scroll end
+function m.SetFolderScroll(v) state.folder_scroll = math.max(0, v or 0) end
 
 -- Browser error message
 function m.GetBrowserError() return state.browser_error end

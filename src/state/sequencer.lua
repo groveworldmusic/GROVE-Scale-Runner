@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Sequencer State Store
 -- Encapsulates sequencer state with getters/setters.
 -- Extracted from config.state.sequencer, config.state.progression,
@@ -21,6 +21,11 @@ local seq_state = {
     slot_flash = { idx = -1, timer = 0 },
     current_sub_step = 0,
 }
+
+-- Volume save debounce: slider drag calls SetVolume every frame,
+-- so we defer the persist.Save by a few frames to batch writes.
+local _volume_save_counter = 0
+local _volume_last_saved = 100
 
 local m = {}
 
@@ -70,7 +75,21 @@ function m.SetInternalBeats(v) seq_state.internal_beats = v end
 function m.GetLastTime() return seq_state.last_time end
 function m.SetLastTime(v) seq_state.last_time = v end
 function m.GetVolume() return seq_state.volume end
-function m.SetVolume(v) seq_state.volume = v; persist.Save("volume", v) end
+function m.SetVolume(v)
+    if seq_state.volume ~= v then
+        seq_state.volume = v
+        _volume_save_counter = 3  -- defer persist ~3 frames
+    end
+end
+function m.TickVolumeSave()
+    if _volume_save_counter > 0 then
+        _volume_save_counter = _volume_save_counter - 1
+        if _volume_save_counter == 0 and seq_state.volume ~= _volume_last_saved then
+            persist.Save("volume", seq_state.volume)
+            _volume_last_saved = seq_state.volume
+        end
+    end
+end
 
 -- Page state
 function m.GetCurrentPage() return seq_state.current_page end

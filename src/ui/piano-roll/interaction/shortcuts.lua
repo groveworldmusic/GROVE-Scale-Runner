@@ -1,10 +1,11 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll Interaction — Keyboard Shortcuts
 -- Central shortcut dispatcher, delete selected, nudge.
 -- Extracted from interaction.lua (Sprint 2).
 
 local island_store = require("state.island")
+local note_store = require("state.note-store")
 local note = require("ui.piano-roll.note")
 local grid = require("ui.piano-roll.grid")
 local snap = require("core.snap")
@@ -42,7 +43,7 @@ function m.HandleDeleteSelected()
     end
     if #to_remove == 0 then return end
 
-    island_store.PushUndo({
+    note_store.PushUndo({
         type = "delete",
         note_uuids = undo_uuids,
         prev_state = undo_prev,
@@ -102,7 +103,7 @@ function m.HandleNudge(delta_pitch, delta_beat)
     end
 
     if #undo_uuids > 0 then
-        island_store.PushUndo({
+        note_store.PushUndo({
             type = "move",
             note_uuids = undo_uuids,
             prev_state = undo_prev,

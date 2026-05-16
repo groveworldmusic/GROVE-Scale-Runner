@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Global Configuration and State
 local config = {}
 
@@ -34,7 +34,7 @@ config.SCALES = {
 }
 
 config.CHORD_MODES = {
-    {name="Off", offsets={0}},
+    {name="NOTE", offsets={0}},
     {name="Tri", offsets={0, 2, 4}},
     {name="7ma", offsets={0, 2, 4, 6}},
     {name="9na", offsets={0, 2, 4, 6, 8}},
@@ -68,6 +68,7 @@ config.PREF_KEYS = {
     "subdivision_index",
     "volume",
     "color_mode",
+    "auto_focus_enabled",
 }
 
 -- Expanded state for Pagination (16 slots, 4 pages)
@@ -91,7 +92,7 @@ config.state = {
     active_notes = {},  -- ref-counted: [midi_note] = count
     color_mode = "grade", -- "grade" = grade_colors per degree, "flat" = all blue
     last_mouse_cap = 0, mouse_click = false, mouse_wheel_delta = 0,
-    view_offset_x = 1000,
+    view_offset_x = 200,  -- Issue B5: reduced from 1000 to 200 for 1366×768 display compatibility
     view_offset_y = 0,
     -- Auto-start configuration
     auto_start_compact = false,  -- Start compact bar overlay alongside full view

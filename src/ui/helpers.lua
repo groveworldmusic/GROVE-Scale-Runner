@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Shared UI Helpers
 local config = require("config")
 local ui_store = require("state.ui")
@@ -95,9 +95,10 @@ function helpers.ComputeScaleNotes(root_idx, scale_idx)
     local scale_notes = {}
     local note_to_degree = {}
     local si = api_guard.ClampIndex(scale_idx, 1, #config.SCALES)
+    local ri = api_guard.ClampIndex(root_idx, 1, 12)
     local intervals = config.SCALES[si].intervals
     for degree, interval in ipairs(intervals) do
-        local note_idx = ((root_idx - 1 + interval) % 12) + 1
+        local note_idx = ((ri - 1 + interval) % 12) + 1
         scale_notes[note_idx] = true
         note_to_degree[note_idx] = degree
     end

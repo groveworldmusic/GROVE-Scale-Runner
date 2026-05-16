@@ -8,7 +8,7 @@ local helpers = require("ui.helpers")
 local theme = require("ui.theme")
 local colors = require("ui.colors")
 local prefs = require("state.preferences")
-local persist = require("state.persist")
+-- persist removed; prefs.SetRootIndex marks dirty_key, TickSaveDebounce() flushes
 
 -- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
 -- to avoid circular require at load time (components.lua also requires piano.lua)
@@ -163,7 +163,7 @@ function m.DrawPianoKeyboard(x, y, w, h, font_size)
                 if mx >= wx and mx <= wx + white_w and my >= y and my <= y + h then clicked_idx = wk end
             end
         end
-        if clicked_idx > 0 then config.state.root_index = clicked_idx; prefs.SetRootIndex(clicked_idx); persist.Save("root_index", clicked_idx) end
+        if clicked_idx > 0 then prefs.SetRootIndex(clicked_idx) end
     end
 end
 

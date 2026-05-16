@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Compact View Floating Panel
 -- Floating GFX window with piano keyboard, scale/octave/chord dropdowns, VEL toggle
 -- TogglePanel is called from compact-intercept on left-click on bar "content" zone.
@@ -66,6 +66,7 @@ m.panel_state = {
 local function ClosePanel()
     if m.panel_state.inited then gfx.quit(); m.panel_state.inited = false end
     m.panel_state.open = false; m.panel_state.hwnd = nil
+    m.panel_state.first_frame = true  -- Issue A5: defense-in-depth, stale click guard active on next open
 end
 
 -- =========================================================

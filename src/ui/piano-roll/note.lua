@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll Note Blocks
 -- Renders note blocks with gradient strips and velocity-based opacity.
 -- Handles hit testing, rect selection, and dirty cache.
@@ -75,11 +75,11 @@ local function DrawNoteWithGradient(nx, ny, nw, nh, pitch, velocity, muted)
     helpers.SetColor({base_color[1], base_color[2], base_color[3], 1.0})
     components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
 
-    -- Apply velocity dimming as a flat overlay (no rounded corners → no alpha-safe path)
+    -- Apply velocity dimming as a rounded overlay (preserves corner shape)
     local dim = 1.0 - vel_alpha
     if dim > 0.01 then
         helpers.SetColor({0, 0, 0, dim})
-        gfx.rect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 1)
+        components.DrawRoundedRect(nx + 1, ny + 1, math.max(1, nw - 2), math.max(1, nh - 2), 3, true)
     end
 end
 
@@ -176,7 +176,7 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
                 local gh = PITCH_ROW_H
 
                 -- X clip ghost note to grid bounds + keyboard strip (PR: revision-isla-midi-bugs)
-                local clip_gx = math.max(x - grid.PITCH_LABEL_W, math.floor(gx))
+                local clip_gx = math.max(x, math.floor(gx))
                 local clip_gw = math.max(1, math.min(gw, x + w - clip_gx))
                 
                 if gy < y + h and gy + gh > y then
@@ -205,7 +205,7 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
 
             -- X clipping: extend left clip into keyboard strip area so notes
             -- near the left edge don't abruptly vanish at the grid boundary
-            local clip_nx = math.max(x - grid.PITCH_LABEL_W, math.floor(nx))
+            local clip_nx = math.max(x, math.floor(nx))
             local clip_nw = math.max(1, math.min(nw, x + w - clip_nx))
 
             -- Clip note height to viewport bottom

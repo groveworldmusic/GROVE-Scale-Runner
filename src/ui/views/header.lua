@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Views — Header
 -- DrawHeader + quick config menu.
 -- Extracted from views.lua (Sprint 2).
@@ -114,8 +114,7 @@ function m.DrawHeader()
         local reaper_label = (ui_store.GetAutoStartReaper() and "✓ " or "") .. "Iniciar con REAPER"
         local track_label = (ui_store.GetAutoTrackSetup() and "✓ " or "") .. "Auto armar pista al seleccionar"
         local af_label = (prefs.GetAutoFocusEnabled() and "✓ " or " ") .. "Auto-focus al cambiar Slot"
-        local ssh_label = (prefs.GetScaleSnapHighlight() and "✓ " or " ") .. "Scale Snap Grid Highlight"
-        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label .. "|" .. af_label .. "|" .. ssh_label
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label .. "|" .. af_label
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
@@ -124,7 +123,7 @@ function m.DrawHeader()
         elseif choice == 2 then
             local ret, csv = reaper.GetUserInputs("Posicion Vista Mini", 3,
                 "Offset X (0=auto),Offset Y,extrawidth=200",
-                config.state.view_offset_x .. "," .. config.state.view_offset_y)
+                ui_store.GetViewOffsetX() .. "," .. ui_store.GetViewOffsetY())
             if ret then
                 local nx, ny = csv:match("([^,]+),([^,]+)")
                 local nx_num = tonumber(nx) or 0
@@ -133,13 +132,13 @@ function m.DrawHeader()
                     compact.SetManualPosition(nx_num, ny_num)
                 else
                     compact.ResetAutoPosition()
-                    config.state.view_offset_x = 0
-                    config.state.view_offset_y = ny_num
+                    ui_store.SetViewOffsetX(0)
+                    ui_store.SetViewOffsetY(ny_num)
                 end
             end
         elseif choice == 3 then
-            config.state.view_offset_x = 0
-            config.state.view_offset_y = 0
+            ui_store.SetViewOffsetX(0)
+            ui_store.SetViewOffsetY(0)
             compact.ResetAutoPosition()
         elseif choice == 4 then
             ui_store.SetUseScroll(not ui_store.GetUseScroll())
@@ -159,8 +158,6 @@ function m.DrawHeader()
                 ui_store.GetAutoTrackSetup() and "1" or "0", true)
         elseif choice == 8 then
             prefs.SetAutoFocusEnabled(not prefs.GetAutoFocusEnabled())
-        elseif choice == 9 then
-            prefs.SetScaleSnapHighlight(not prefs.GetScaleSnapHighlight())
         end
     end
     

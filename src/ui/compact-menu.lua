@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View Context Menu
 -- Right-click context menu with scale/octave/chord selection, tools, and position adjustment.
 -- Uses lazy requires for compact-init and compact-panel to avoid circular load-time deps.
@@ -7,7 +7,7 @@ local config = require("config")
 local ui_store = require("state.ui")
 local components = require("ui.components")
 local midi = require("core.midi")
-local persist = require("state.persist")
+-- persist removed; prefs.SetKey marks dirty_key, TickSaveDebounce() flushes
 local prefs = require("state.preferences")
 
 local m = {}
@@ -75,28 +75,20 @@ function m.ShowContextMenu()
         local compact_init = require("ui.compact-init")
         compact_init.SwitchViewMode()
     elseif ret >= OFFSET_TONE and ret < OFFSET_SCALE then
-        config.state.root_index = ret - OFFSET_TONE + 1
-        prefs.SetRootIndex(config.state.root_index)
-        persist.Save("root_index", config.state.root_index)
+        prefs.SetRootIndex(ret - OFFSET_TONE + 1)
     elseif ret >= OFFSET_SCALE and ret < OFFSET_OCT then
-        config.state.scale_index = ret - OFFSET_SCALE + 1
-        prefs.SetScaleIndex(config.state.scale_index)
-        persist.Save("scale_index", config.state.scale_index)
+        prefs.SetScaleIndex(ret - OFFSET_SCALE + 1)
     elseif ret >= OFFSET_OCT and ret < OFFSET_CHORD then
-        config.state.octave = math.floor(ret - OFFSET_OCT)
-        prefs.SetOctave(config.state.octave)
-        persist.Save("octave", config.state.octave)
+        prefs.SetOctave(math.floor(ret - OFFSET_OCT))
     elseif ret >= OFFSET_CHORD and ret < OFFSET_TOOLS then
-        config.state.chord_mode_index = ret - OFFSET_CHORD + 1
-        prefs.SetChordModeIndex(config.state.chord_mode_index)
-        persist.Save("chord_mode_index", config.state.chord_mode_index)
+        prefs.SetChordModeIndex(ret - OFFSET_CHORD + 1)
     elseif ret == OFFSET_TOOLS + 1 then
         midi.ExportToMidi()
     elseif ret == OFFSET_TOOLS + 2 then
-        midi.AllNotesOff()
+        midi.AllNotesOff(true)  -- Issue B1: force=true so note-offs bypass sustain/ref-count gate
     elseif ret == OFFSET_TOOLS + 3 then
         local ok, csv = reaper.GetUserInputs("Ajustar Posicion", 2, "Offset X,Offset Y",
-            config.state.view_offset_x .. "," .. config.state.view_offset_y)
+            ui_store.GetViewOffsetX() .. "," .. ui_store.GetViewOffsetY())
         if ok then
             local nx, ny = csv:match("([^,]+),([^,]+)")
             local nx_num, ny_num = tonumber(nx) or 0, tonumber(ny) or 0
@@ -106,11 +98,11 @@ function m.ShowContextMenu()
             else
                 local compact_init = require("ui.compact-init")
                 compact_init.ResetAutoPosition()
-                config.state.view_offset_y = ny_num
+                ui_store.SetViewOffsetY(ny_num)
             end
         end
     elseif ret == OFFSET_TOOLS + 4 then
-        config.state.view_offset_y = 0
+        ui_store.SetViewOffsetY(0)
         local compact_init = require("ui.compact-init")
         compact_init.ResetAutoPosition()
     end

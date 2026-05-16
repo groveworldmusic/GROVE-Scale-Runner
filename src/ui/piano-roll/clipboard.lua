@@ -1,9 +1,10 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Piano Roll Clipboard
 -- Cut/copy/paste state and handlers. Extracted from interaction.lua (PR3).
 
 local island_store = require("state.island")
+local note_store = require("state.note-store")
 local note = require("ui.piano-roll.note")
 
 local m = {}
@@ -45,7 +46,7 @@ function m.HandleCut()
     end
     if #to_remove == 0 then return false end
 
-    island_store.PushUndo({
+    note_store.PushUndo({
         type = "delete",
         note_uuids = undo_uuids,
         prev_state = undo_prev,
@@ -131,7 +132,7 @@ function m.HandlePaste(scroll_beat)
         })
     end
 
-    island_store.PushUndo({
+    note_store.PushUndo({
         type = "add",
         note_uuids = {},
         new_state = undo_new,

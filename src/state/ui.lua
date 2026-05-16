@@ -22,6 +22,8 @@ local ui_state = {
     auto_track_setup = true,
     did_cleanup = false,
     use_scroll = true,
+    view_offset_x = 0,
+    view_offset_y = 0,
     last_window_w = 720,
     last_window_h = 497,
     last_mouse_x = 0,
@@ -55,6 +57,8 @@ function m.Init(defaults)
     if defaults.auto_track_setup ~= nil then ui_state.auto_track_setup = defaults.auto_track_setup end
     if defaults.did_cleanup ~= nil then ui_state.did_cleanup = defaults.did_cleanup end
     if defaults.use_scroll ~= nil then ui_state.use_scroll = defaults.use_scroll end
+    if defaults.view_offset_x ~= nil then ui_state.view_offset_x = defaults.view_offset_x end
+    if defaults.view_offset_y ~= nil then ui_state.view_offset_y = defaults.view_offset_y end
     if defaults.last_window_w ~= nil then ui_state.last_window_w = defaults.last_window_w end
     if defaults.last_window_h ~= nil then ui_state.last_window_h = defaults.last_window_h end
 end
@@ -124,6 +128,12 @@ function m.SetDidCleanup(v) ui_state.did_cleanup = v end
 
 function m.GetUseScroll() return ui_state.use_scroll end
 function m.SetUseScroll(v) ui_state.use_scroll = v end
+
+-- View offset (window positioning)
+function m.GetViewOffsetX() return ui_state.view_offset_x end
+function m.SetViewOffsetX(v) ui_state.view_offset_x = v end
+function m.GetViewOffsetY() return ui_state.view_offset_y end
+function m.SetViewOffsetY(v) ui_state.view_offset_y = v end
 
 -- Last window dimensions (for ISLAND mode restoration)
 function m.GetLastWindowW() return ui_state.last_window_w end

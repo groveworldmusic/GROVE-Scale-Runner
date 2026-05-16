@@ -1,10 +1,11 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Velocity Editor
 -- Per-note velocity bars rendered below the piano roll grid.
 -- Supports click-and-drag to edit velocity values in real-time.
 
 local island_store = require("state.island")
+local note_store = require("state.note-store")
 local ui_store = require("state.ui")
 local theme = require("ui.theme")
 local helpers = require("ui.helpers")
@@ -189,33 +190,13 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
             end
         end
 
-        -- 2. GROUP ONLY VISIBLE NOTES (task 3.2)
-        local offset_map = {}
-        local beat_groups = {}
-        for _, i in ipairs(visible_indices) do
-            local note = notes[i]
-            local beat = note.start_beat or 0
-            if not beat_groups[beat] then beat_groups[beat] = {} end
-            beat_groups[beat][#beat_groups[beat] + 1] = i
-        end
-        for _, indices in pairs(beat_groups) do
-            local count = #indices
-            if count > 1 then
-                for j, idx in ipairs(indices) do
-                    offset_map[idx] = (j - 1) * 3 - (count - 1) * 1.5
-                end
-            else
-                offset_map[indices[1]] = 0
-            end
-        end
-
         for _, i in ipairs(visible_indices) do
             local note = notes[i]
             -- Only render bars for notes within visible time range
             local ns = note.start_beat
             local nd = note.duration or 1
             -- Already checked ns/nd in pre-cull
-                local nx = grid_x + (ns - scroll_x) * zoom_x + (offset_map[i] or 0)
+                local nx = grid_x + (ns - scroll_x) * zoom_x
                 local nw = nd * zoom_x
                 local nvel = note.velocity or 100
                 local is_selected = island_store.IsNoteSelected(i)
@@ -384,7 +365,10 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
 
     -- Start drag on fresh click
     if click and mouse_down then
-        local idx = velocity.VelocityHitTest(mx, my, notes, grid_x, ed_y, ed_h, scroll_x, zoom_x)
+        local idx = island_store.GetPrimarySelectedIndex()
+        if not idx then
+            idx = velocity.VelocityHitTest(mx, my, notes, grid_x, ed_y, ed_h, scroll_x, zoom_x)
+        end
         if idx then
             -- Store initial state for delta tracking
             drag_initial_vel = notes[idx].velocity or 100
@@ -394,7 +378,6 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
             -- Preserve multi-selection: only change selection if clicked note is NOT already selected
             local selected = island_store.GetSelectedIndices()
             if not selected[idx] then
-                island_store.ClearSelection()
                 selected[idx] = true
             end
             -- Update velocity immediately on click
@@ -456,7 +439,7 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
                 table.insert(undo_new, {velocity = notes[drag_note_index].velocity})
             end
             if #undo_uuids > 0 then
-                island_store.PushUndo({
+                note_store.PushUndo({
                     type = "velocity",
                     note_uuids = undo_uuids,
                     prev_state = undo_prev,

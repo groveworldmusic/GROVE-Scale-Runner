@@ -53,11 +53,7 @@ local EXPECTED_EXPORTS = {
     NoteBlockHitTest = "function",
     GetNotesInRect = "function",
 
-    -- Interaction functions (lines 726-739, 752-772, 788-813, 828-837)
-    HandleMouseClick = "function",
-    HandleRightClickMute = "function",
-    HandlePencilClick = "function",
-    HandleEraserClick = "function",
+    -- Interaction functions (paint/knife only — legacy pointer/pencil/eraser removed)
 
     -- Lasso function (lines 904-924)
     DrawLassoRect = "function",
@@ -240,10 +236,6 @@ else
     verify(true, "require('ui.piano-roll.interaction') loads without error")
 
     local INT_EXPORTS = {
-        HandleMouseClick = "function",
-        HandleRightClickMute = "function",
-        HandlePencilClick = "function",
-        HandleEraserClick = "function",
         DrawLassoRect = "function",
         CtrlA = "function",
 

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 local config = require("config")
 local seq_store = require("state.sequencer")
 local midi = require("core.midi")
@@ -13,7 +13,7 @@ function sequencer.Stop()
     -- Validate MidiNotes table before iterating (defensive: should never be nil, but guard anyway)
     local midi_notes = seq_store.GetMidiNotes() or {}
     for _, n in ipairs(midi_notes) do 
-        midi.SendMidi(n, false, nil, true)  -- force=true: bypass ref-count gate on cleanup
+        midi.SendMidi(n, false, nil, false)  -- No force: respect ref-count gate so shared notes (QWERTY/pad) aren't force-killed
     end
     seq_store.SetMidiNotes({})
     seq_store.SetLastMeasure(-1)

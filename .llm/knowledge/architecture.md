@@ -12,6 +12,13 @@ main.lua (entry point)
 └── cleanup: stores cleanup, keyboard cleanup
 ```
 
+## Circular Dependencies
+
+⚠️ **state.island → state.note-store → core.midi → ui.gfx-window → state.island**
+- **Ciclo**: island.lua requiere note-store.lua que a su vez necesita core.midi (para GetMidiNote), y core.midi requiere ui.gfx-window que requiere state.island.
+- **Break**: note-store.lua usa lazy require para core.midi dentro de ProgressionEntryToPitch() — la única función que lo necesita. El require se resuelve en runtime cuando core.midi ya está cargado.
+- **Archivos**: `src/state/island.lua`, `src/state/note-store.lua`, `src/core/midi.lua`, `src/ui/gfx-window.lua`
+
 ## Estructura de Directorios
 
 ```

@@ -182,7 +182,6 @@ Issues referenciados en comentarios del código fuente:
 | 19 | `sequencer.lua` | Cache GetLastFilled() once per tick | ✅ FIXED |
 | 21 | `keyboard.lua` | Velocity humanization (85 + math.random(30)) | ✅ FIXED |
 | 22 | `views.lua` | Stuck note on play/stop toggle | ✅ FIXED |
-| — | `midi-island.lua:343` | Velocity editor disabled — `ve_h = 0` set, root cause unknown | 🔍 INVESTIGATING |
 
 ## Reglas Obligatorias para TODOS los agentes
 

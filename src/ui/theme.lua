@@ -61,7 +61,6 @@ theme.colors = {
     -- Scale Highlighting (Phase 5)
     grid_scale_row = {1.0, 1.0, 1.0, 0.03},    -- Very subtle white highlight for scale rows
     grid_black_key_row = {0.0, 0.0, 0.0, 0.15},-- Darker tint for non-scale rows (black keys)
-    grid_scale_snap = {0.30, 0.70, 0.30, 0.40},-- Green highlight for scale-aligned vertical grid lines
     note_ghost = {1.0, 1.0, 1.0, 0.3},         -- Semi-transparent ghost for dragging/resizing
 
     grade_colors = {

@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Progression Slot UI (extracted from components.lua)
 local config = require("config")
 local drag_store = require("state.drag")
@@ -166,6 +166,7 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
     if (gfx.mouse_cap & 1) == 1 and not drag_store.GetIsDragging() and not ui_store.GetSliderDragging() and slot then
         if not drag_store.GetPendingSlotIdx() then
             drag_store.SetPendingSlotIdx(global_idx)
+            drag_store.SetPendingDegree(nil)  -- Issue B3: cross-clear pending_degree
             drag_store.SetStartX(gfx.mouse_x)
             drag_store.SetStartY(gfx.mouse_y)
         elseif drag_store.GetPendingSlotIdx() == global_idx then
@@ -270,6 +271,9 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
         drag_store.SetSourceDegree(-1)
         drag_store.SetSourceSlotIdx(-1)
         drag_store.SetPendingDegree(nil)
+        drag_store.SetPendingSlotIdx(nil)
+        drag_store.SetStartX(0)
+        drag_store.SetStartY(0)
     end
 
     if not drag_store.GetIsDragging() then

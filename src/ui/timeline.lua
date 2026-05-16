@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Timeline Ruler
 -- Beat/measure markers displayed above the piano roll grid.
 -- Synchronizes with sequencer clock for playback head position.
@@ -57,7 +57,7 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
                 helpers.SetColor(MEASURE_TICK_COLOR)
                 gfx.line(bx, y, bx, y + MEASURE_TICK_H)
 
-                -- Measure number label (bottom-right of tick line)
+                -- Measure number label (centered on bar line, below tick)
                 local measure_num = math.floor(beat / 4)
                 local label = tostring(measure_num)
 
@@ -65,9 +65,9 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
                 local lw, lh = gfx.measurestr(label)
 
                 -- Check for overlap: only draw if enough space
-                local label_x = bx + 5
+                local label_x = bx - math.floor(lw / 2)
                 local label_end = label_x + lw
-                if label_x > last_label_end + 8 then
+                if label_end > last_label_end + 8 then
                     helpers.SetColor(MEASURE_TEXT_COLOR)
                     gfx.x, gfx.y = label_x, y + MEASURE_TICK_H + 2
                     gfx.drawstr(label)

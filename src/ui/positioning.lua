@@ -1,9 +1,10 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordoví
+-- Copyright (c) 2026 Andrik Sanz CordovÃ­
 -- GROVE Scale Runner: Compact view positioning and layout math
 -- Dependencies: config, state.compact (transport_hwnd via compact_store)
 local config = require("config")
 local compact_store = require("state.compact")
+local ui_store = require("state.ui")
 local api_guard = require("core.api-guard")
 
 local m = {}
@@ -134,8 +135,8 @@ function m.UpdatePositioning(state)
     end
     if w_trans then last_transport_w = w_trans end
 
-    if state.view_offset_x > 0 then
-        cv_x = state.view_offset_x
+    if ui_store.GetViewOffsetX() > 0 then
+        cv_x = ui_store.GetViewOffsetX()
     elseif use_auto_pos then
         if cv_auto_x == nil then cv_auto_x = FindTransportEmptyArea() end
         cv_x = cv_auto_x or 5
@@ -144,7 +145,7 @@ function m.UpdatePositioning(state)
     end
 
     if h_trans and h_trans > 0 then
-        cv_y = math.floor((h_trans - BAR_H) / 2) + 2 + state.view_offset_y
+        cv_y = math.floor((h_trans - BAR_H) / 2) + 2 + ui_store.GetViewOffsetY()
     else
         cv_y = 4
     end

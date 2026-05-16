@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Compact View — Barrel Module
 -- Re-exports all sub-modules so consumers use compact.*
 -- No inline state or function definitions — all logic is in sub-modules.

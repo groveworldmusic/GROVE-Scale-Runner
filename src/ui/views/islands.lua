@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Views — Islands
 -- DrawIslands: Scale & Piano, Octava, Chord, Inversiones, Command Vertical Stack.
 -- Extracted from views.lua (Sprint 2).
@@ -18,6 +18,7 @@ local layout = require("ui.layout")
 -- persist removed; prefs.SetKey marks dirty_key, TickSaveDebounce() flushes
 local sequencer = require("core.sequencer")
 local midi = require("core.midi")
+local gfx_window = require("ui.gfx-window")
 local progression = require("core.progression")
 local api_guard = require("core.api-guard")
 
@@ -423,7 +424,7 @@ function m.DrawIslands()
         if m_hover and not drag_store.GetIsDragging() then
             helpers.DrawTooltip(midi_expanded and "Collapse MIDI island" or "Expand MIDI island", layout.US(700))
         end
-        if ui_store.GetMouseClick() and m_hover and not drag_store.GetIsDragging() then midi.ToggleIsland() end
+        if ui_store.GetMouseClick() and m_hover and not drag_store.GetIsDragging() then gfx_window.ToggleIsland() end
     end
 end
 

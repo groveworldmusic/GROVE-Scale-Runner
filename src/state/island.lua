@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Island State Store
 -- Encapsulates island piano-roll state with getters/setters.
 -- Schema: island_active, preset_panel_visible, notes (flat note list),
@@ -11,7 +11,18 @@ local api_guard = require("core.api-guard")
 local note_store = require("state.note-store")
 local preset_store = require("state.preset-store")
 
-local m = {}
+-- =========================================================
+-- Notes State Enum (Phase 3: replaces notes_dirty boolean)
+-- =========================================================
+local NOTES_STATE_LOADED = 0  -- Notes were loaded from progression / preset
+local NOTES_STATE_EDITED = 1  -- User has manually edited notes
+local NOTES_STATE_SYNCED = 2  -- Notes were last synced to progression
+
+local m = {
+    NOTES_STATE_LOADED = NOTES_STATE_LOADED,
+    NOTES_STATE_EDITED = NOTES_STATE_EDITED,
+    NOTES_STATE_SYNCED = NOTES_STATE_SYNCED,
+}
 local island_state = {
     island_active = false,
     preset_panel_visible = false,
@@ -21,7 +32,7 @@ local island_state = {
     zoom_x = 28,        -- 16 beats (4 measures) fit even with presets panel open (220px)
     selected_indices = {},
     _last_selected_idx = nil,
-    tool_mode = "pointer",
+    tool_mode = "paint",
     lasso_active = false,
     lasso_start_x = 0, lasso_start_y = 0,
     lasso_end_x = 0, lasso_end_y = 0,
@@ -32,6 +43,16 @@ local island_state = {
     snap_enabled = false,
     snap_resolution = 4,
     note_drag_origins = {},
+    notes_state = NOTES_STATE_LOADED,  -- Phase 3: tri-state replaces notes_dirty
+    midi_island_expanded = false,
+    midi_island_toggled = false,
+    -- Scrollbar drag state (Phase 5: moved from midi-island.lua locals)
+    sb_dragging = false,
+    sb_drag_start_x = 0,
+    sb_scroll_at_drag_start = 0,
+    vsb_dragging = false,
+    vsb_drag_start_y = 0,
+    vsb_scroll_at_drag_start = 0,
 }
 
 function m.Init(defaults)
@@ -101,7 +122,7 @@ end
 -- Tool Mode (Phase 4)
 -- =========================================================
 function m.GetToolMode() return island_state.tool_mode end
-function m.SetToolMode(v) island_state.tool_mode = v or "pointer" end
+function m.SetToolMode(v) island_state.tool_mode = v or "paint" end
 
 -- =========================================================
 -- Multi-Selection (Phase 4: replaces single selected_note_index)
@@ -205,31 +226,18 @@ function m.RemoveNoteAtIndex(idx)
     end
 end
 
--- Preset browser state — delegated to preset-store
-function m.GetCurrentDirectory() return preset_store.GetCurrentDirectory() end
-function m.SetCurrentDirectory(v) preset_store.SetCurrentDirectory(v) end
-function m.GetPresetRoot() return preset_store.GetPresetRoot() end
-function m.SetPresetRoot(v) preset_store.SetPresetRoot(v) end
-function m.GetPresetTree() return preset_store.GetPresetTree() end
-function m.SetPresetTree(t) preset_store.SetPresetTree(t) end
-function m.GetPresetFiles() return preset_store.GetPresetFiles() end
-function m.SetPresetFiles(t) preset_store.SetPresetFiles(t) end
-function m.GetSelectedPresetIdx() return preset_store.GetSelectedPresetIdx() end
-function m.SetSelectedPresetIdx(v) preset_store.SetSelectedPresetIdx(v) end
-function m.GetBrowserScroll() return preset_store.GetBrowserScroll() end
-function m.SetBrowserScroll(v) preset_store.SetBrowserScroll(v) end
-function m.GetFolderScroll() return preset_store.GetFolderScroll() end
-function m.SetFolderScroll(v) preset_store.SetFolderScroll(v) end
-function m.GetBrowserError() return preset_store.GetBrowserError() end
-function m.SetBrowserError(v) preset_store.SetBrowserError(v) end
-function m.GetFavorites() return preset_store.GetFavorites() end
-function m.SetFavorites(t) preset_store.SetFavorites(t) end
-function m.GetBookmarks() return preset_store.GetBookmarks() end
-function m.SetBookmarks(t) preset_store.SetBookmarks(t) end
-
 -- Velocity panel expanded state
 function m.GetVelocityPanelExpanded() return island_state.velocity_panel_expanded end
 function m.SetVelocityPanelExpanded(v) island_state.velocity_panel_expanded = v end
+
+-- =========================================================
+-- MIDI Island Expanded/Toggled State (PR: midi-island-critical-fixes)
+-- Migrated from core/midi.lua module fields for centralized state.
+-- =========================================================
+function m.GetMidiIslandExpanded() return island_state.midi_island_expanded end
+function m.SetMidiIslandExpanded(v) island_state.midi_island_expanded = v end
+function m.GetMidiIslandToggled() return island_state.midi_island_toggled end
+function m.SetMidiIslandToggled(v) island_state.midi_island_toggled = v end
 
 -- =========================================================
 -- ToggleIsland Resilience (PR1b)
@@ -282,40 +290,53 @@ function m.ResetNoteDrag()
     island_state.note_drag_origins = {}
 end
 
-function m.ClearBrowserState()
-    preset_store.ClearBrowserState()
+-- =========================================================
+-- Notes State Tri-State (Phase 3: replaces notes_dirty boolean)
+-- LOADED = 0: notes come from progression/preset — auto-reload allowed
+-- EDITED = 1: user has manually edited — auto-reload blocked
+-- SYNCED = 2: notes were synced to progression — auto-reload blocked
+-- =========================================================
+function m.GetNotesState() return island_state.notes_state end
+function m.SetNotesState(v) island_state.notes_state = v end
+function m.ResetNotesState() island_state.notes_state = NOTES_STATE_LOADED end
+
+-- =========================================================
+-- Backward-Compat Shims: GetNotesDirty / SetNotesDirty
+-- Map true → USER_EDITED, false → LOADED_FROM_PROGRESSION
+-- =========================================================
+function m.GetNotesDirty() return island_state.notes_state == NOTES_STATE_EDITED end
+function m.SetNotesDirty(v)
+    island_state.notes_state = v and NOTES_STATE_EDITED or NOTES_STATE_LOADED
 end
 
 -- =========================================================
--- UUID Reverse Index — Delegated to note-store
+-- Scrollbar Drag State (Phase 5: moved from midi-island.lua locals)
 -- =========================================================
-function m.RebuildUUIDIndex() note_store.RebuildUUIDIndex() end
-function m.AllocNoteUUID() return note_store.AllocNoteUUID() end
-function m.FindNoteByUUID(uuid) return note_store.FindNoteByUUID(uuid) end
-
--- =========================================================
--- Undo/Redo Stack — Delegated to note-store
--- =========================================================
-function m.PushUndo(entry) note_store.PushUndo(entry) end
-function m.PopUndo() return note_store.PopUndo() end
-function m.PushRedo(entry) note_store.PushRedo(entry) end
-function m.PopRedo() return note_store.PopRedo() end
-function m.ClearUndoStacks() note_store.ClearUndoStacks() end
-function m.GetUndoDepth() return note_store.GetUndoDepth() end
-function m.GetRedoDepth() return note_store.GetRedoDepth() end
-
--- =========================================================
--- Progression→Notes Conversion — Delegated to note-store
--- =========================================================
-function m.ProgressionToNotes(progression, beats_per_slot, velocity)
-    return note_store.ProgressionToNotes(progression, beats_per_slot, velocity)
+function m.GetSbDragging() return island_state.sb_dragging end
+function m.SetSbDragging(v) island_state.sb_dragging = v end
+function m.GetSbDragStartX() return island_state.sb_drag_start_x end
+function m.SetSbDragStartX(v) island_state.sb_drag_start_x = v end
+function m.GetSbScrollAtDragStart() return island_state.sb_scroll_at_drag_start end
+function m.SetSbScrollAtDragStart(v) island_state.sb_scroll_at_drag_start = v end
+function m.GetVsbDragging() return island_state.vsb_dragging end
+function m.SetVsbDragging(v) island_state.vsb_dragging = v end
+function m.GetVsbDragStartY() return island_state.vsb_drag_start_y end
+function m.SetVsbDragStartY(v) island_state.vsb_drag_start_y = v end
+function m.GetVsbScrollAtDragStart() return island_state.vsb_scroll_at_drag_start end
+function m.SetVsbScrollAtDragStart(v) island_state.vsb_scroll_at_drag_start = v end
+function m.ResetScrollbarDragState()
+    island_state.sb_dragging = false
+    island_state.sb_drag_start_x = 0
+    island_state.sb_scroll_at_drag_start = 0
+    island_state.vsb_dragging = false
+    island_state.vsb_drag_start_y = 0
+    island_state.vsb_scroll_at_drag_start = 0
 end
+
 function m.LoadNotesFromProgression(seq_store)
     note_store.LoadNotesFromProgression(seq_store)
     island_state.note_count = note_store.GetNoteCount()
-end
-function m.GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end)
-    return note_store.GetVisibleNotes(notes, pitch_start, pitch_end, beat_start, beat_end)
+    island_state.notes_state = NOTES_STATE_LOADED  -- freshly loaded from progression
 end
 
 return m

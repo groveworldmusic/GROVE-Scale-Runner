@@ -1,11 +1,26 @@
 # Aprendizajes — Bugs, Gotchas, Soluciones
 
+## Bug: Circular dependency C stack overflow en note-store → midi → gfx-window → island
+
+**Síntoma**: `error loading module 'state.note-store' from file '...note-store.lua': C stack overflow`
+**Causa raíz**: note-store.lua requiere core.midi al tope del módulo. core.midi requiere ui.gfx-window (extraído en refactor midi-island-critical-fixes). gfx-window requiere state.island. island requiere note-store → ciclo infinito en require().
+**Solución**: Mover `require("core.midi")` a lazy dentro de la única función que lo usa: `ProgressionEntryToPitch()`. Lua cachea require, así que solo la primera llamada ejecuta la carga.
+**Archivos**: `src/state/note-store.lua` — línea 10 (removido), línea 206 (lazy require)
+**Lección**: Al extraer módulos que introducen nuevas dependencias, verificar que no se cree un ciclo en el grafo de requires. gfx-window se extrajo de core.midi y agregó una dependencia de core.midi → state.island que antes no existía.
+
 ## Bug: DrawSlotBackground era local pero el barrel la re-exportaba
 
 **Síntoma**: `components.DrawSlotBackground = slots.DrawSlotBackground` devolvía `nil` en runtime.
 **Causa raíz**: DrawSlotBackground era `local function` en el original y se mantuvo `local function` en slots.lua. El barrel intentaba re-exportar una función que no existía en el módulo.
 **Solución**: No re-exportar funciones locales del barrel. Verificar que solo funciones públicas (`m.*`) se agreguen al barrel.
 **Archivos**: `src/ui/components.lua`, `src/core/slots.lua`
+
+## Gotcha: +1 overshoot en DrawRoundedRect NO es bug — previene seams de GFX
+
+**Contexto**: El SDD "piano-roll-bugs" identificó `+1` en rect width/height de `DrawRoundedRect` como "artefacto de rendering" y los removió.
+**Error**: Los `+1` eran un fix deliberado para prevenir gaps de 1px entre rectángulos y círculos en REAPER GFX. `gfx.circle` usa anti-aliasing en sus bordes, dejando transparencia parcial donde un rectángulo termina exactamente donde arranca un círculo.
+**Solución**: Restaurar los `+1` + agregar comentario explícito explicando por qué están ahí.
+**Lección**: En código de rendering/GFX, no asumir que "código raro" es bug. Entender el dominio primero. Los `+1` en overlapping geometry son un patrón conocido.
 
 ## Gotcha: require circular en módulos extraídos
 
@@ -137,6 +152,37 @@ When notes are replaced (e.g., on progression reload), `SetNotes()` now calls `C
 **Solución**: `active_notes_revision` en midi_store + revision checks en piano.lua (active_mod12) y slots.lua (subdivision dots).
 **Lección**: Revision counter es más barato que comparar tablas enteras. Bump en mutaciones, check en reads.
 **Archivos**: `src/state/midi.lua`, `src/ui/piano.lua`, `src/core/slots.lua`
+
+## MIDI Island Window Minimum Height Enforcement
+
+### REAPER GFX no tiene API para mínimo de ventana
+No hay `gfx.setminsize()` ni equivalente. `gfx.init()` sin `gfx.quit()` solo actualiza el canvas GFX, NO el HWND de la ventana OS.
+
+### gfx.hwnd es un HWND hijo (child window)
+`gfx.hwnd` en REAPER devuelve un child HWND. El borde de resize (`WS_THICKFRAME`/`WS_SIZEBOX = 0x40000` de Win32) está en el ROOT frame. `SetWindowLongPtr(gfx.hwnd, GWL_STYLE, ...)` no afecta el resize border porque el child no tiene `WS_THICKFRAME`.
+
+Para llegar al root se necesita `JS_Window_GetRoot(hwnd)` (que llama `GetAncestor(GA_ROOT)` internamente), pero no está disponible en todas las versiones de js_ReaScriptAPI.
+
+### JS_Window_GetRect devuelve 5 valores: (bool, left, top, right, bottom)
+**CRÍTICO**: El primer return es un booleano de éxito. NO es `left`.
+- Correcto: `local _, l, t, r, b = reaper.JS_Window_GetRect(hwnd)`
+- Incorrecto: `local l, t, r, b = reaper.JS_Window_GetRect(hwnd)` (l = bool)
+
+`gfx-window.lua` tenía este bug — `config.state.view_offset_x = l` guardaba `true` en vez de la coordenada real.
+
+### Solución para mínimo de ventana
+`gfx.quit() + gfx.init(título, gfx.w, 793, dock, saved_x, saved_y)` en MainLoop cuando `gfx.h < 793`:
+1. Capturar posición CADA frame via `JS_Window_GetRect` con `type(l) == "number"` guard
+2. Usar `gfx.h > 100` para evitar gfx.h inválido del primer frame
+3. El enforcement solo corre si `GetMidiIslandExpanded() == true`
+4. Después de `gfx.init()`, siempre llamar `gfx.setfont(1, "Calibri", 16)`
+
+### Funciones JS_Window_* disponibles vs no disponibles
+- ✅ `JS_Window_Find`, `JS_Window_GetRect`, `JS_Window_GetClientSize`
+- ❌ `JS_Window_GetRoot` — no disponible en versiones viejas
+- ❌ `JS_Window_GetLong/SetLong` — no disponibles en versiones viejas
+- ❌ `JS_Window_Resize/SetPosition` — existen en código fuente pero no constriñen GFX windows durante drag
+- ❌ `JS_Window_SetBounds` — NO EXISTE en js_ReaScriptAPI (nombre incorrecto)
 
 ### Phase 5: view_offset_x/y migration to ui_store
 **Contexto**: 12 referencias a `config.state.view_offset_x/y` en 4 archivos.

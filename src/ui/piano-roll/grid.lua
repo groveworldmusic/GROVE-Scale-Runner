@@ -1,5 +1,5 @@
 -- SPDX-License-Identifier: MIT
--- Copyright (c) 2026 Andrik Sanz Cordov�
+-- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Piano Roll Grid
 -- Renders the pitch×time grid background, beat lines, and vertical keyboard strip.
 -- Extracted from piano-roll.lua monolith (PR1a).
@@ -453,15 +453,12 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
 
     -- Beat lines (integer beats that are not measures)
     -- Show only if snap allows beat-level (step <= 1.0) OR snap disabled
-    -- When scale snap highlight is enabled, lines at beat positions whose pitch
-    -- class matches the current scale get a distinct green tint.
     if min_grid_step <= 1.0 or min_grid_step == 0 then
         for beat = beat_start, beat_end do
             if (beat % 4) ~= 0 then
                 local bx = x + (beat - scroll_x) * zoom_x
                 if bx >= x and bx <= x + w then
-                    local scale_snap = prefs.GetScaleSnapHighlight() and _vpk_scale_notes[(beat % 12) + 1]
-                    helpers.SetColor(scale_snap and theme.colors.grid_scale_snap or theme.colors.grid_beat)
+                    helpers.SetColor(theme.colors.grid_beat)
                     gfx.line(bx, y, bx, y + h)
                 end
             end
@@ -519,22 +516,12 @@ function m.DrawPianoRollGrid(x, y, w, h, scroll_y, scroll_x, zoom_x,
                             if snap_enabled and snap_res > 0 then
                                 helpers.SetColor(theme.colors.snap_grid)
                             elseif (s % 2) == 0 then
-                                -- Check scale snap highlight for 1/8 subdivision lines
-                                if prefs.GetScaleSnapHighlight() and _vpk_scale_notes[(math.floor(sub_beat) % 12) + 1] then
-                                    helpers.SetColor(theme.colors.grid_scale_snap)
-                                else
-                                    helpers.SetColor(theme.colors.grid_sub_1_8)
-                                end
+                                helpers.SetColor(theme.colors.grid_sub_1_8)
                             else
                                 helpers.SetColor(theme.colors.grid_sub_1_16)
                             end
                         else
-                            -- Check scale snap highlight for coarser subdivision lines
-                            if prefs.GetScaleSnapHighlight() and _vpk_scale_notes[(math.floor(sub_beat) % 12) + 1] then
-                                helpers.SetColor(theme.colors.grid_scale_snap)
-                            else
-                                helpers.SetColor(theme.colors.grid_sub_1_8)
-                            end
+                            helpers.SetColor(theme.colors.grid_sub_1_8)
                         end
                         gfx.line(bx, y, bx, y + h)
                     end

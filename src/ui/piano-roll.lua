@@ -49,10 +49,9 @@ piano_roll.MarkNotesDirty = note.MarkNotesDirty
 -- =========================================================
 -- Re-export interaction module functions
 -- =========================================================
-piano_roll.HandleMouseClick = interaction.HandleMouseClick
-piano_roll.HandleRightClickMute = interaction.HandleRightClickMute
-piano_roll.HandlePencilClick = interaction.HandlePencilClick
-piano_roll.HandleEraserClick = interaction.HandleEraserClick
+piano_roll.HandlePaintClick = interaction.HandlePaintClick
+piano_roll.HandlePaintRightClick = interaction.HandlePaintRightClick
+piano_roll.HandleKnifeClick = interaction.HandleKnifeClick
 piano_roll.DrawLassoRect = interaction.DrawLassoRect
 piano_roll.CtrlA = interaction.CtrlA
 
@@ -74,6 +73,7 @@ piano_roll.HandleKeyboardShortcut = interaction.HandleKeyboardShortcut
 -- Note Drag / Resize (PR2)
 -- =========================================================
 piano_roll.IsNoteRightEdge = interaction.IsNoteRightEdge
+piano_roll.IsNoteLeftEdge = interaction.IsNoteLeftEdge
 piano_roll.ArmNoteDrag = interaction.ArmNoteDrag
 piano_roll.CheckAndStartDrag = interaction.CheckAndStartDrag
 piano_roll.DisarmNoteDrag = interaction.DisarmNoteDrag
@@ -84,6 +84,12 @@ piano_roll.CancelNoteDrag = interaction.CancelNoteDrag
 piano_roll.StartNoteResize = interaction.StartNoteResize
 piano_roll.UpdateNoteResize = interaction.UpdateNoteResize
 piano_roll.CommitNoteResize = interaction.CommitNoteResize
+piano_roll.StartRightDragSweep = interaction.StartRightDragSweep
+piano_roll.UpdateRightDragSweep = interaction.UpdateRightDragSweep
+piano_roll.CommitRightDragSweep = interaction.CommitRightDragSweep
+piano_roll.CancelRightDragSweep = interaction.CancelRightDragSweep
+piano_roll.GetRightDragSweepActive = interaction.GetRightDragSweepActive
+piano_roll.DrawRightDragSweepRect = interaction.DrawRightDragSweepRect
 
 -- =========================================================
 -- Re-export view module functions
@@ -94,5 +100,6 @@ piano_roll.DrawPianoRoll = view.DrawPianoRoll
 -- Re-export grid mutators
 -- =========================================================
 piano_roll.SetPitchRowH = grid.SetPitchRowH
+piano_roll.InvalidateVisibleRangesCache = grid.InvalidateVisibleRangesCache
 
 return piano_roll

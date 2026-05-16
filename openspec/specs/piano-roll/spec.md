@@ -10,7 +10,7 @@ New requirements added in this version: shift+click additive selection, cache in
 
 ### Requirement: Grid Rendering
 
-The piano roll SHALL render a 2D grid where the Y-axis represents pitch (rows, low-to-top) and the X-axis represents time (columns, left-to-right). Grid cells MUST be drawn using `gfx.rect` for lines and `DrawRoundedRect` (from `src/ui/helpers.lua`) for note blocks. Beat grid lines MUST use 4 opacity tiers (measure, beat, 1/8, 1/16) with alpha values specified in the Grid Hierarchy requirement.
+The piano roll SHALL render a 2D grid where the Y-axis represents pitch (rows, low-to-top) and the X-axis represents time (columns, left-to-right). Grid cells MUST be drawn using `gfx.rect` for lines and `DrawRoundedRect` (from `src/ui/helpers.lua`) for note blocks. Beat grid lines MUST use 4 opacity tiers (measure, beat, 1/8, 1/16) with alpha values specified in the Grid Hierarchy requirement. Vertical grid lines at beat positions SHALL be highlighted when they correspond to a pitch in the current scale — see Scale Snap Highlight requirement.
 
 #### Scenario: Empty grid renders correctly
 
@@ -26,6 +26,14 @@ The piano roll SHALL render a 2D grid where the Y-axis represents pitch (rows, l
 - THEN a rectangle MUST appear with left edge at x-coordinate corresponding to beat 2.0
 - AND width proportional to 1.5 beats at current zoom
 - AND vertical position matching MIDI note 60 (middle C)
+
+#### Scenario: Scale-snap vertical highlight on beat lines
+
+- GIVEN a scale root=0 (C) and scale index=1 (Major, intervals {0,2,4,5,7,9,11})
+- AND scale snap highlight is enabled in preferences
+- WHEN the piano roll renders beat lines
+- THEN vertical grid lines at pitches C, D, E, F, G, A, B `pitch % 12 ∈ {0,2,4,5,7,9,11}` SHALL render with a brighter grid color (e.g., `{0.5, 0.7, 0.5, 0.4}`)
+- AND non-scale pitch rows SHALL render at the normal `grid_beat` alpha (0.35)
 
 ### Requirement: Grid Hierarchy (4 tiers)
 
@@ -259,6 +267,63 @@ When `snap_res <= 0`, `HandlePencilClick` MUST NOT quantize the beat.
 - WHEN a note is placed with the pencil
 - THEN the note SHALL be at the exact clicked beat
 
+### Requirement: Scale Snap Highlight Toggle
+
+`preferences_store` SHALL add a new boolean field `scale_snap_highlight` (default `false`). When enabled, vertical grid lines at the piano roll zone (not the keyboard strip) SHALL render with a tinted color for the 7 pitches in the current scale. The highlight SHALL apply to the full height of the grid area.
+
+#### Scenario: Toggle on shows highlights
+
+- GIVEN `scale_snap_highlight = false`
+- WHEN the user toggles it to `true` via preferences
+- THEN vertical grid lines at scale pitches SHALL use highlight color
+- AND non-scale pitch lines SHALL remain at normal alpha
+
+#### Scenario: Highlight changes when scale changes
+
+- GIVEN `scale_snap_highlight = true` with C Major
+- WHEN user changes scale to A Minor (intervals {0,2,3,5,7,8,10})
+- THEN the highlighted grid lines SHALL shift to pitches A, B, C, D, E, F, G (`pitch % 12 ∈ {9,11,0,2,4,5,7}`)
+
+### Requirement: Horizontal Scroll Clip Boundary
+
+The piano roll grid area SHALL clip note rendering so that note blocks do not visually extend into the keyboard strip (LABEL_W zone on the left). The clip boundary MUST align with the grid edge (`x`), not the keyboard strip interior. Ghost notes MUST use the same clip boundary (`x`). On the right side, the grid SHALL render with correct Z-order: scrollbar thumb SHALL draw above the grid background but note content SHALL stop at the scrollbar track edge.
+
+(Previously: clip boundary used `x - PITCH_LABEL_W`, causing notes to visually bunch at keyboard strip)
+
+#### Scenario: Notes clip at grid edge boundary (not keyboard strip)
+
+- GIVEN a note starting near the left edge of the grid
+- WHEN the user scrolls left past beat 0
+- THEN note blocks MUST NOT render past `x` (the grid clipping boundary)
+- AND ghost notes MUST also clip at `x` (not `x - PITCH_LABEL_W`)
+- AND no visual bunching appears at the left edge of the note grid
+
+#### Scenario: Right side scrollbar does not overlap notes
+
+- GIVEN the piano roll grid with scrollbar visible
+- WHEN notes extend to the rightmost visible beat
+- THEN note blocks SHALL NOT overlap the vertical scrollbar track
+- AND the scrollbar thumb SHALL render with correct Z-order above the grid background
+
+### Requirement: Note Rendering Correctness
+
+Rounded rect rendering SHALL use exact dimensions without +1 overshoot. The velocity dimming overlay over note blocks SHALL use a rounded rect path to preserve corner shape. REAPER GFX note: `gfx.rect` draws axis-aligned rectangles with sharp corners — it MUST NOT replace `DrawRoundedRect` where rounded corners are required.
+
+#### Scenario: No +1 overshoot in rounded rect fills
+
+- GIVEN `DrawRoundedRect` or `DrawRoundedRectEx` called with `(x, y, w, h)`
+- WHEN the opaque fill path renders
+- THEN width and height MUST NOT add +1 to the passed dimensions
+- AND no bleeding artifacts appear at the bottom-right corner of rounded rects
+
+#### Scenario: Velocity dim overlay preserves rounded corners
+
+- GIVEN a note block drawn with `DrawNoteWithGradient`
+- WHEN the velocity dimming overlay applies
+- THEN the overlay SHALL use `DrawRoundedRect` with the same corner radius
+- AND `gfx.rect` (square corners) SHALL NOT be used for the overlay
+- AND no "bottom valley" artifact appears where flat overlay clips rounded corners
+
 ## Acceptance Criteria
 
 - [ ] Grid renders with beat lines at correct positions for all zoom levels
@@ -275,3 +340,12 @@ When `snap_res <= 0`, `HandlePencilClick` MUST NOT quantize the beat.
 - [ ] Scrollbar thumb stays inside track at max scroll (vertical + horizontal)
 - [ ] Lasso GetNotesInRect clamps pitch_high ≤ MAX_PITCH
 - [ ] Pencil places note at exact beat when snap is off (snap_res ≤ 0)
+- [ ] Scale snap highlight toggle exists in preferences_store
+- [ ] Vertical grid lines at scale pitches use a distinct brighter color when toggle is ON
+- [ ] Highlight updates immediately when scale changes
+- [ ] Notes clip at `x` (grid edge) not `x - PITCH_LABEL_W` at keyboard strip boundary
+- [ ] Ghost notes also clip at `x` (same boundary)
+- [ ] No bunching of notes at the left edge during scroll
+- [ ] No +1 bleeding artifacts in rounded rect corners
+- [ ] No square-corner cut into the velocity dim overlay of note blocks
+- [ ] No right-side rendering artifact at scrollbar boundary
