@@ -15,7 +15,7 @@ local theme = require("ui.theme")
 local components = require("ui.components")
 local helpers = require("ui.helpers")
 local layout = require("ui.layout")
-local persist = require("state.persist")
+-- persist removed; prefs.SetKey marks dirty_key, TickSaveDebounce() flushes
 local sequencer = require("core.sequencer")
 local midi = require("core.midi")
 local progression = require("core.progression")
@@ -27,6 +27,19 @@ local m = {}
 local SCALE_OPTIONS = (function() local t = {} for _, v in ipairs(config.SCALES) do t[#t + 1] = v.name end return t end)()
 local CHORD_OPTIONS = (function() local t = {} for _, v in ipairs(config.CHORD_MODES) do t[#t + 1] = v.name end return t end)()
 local OCTAVE_OPTIONS = {"C0", "C1", "C2", "C3", "C4", "C5", "C6", "C7", "C8"}
+
+-- Module-scoped helpers (avoid closure allocation every frame, S3)
+local function PressOverlay(x, y, w, h)
+    helpers.SetColor({0, 0, 0, 0.15})
+    gfx.rect(x, y, w, h / 2, 1)
+end
+
+--- Side-by-side half-width calculation
+local function SplitWidths(total, gap)
+    local avail = total - gap
+    local left = math.floor(avail / 2)
+    return left, avail - left
+end
 
 function m.DrawIslands()
     local y_start = layout.UY(2196)
@@ -65,7 +78,7 @@ function m.DrawIslands()
     local modo_val = helpers.AbbreviateScale(config.SCALES[si_is].name)
     local choice = components.DrawDropdown(modo_drop_x, row_y, modo_drop_w, row_h, nil, modo_val, 
                                           SCALE_OPTIONS, si_is, btn_font_size)
-    if choice then prefs.SetScaleIndex(choice); persist.Save("scale_index", choice) end
+    if choice then prefs.SetScaleIndex(choice) end
     
     -- Grid label + dropdown (entre MODO y NOTE display)
     local note_x = layout.UX(18826)
@@ -79,10 +92,11 @@ function m.DrawIslands()
     
     local grid_drop_x = grid_lbl_x + gw + layout.US(400)
     local grid_drop_w = note_x - grid_drop_x - layout.US(400)
+    local si_clamped = api_guard.ClampIndex(prefs.GetSubdivisionIndex(), 1, #config.SUBDIVISION_LABELS)
     local grid_choice = components.DrawDropdown(grid_drop_x, row_y, grid_drop_w, row_h,
-        nil, config.SUBDIVISION_LABELS[prefs.GetSubdivisionIndex()],
-        config.SUBDIVISION_LABELS, prefs.GetSubdivisionIndex(), btn_font_size)
-    if grid_choice then prefs.SetSubdivisionIndex(grid_choice); persist.Save("subdivision_index", grid_choice) end
+        nil, config.SUBDIVISION_LABELS[si_clamped],
+        config.SUBDIVISION_LABELS, si_clamped, btn_font_size)
+    if grid_choice then prefs.SetSubdivisionIndex(grid_choice) end
     
     -- NOTE display (sin label, misma posición)
     components.DrawNoteDisplay(note_x, row_y, layout.US(2800), row_h, midi_store.GetLastNotePlayed())
@@ -100,19 +114,19 @@ function m.DrawIslands()
     gfx.x, gfx.y = i2_x + (std_island_w - oct_tw)/2, y_start
     gfx.drawstr("OCTAVA")
     local btn_x = i2_x + (std_island_w - std_btn_w)/2
-    local oct_open_up = y_start > gfx.h / 2
     local oct_content_h = short_btn_h * 4 + layout.US(171) * 3
     local oct_content_y = y_start + math.floor((short_island_h - oct_content_h) / 2) + layout.US(398)
     local oct_gap = layout.US(171)
     local oct_choice = components.DrawDropdown(btn_x, oct_content_y, std_btn_w, short_btn_h,
-        nil, "C"..math.floor(prefs.GetOctave()), OCTAVE_OPTIONS, prefs.GetOctave() + 1, btn_font_size, oct_open_up)  -- Issue 9
-    if oct_choice then local oct = math.floor(oct_choice - 1); prefs.SetOctave(oct); persist.Save("octave", oct) end
+        nil, "C"..math.floor(prefs.GetOctave()), OCTAVE_OPTIONS,
+        api_guard.ClampIndex(prefs.GetOctave() + 1, 1, #OCTAVE_OPTIONS), btn_font_size)  -- W7: guard against corrupted ExtState
+    if oct_choice then local oct = math.floor(oct_choice - 1); prefs.SetOctave(oct) end
     if components.DrawButton(btn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
-                             "C5", prefs.GetOctave() == 5, btn_font_size) then prefs.SetOctave(5); persist.Save("octave", 5) end
+                             "C5", prefs.GetOctave() == 5, btn_font_size) then prefs.SetOctave(5) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
-                             "C4", prefs.GetOctave() == 4, btn_font_size) then prefs.SetOctave(4); persist.Save("octave", 4) end
+                             "C4", prefs.GetOctave() == 4, btn_font_size) then prefs.SetOctave(4) end
     if components.DrawButton(btn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
-                             "C3", prefs.GetOctave() == 3, btn_font_size) then prefs.SetOctave(3); persist.Save("octave", 3) end
+                             "C3", prefs.GetOctave() == 3, btn_font_size) then prefs.SetOctave(3) end
 
     ---------------------------------------------------------------------------
     -- Island 3: Chord (dropdown + TRI/7MA/9NA quick buttons, like octave island)
@@ -127,25 +141,24 @@ function m.DrawIslands()
     local cbtn_x = i3_x + (std_island_w - std_btn_w)/2
     local chord_cmi = api_guard.ClampIndex(prefs.GetChordModeIndex(), 1, #config.CHORD_MODES)
     local chord_choice = components.DrawDropdown(cbtn_x, oct_content_y, std_btn_w, short_btn_h,
-        nil, config.CHORD_MODES[chord_cmi].name, CHORD_OPTIONS, chord_cmi, btn_font_size, oct_open_up)
+        nil, config.CHORD_MODES[chord_cmi].name, CHORD_OPTIONS, chord_cmi, btn_font_size)
     if chord_choice then
         prefs.SetChordModeIndex(chord_choice)
-        persist.Save("chord_mode_index", chord_choice)
     end
     if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
                              "TRI", prefs.GetChordModeIndex() == 2, btn_font_size) then
         local new_val = prefs.GetChordModeIndex() == 2 and 1 or 2
-        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+        prefs.SetChordModeIndex(new_val)
     end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 2, std_btn_w, short_btn_h,
                              "7MA", prefs.GetChordModeIndex() == 3, btn_font_size) then
         local new_val = prefs.GetChordModeIndex() == 3 and 1 or 3
-        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+        prefs.SetChordModeIndex(new_val)
     end
     if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
                              "9NA", prefs.GetChordModeIndex() == 4, btn_font_size) then
         local new_val = prefs.GetChordModeIndex() == 4 and 1 or 4
-        prefs.SetChordModeIndex(new_val); persist.Save("chord_mode_index", new_val)
+        prefs.SetChordModeIndex(new_val)
     end
 
     ---------------------------------------------------------------------------
@@ -182,7 +195,6 @@ function m.DrawIslands()
     if components.DrawButton(bx1, inv_item_y, inv_btn_w, inv_item_h, dir_text, true, inv_font) then
         local new_dir = prefs.GetInversionDirection() == 0 and 1 or 0
         prefs.SetInversionDirection(new_dir)
-        persist.Save("inversion_direction", new_dir)
     end
 
     -- Buttons 2-4: 1st, 2nd, 3rd inversion (click active → root; click another → select)
@@ -194,7 +206,6 @@ function m.DrawIslands()
                                  inv_labels[i], prefs.GetInversionIndex() == inv_idx, inv_font) then
             local new_inv = (prefs.GetInversionIndex() == inv_idx) and 1 or inv_idx
             prefs.SetInversionIndex(new_inv)
-            persist.Save("inversion_index", new_inv)
         end
     end
 
@@ -204,20 +215,10 @@ function m.DrawIslands()
     local i4_x = layout.UX(34541)
     local b_w = std_island_w + layout.US(57)
     local b_h = layout.US(1980)
+    -- NOTA: NO hay DrawIsland() contenedor — cada botón tiene su propio fondo
     -- Padding calculado dinámicamente para alinear el borde inferior
-    local b_gap = (island_h - (b_h * 5)) / 4
+    local b_gap = (island_h - (b_h * 5)) / 4  -- provisional; vol_h clamping may shift MIDI row (C2)
     local half_gap = layout.US(400)
-    local function PressOverlay(x, y, w, h)
-        helpers.SetColor({0, 0, 0, 0.15})
-        gfx.rect(x, y, w, h / 2, 1)
-    end
-    
-    --- Helper: side-by-side half-width calculation
-    local function SplitWidths(total, gap)
-        local avail = total - gap
-        local left = math.floor(avail / 2)
-        return left, avail - left
-    end
     
     -- Row tracking
     local r0_y = y_start
@@ -382,10 +383,12 @@ function m.DrawIslands()
         if s_hover and not drag_store.GetIsDragging() then
             helpers.DrawTooltip("Volume: " .. volume .. "%", layout.US(700))
         end
-        if s_hover and ui_store.GetUseScroll() and ui_store.GetMouseWheelDelta() ~= 0 then
-            local delta = ui_store.GetMouseWheelDelta() > 0 and 5 or -5
-            ui_store.SetMouseWheelDelta(0)
-            seq_store.SetVolume(math.max(0, math.min(100, volume + delta)))
+        if s_hover and ui_store.GetUseScroll() then
+            local wheel = ui_store.ConsumeMouseWheelDelta()  -- S1: use established consume pattern
+            if wheel ~= 0 then
+                local delta = wheel > 0 and 5 or -5
+                seq_store.SetVolume(math.max(0, math.min(100, volume + delta)))
+            end
         end
         if ui_store.GetMouseClick() and s_hover and not drag_store.GetIsDragging() then
             ui_store.SetSliderDragging(true)
@@ -400,10 +403,10 @@ function m.DrawIslands()
     end
     
     -- =========================================================
-    -- Row 5: MIDI toggle (full width, 7px below volume, 7px above island bottom)
+    -- Row 5: MIDI toggle (full width, exactly 7px below volume slider)
     -- =========================================================
     do
-        local r4_y = r3_y + vol_h + vol_gap + 6
+        local r4_y = r3_y + (vol_h + 4) + vol_gap + layout.US(114)  -- ~9px below slider bottom (7+2 extra)
         local full_w = b_w
         
         local midi_expanded = island_store.GetMidiIslandExpanded()

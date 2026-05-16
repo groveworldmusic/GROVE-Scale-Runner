@@ -33,9 +33,12 @@ function m.DrawPerformanceArea()
     
     -- Scroll pagination logic
     local hover_area = gfx.mouse_x >= x_start and gfx.mouse_x <= x_start + w and gfx.mouse_y >= y and gfx.mouse_y <= y + h
-    if hover_area and ui_store.GetMouseWheelDelta() ~= 0 then
-        local dir = ui_store.GetMouseWheelDelta() > 0 and -1 or 1
-        seq_store.SetCurrentPage(math.max(1, math.min(4, seq_store.GetCurrentPage() + dir)))
+    if hover_area and ui_store.GetUseScroll() then
+        local raw = ui_store.ConsumeMouseWheelDelta()
+        if raw ~= 0 then
+            local dir = raw > 0 and -1 or 1
+            seq_store.SetCurrentPage(math.max(1, math.min(4, seq_store.GetCurrentPage() + dir)))
+        end
     end
 
     helpers.SetColor(theme.colors.island_bg)
