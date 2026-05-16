@@ -14,10 +14,18 @@ local components = require("ui.components")
 local ui_store = require("state.ui")
 local seq_store = require("state.sequencer")
 local prefs = require("state.preferences")
-local persist = require("state.persist")
+-- persist removed; prefs.SetKey marks dirty_key, TickSaveDebounce() flushes
 local layout = require("ui.layout")
 
 local browser = {}
+
+-- Directory scan cache: avoids io.* filesystem calls during draw frames.
+-- Keys are absolute directory paths, values are { dirs = table, files = table }.
+-- Populated on Init() and on explicit RefreshPresets(); read-only during draw.
+local _scan_cache = {}
+
+-- lfs availability (Lua File System) — pcall-guarded with io.popen fallback
+local _has_lfs, _lfs = pcall(require, "lfs")
 
 -- Configuration
 local ITEM_H = 22                 -- Height per list item in pixels
@@ -25,7 +33,7 @@ local FOLDER_ICON_W = 16         -- Width of folder/file icons
 local STAR_SIZE = 14             -- Size of favorite star icon
 local HEADER_H = 28              -- Height of the browser header row
 local BTN_H = 24                 -- Height of action buttons
-local FONT_SIZE = 11             -- Base font size (scaled in header)
+local FONT_SIZE = 13             -- Base font size for preset list items
 
 -- Colors
 local HEADER_BG = {0.22, 0.22, 0.22, 1}
@@ -54,7 +62,6 @@ function browser.Init()
 
     -- Create directory on first access
     local dir_exists = false
-    local ok2, attr = pcall(reaper.GetResourcePath, preset_dir)
     pcall(function()
         local f = io.open(preset_dir, "r")
         if f then dir_exists = true; f:close() end
@@ -76,21 +83,50 @@ function browser.Init()
     browser.LoadFavorites()
 end
 
---- Scan a directory for subdirectories and .grove files.
+--- Cache-aware directory scan. Returns cached results if available;
+--- otherwise performs actual I/O and populates the cache.
+--- During draw frames, callers should NOT force a re-scan — use
+--- RefreshPresets() for explicit refreshes (e.g., after save/rename).
 --- @param dir_path string Absolute path to directory
-function browser.ScanDirectory(dir_path)
+--- @param force_refresh boolean? If true, bypasses cache and re-scans
+function browser.ScanDirectory(dir_path, force_refresh)
     if not dir_path or #dir_path == 0 then return end
+
+    -- Return cached results if available and not forced
+    if not force_refresh and _scan_cache[dir_path] then
+        local cached = _scan_cache[dir_path]
+        preset_store.SetPresetTree({path = dir_path, dirs = cached.dirs, files_count = #cached.files})
+        preset_store.SetPresetFiles(cached.files)
+        preset_store.SetSelectedPresetIdx(nil)
+        preset_store.SetBrowserScroll(0)
+        preset_store.SetBrowserError(nil)
+        return
+    end
 
     -- Build folder tree (directories)
     local dirs = {}
-    local ok1, handle1 = pcall(io.popen, 'dir "' .. dir_path .. '" /B /AD 2>nul')
-    if ok1 and handle1 then
-        for line in handle1:lines() do
-            if #line > 0 then
-                table.insert(dirs, {name = line, path = dir_path .. "\\" .. line, type = "folder", expanded = false})
+    if _has_lfs then
+        -- lfs path: iterate directory, filter by type
+        for entry in _lfs.dir(dir_path) do
+            if entry ~= "." and entry ~= ".." then
+                local full_path = dir_path .. "\\" .. entry
+                local attr = _lfs.attributes(full_path)
+                if attr and attr.mode == "directory" then
+                    table.insert(dirs, {name = entry, path = full_path, type = "folder", expanded = false})
+                end
             end
         end
-        handle1:close()
+    else
+        -- Fallback: io.popen for environments without lfs
+        local ok1, handle1 = pcall(io.popen, 'dir "' .. dir_path .. '" /B /AD 2>nul')
+        if ok1 and handle1 then
+            for line in handle1:lines() do
+                if #line > 0 then
+                    table.insert(dirs, {name = line, path = dir_path .. "\\" .. line, type = "folder", expanded = false})
+                end
+            end
+            handle1:close()
+        end
     end
 
     -- Sort directories alphabetically
@@ -98,25 +134,49 @@ function browser.ScanDirectory(dir_path)
 
     -- Build file list (.grove files only)
     local files = {}
-    local ok2, handle2 = pcall(io.popen, 'dir "' .. dir_path .. '\\*.grove" /B 2>nul')
-    if ok2 and handle2 then
-        for line in handle2:lines() do
-            if #line > 0 then
-                local name = line:gsub("%.grove$", "")
-                table.insert(files, {name = name, filename = line, path = dir_path .. "\\" .. line})
+    if _has_lfs then
+        -- lfs path: iterate directory, filter by extension
+        for entry in _lfs.dir(dir_path) do
+            if entry:match("%.grove$") then
+                local name = entry:gsub("%.grove$", "")
+                table.insert(files, {name = name, filename = entry, path = dir_path .. "\\" .. entry})
             end
         end
-        handle2:close()
+    else
+        -- Fallback: io.popen for environments without lfs
+        local ok2, handle2 = pcall(io.popen, 'dir "' .. dir_path .. '\\*.grove" /B 2>nul')
+        if ok2 and handle2 then
+            for line in handle2:lines() do
+                if #line > 0 then
+                    local name = line:gsub("%.grove$", "")
+                    table.insert(files, {name = name, filename = line, path = dir_path .. "\\" .. line})
+                end
+            end
+            handle2:close()
+        end
     end
 
     -- Sort files alphabetically
     table.sort(files, function(a, b) return a.name:lower() < b.name:lower() end)
+
+    -- Populate cache
+    _scan_cache[dir_path] = { dirs = dirs, files = files }
 
     preset_store.SetPresetTree({path = dir_path, dirs = dirs, files_count = #files})
     preset_store.SetPresetFiles(files)
     preset_store.SetSelectedPresetIdx(nil)
     preset_store.SetBrowserScroll(0)
     preset_store.SetBrowserError(nil)
+end
+
+--- Force-refresh the cache for the current directory. Call after save, rename,
+--- or any filesystem mutation that changes the preset list.
+function browser.RefreshPresets()
+    local dir = preset_store.GetCurrentDirectory()
+    if dir then
+        _scan_cache[dir] = nil
+        browser.ScanDirectory(dir, true)
+    end
 end
 
 --- Load favorites from REAPER persistent storage.
@@ -234,8 +294,8 @@ function browser.SavePreset(file_path, preset_name)
     f:write(content)
     f:close()
 
-    -- Refresh file list
-    browser.ScanDirectory(preset_store.GetCurrentDirectory())
+    -- Refresh file list (clear cache so the new file appears immediately)
+    browser.RefreshPresets()
     preset_store.SetBrowserError(nil)
     return true
 end
@@ -290,10 +350,10 @@ function browser.LoadPreset(file_path)
 
     -- v2 format: restore progression and context for full state reconstruction
     if result.version and result.version >= 2 then
-        if result.root_index then config.state.root_index = result.root_index; prefs.SetRootIndex(result.root_index); persist.Save("root_index", result.root_index) end
-        if result.scale_index then config.state.scale_index = result.scale_index; prefs.SetScaleIndex(result.scale_index); persist.Save("scale_index", result.scale_index) end
-        if result.octave then config.state.octave = result.octave; prefs.SetOctave(result.octave); persist.Save("octave", result.octave) end
-        if result.chord_mode_index then config.state.chord_mode_index = result.chord_mode_index; prefs.SetChordModeIndex(result.chord_mode_index); persist.Save("chord_mode_index", result.chord_mode_index) end
+        if result.root_index then prefs.SetRootIndex(result.root_index) end
+        if result.scale_index then prefs.SetScaleIndex(result.scale_index) end
+        if result.octave then prefs.SetOctave(result.octave) end
+        if result.chord_mode_index then prefs.SetChordModeIndex(result.chord_mode_index) end
         if result.progression and type(result.progression) == "table" then
             seq_store.SetProgression(result.progression)
         end
@@ -344,8 +404,8 @@ function browser.RenamePreset()
         return false
     end
 
-    -- Refresh the file list and clear selection
-    browser.ScanDirectory(dir)
+    -- Refresh the file list and clear selection (clear cache so rename is visible immediately)
+    browser.RefreshPresets()
     preset_store.SetBrowserError(nil)
     return true
 end
@@ -372,7 +432,7 @@ local function DrawActionButton(x, y, w, h, label, hover)
 end
 function browser.DrawActionButtons(x, y, btn_w, h)
     local btn_spacing = 4
-    local total_w = btn_w * 3 + btn_spacing * 2
+    local total_w = btn_w * 2 + btn_spacing
     local btn_y = y
 
     -- Save button
@@ -394,16 +454,8 @@ function browser.DrawActionButtons(x, y, btn_w, h)
         end
     end
 
-    -- Rename button (active only when a preset is selected)
-    local rename_x = save_x + btn_w + btn_spacing
-    local rename_hover = gfx.mouse_x >= rename_x and gfx.mouse_x <= rename_x + btn_w
-                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
-    if DrawActionButton(rename_x, btn_y, btn_w, h, "RENA", rename_hover) then
-        browser.RenamePreset()
-    end
-
     -- Load button
-    local load_x = rename_x + btn_w + btn_spacing
+    local load_x = save_x + btn_w + btn_spacing
     local load_hover = gfx.mouse_x >= load_x and gfx.mouse_x <= load_x + btn_w
                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + h
     if DrawActionButton(load_x, btn_y, btn_w, h, "LOAD", load_hover) then
@@ -536,10 +588,12 @@ end
 --- @param files table Array of file entries
 --- @param scroll_offset number Current scroll
 --- @param selected_idx number|nil Selected index
+--- @param last_cap number Previous frame mouse_cap (for right-click detection)
 --- @return number new_scroll_offset
---- @return string|nil "select:idx" or "fav:path" or "load:path"
-local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx)
+--- @return string|nil "select:idx" or "fav:path" or "load:path" or "context:idx"
+local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_cap)
     local result = nil
+    local right_click_pressed = (gfx.mouse_cap & 2) == 2 and (last_cap & 2) == 0
 
     if not files or #files == 0 then
         helpers.SetColor(EMPTY_COLOR)
@@ -579,7 +633,6 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx)
         -- Favorite star
         local is_fav = browser.IsFavorite(entry.path)
         local star_x = x + w - STAR_SIZE - 4
-        local star_hover = hover and gfx.mouse_x >= star_x and gfx.mouse_x <= star_x + STAR_SIZE
         helpers.SetColor(is_fav and STAR_ON_COLOR or STAR_OFF_COLOR)
         gfx.setfont(1, "Calibri", 10)
         local star_sym = is_fav and "★" or "☆"
@@ -596,14 +649,73 @@ local function DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx)
         gfx.x, gfx.y = x + 4, item_y + (ITEM_H - lh) / 2
         gfx.drawstr(label)
 
-        -- Click handling
+        -- Left-click handling
         if hover and ui_store.GetMouseClick() then
-            -- Check if click is on star icon
             if gfx.mouse_x >= star_x and gfx.mouse_x <= star_x + STAR_SIZE then
                 result = "fav:" .. entry.path
             else
                 result = "select:" .. tostring(i)
             end
+        end
+
+        -- Right-click context menu (stationary right-click on preset name area)
+        if hover and right_click_pressed and not (gfx.mouse_x >= star_x and gfx.mouse_x <= star_x + STAR_SIZE) then
+            -- Select the preset first
+            if selected_idx ~= i then
+                preset_store.SetSelectedPresetIdx(i)
+            end
+            -- Show context menu at cursor position
+            local dir = preset_store.GetCurrentDirectory()
+            local choice = gfx.showmenu("Rename|Duplicate|Delete|Show in Explorer")
+            if choice and choice > 0 then
+                if choice == 1 then
+                    -- Rename
+                    browser.RenamePreset()
+                elseif choice == 2 then
+                    -- Duplicate: copy file with _copy.grove suffix
+                    local path = entry.path
+                    if path then
+                        local dup_path = dir .. "\\" .. entry.name .. "_copy.grove"
+                        local f_in, err_in = io.open(path, "rb")
+                        local ok = false
+                        if f_in then
+                            local content = f_in:read("*all")
+                            f_in:close()
+                            local f_out, err_out = io.open(dup_path, "wb")
+                            if f_out then
+                                f_out:write(content)
+                                f_out:close()
+                                ok = true
+                            end
+                        end
+                        if ok then
+                            browser.RefreshPresets()
+                        else
+                            preset_store.SetBrowserError("Could not duplicate preset")
+                        end
+                    end
+                elseif choice == 3 then
+                    -- Delete: prompt then remove
+                    local ret = reaper.MB("Delete preset \"" .. entry.name .. "\"?", "Delete Preset", 4) -- 4 = Yes/No
+                    if ret == 6 then -- 6 = Yes
+                        local ok, err = os.remove(entry.path)
+                        if ok then
+                            preset_store.SetSelectedPresetIdx(nil)
+                            browser.RefreshPresets()
+                        else
+                            preset_store.SetBrowserError("Could not delete preset: " .. tostring(err or "unknown error"))
+                        end
+                    end
+                elseif choice == 4 then
+                    -- Show in Explorer
+                    local path = entry.path
+                    if path then
+                        reaper.ExecProcess("explorer.exe /select,\"" .. path .. "\"")
+                    end
+                end
+            end
+            -- Consume this right-click by setting result to prevent double-processing
+            result = "context:" .. tostring(i)
         end
     end
 
@@ -650,7 +762,7 @@ function browser.DrawPresetBrowser(x, y, w, h)
 
     -- Preset count label (below Rename, above divider — clearly separated)
     local files = preset_store.GetPresetFiles()
-    gfx.setfont(1, "Calibri", 9)
+    gfx.setfont(1, "Calibri", 14)
     helpers.SetColor(theme.colors.text_dim)
     local hdr = "PRESETS (" .. tostring(#(files or {})) .. ")"
     local hw, hh = gfx.measurestr(hdr)
@@ -711,7 +823,8 @@ function browser.DrawPresetBrowser(x, y, w, h)
             local scroll = preset_store.GetBrowserScroll()
             local sel_idx = preset_store.GetSelectedPresetIdx()
 
-            local _, list_result = DrawPresetList(right_x, current_y, right_w, content_h, files, scroll, sel_idx)
+            local last_cap = ui_store.GetLastMouseCap()
+            local _, list_result = DrawPresetList(right_x, current_y, right_w, content_h, files, scroll, sel_idx, last_cap)
 
             if list_result then
                 local action, value = list_result:match("^(.-):(.+)$")
