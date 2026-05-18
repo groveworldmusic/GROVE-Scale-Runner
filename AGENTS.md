@@ -201,6 +201,8 @@ Cuando ocurra cualquiera de estos eventos, DEBÉS actualizar los archivos corres
 | Decisión técnica (arquitectura, patrón, librería) | `.llm/knowledge/decisions.md` + Engram |
 | Bug encontrado y corregido | `.llm/knowledge/learnings.md` + Engram |
 | Gotcha / edge case / descubrimiento | `.llm/knowledge/learnings.md` + Engram |
+| **Feature nueva implementada** | **`docs/features.md`** (sección 17) + `.llm/knowledge/decisions.md` + Engram |
+| **Bug conocido documentado** | **`docs/features.md`** (sección 18) + `.llm/knowledge/learnings.md` + Engram |
 | Convención establecida (naming, estructura) | `.llm/knowledge/conventions.md` |
 | Cambio en la arquitectura (archivos nuevos, directorios) | `.llm/knowledge/architecture.md` |
 | Actualización de estándares del proyecto | `AGENTS.md` correspondiente |
@@ -227,6 +229,7 @@ Usá Engram para memoria persistente entre sesiones:
 
 ### Enlaces rápidos
 
+- `docs/features.md` — **Catálogo maestro de features** (obligatorio actualizar con cada feature nueva)
 - `.llm/knowledge/architecture.md` — Mapa completo del proyecto
 - `.llm/knowledge/decisions.md` — Decisiones técnicas registradas
 - `.llm/knowledge/learnings.md` — Bugs, gotchas, soluciones

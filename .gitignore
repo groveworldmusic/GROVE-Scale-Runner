@@ -24,3 +24,5 @@ tmp/
 # REAPER
 reaper.ini
 *.ReaperLangPack
+# Local Pi runtime state
+.atl/
