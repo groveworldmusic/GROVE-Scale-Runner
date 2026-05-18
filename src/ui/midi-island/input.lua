@@ -7,6 +7,7 @@ local config = require("config")
 local island_store = require("state.island")
 local ui_store = require("state.ui")
 local drag_store = require("state.drag")
+local seq_store = require("state.sequencer")
 local piano_roll = require("ui.piano-roll")
 local timeline = require("ui.timeline")
 local velocity = require("ui.velocity")
@@ -18,12 +19,22 @@ local m = {}
 -- =========================================================
 local _rc_gate_active = false  -- true while right button held within grid
 
-function m.HandleKeyboard(char)
-    local tool_mode = island_store.GetToolMode()
+function m.HandleKeyboard(char, prog_focused)
     local keyboard_consumed = false
 
+    -- Progression undo/redo shortcuts when mouse is not in piano roll grid
+    if prog_focused then
+        if char == 346 then  -- Ctrl+Z (90 + 256)
+            seq_store.HandleProgUndo()
+            keyboard_consumed = true
+        elseif char == 345 then  -- Ctrl+Y (89 + 256)
+            seq_store.HandleProgRedo()
+            keyboard_consumed = true
+        end
+    end
+
     -- Handle Escape for cancel drag
-    if char == 27 and island_store.GetNoteDragActive() then
+    if not keyboard_consumed and char == 27 and island_store.GetNoteDragActive() then
         piano_roll.CancelNoteDrag()
         keyboard_consumed = true
     end
@@ -241,6 +252,19 @@ function m.HandleMouse(ctx)
                 if left_down then
                     if in_grid_body then
                         if piano_roll.HandleKnifeClick(mx, my, grid_x, pr_y,
+                            island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
+                            island_store.GetZoomX()) then
+                            piano_roll.MarkNotesDirty()
+                        end
+                    end
+                    click_consumed = true
+                end
+
+            elseif tool_mode == "eraser" then
+                -- Eraser tool: delete note on left click
+                if left_down then
+                    if in_grid_body then
+                        if piano_roll.HandlePaintRightClick(mx, my, grid_x, pr_y,
                             island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
                             island_store.GetZoomX()) then
                             piano_roll.MarkNotesDirty()

@@ -9,6 +9,7 @@ local io_mod = require("ui.preset-browser.io")
 local folder_mod = require("ui.preset-browser.folder")
 local list_mod = require("ui.preset-browser.preset-list")
 local main_mod = require("ui.preset-browser.main")
+local preview_mod = require("ui.preset-browser.preview")
 
 local browser = {}
 
@@ -28,9 +29,21 @@ browser.HasLFS = io_mod.HasLFS
 browser.BatchDeletePresets = io_mod.BatchDeletePresets
 browser.BatchMergeLoadPresets = io_mod.BatchMergeLoadPresets
 browser.ExportPresetsToMIDI = io_mod.ExportPresetsToMIDI
+browser.TickSaveStats = io_mod.TickSaveStats
+browser.EditMetadataDialog = io_mod.EditMetadataDialog
+browser.SaveSlotSnapshot = io_mod.SaveSlotSnapshot
+browser.LoadSlotSnapshot = io_mod.LoadSlotSnapshot
+browser.SavePresetWithVersioning = io_mod.SavePresetWithVersioning
 
 -- Main composition (from main.lua)
 browser.DrawPresetBrowser = main_mod.DrawPresetBrowser
+
+-- Preview (from preview.lua)
+browser.PlayPreview = preview_mod.PlayPreview
+browser.TickPreview = preview_mod.TickPreview
+
+-- Thumbnail (from io.lua)
+browser.ComputeThumbnail = io_mod.ComputeThumbnail
 
 -- Folder and preset-list are internal to main.lua — not re-exported.
 -- DrawFolderHeader, DrawFolderList, DrawPresetList, HandleContextMenu

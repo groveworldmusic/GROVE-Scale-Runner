@@ -46,6 +46,7 @@ local island_state = {
     notes_state = NOTES_STATE_LOADED,  -- Phase 3: tri-state replaces notes_dirty
     midi_island_expanded = false,
     midi_island_toggled = false,
+    autoscroll_enabled = false,
     -- Scrollbar drag state (Phase 5: moved from midi-island.lua locals)
     sb_dragging = false,
     sb_drag_start_x = 0,
@@ -248,6 +249,12 @@ function m.GetPreToggleDock() return island_state.pre_toggle_dock end
 function m.SetPreToggleDock(v) island_state.pre_toggle_dock = v or 0 end
 function m.GetPreToggleRect() return island_state.pre_toggle_rect end
 function m.SetPreToggleRect(t) island_state.pre_toggle_rect = t end
+
+-- =========================================================
+-- Autoscroll State (Batch B)
+-- =========================================================
+function m.GetAutoscrollEnabled() return island_state.autoscroll_enabled end
+function m.SetAutoscrollEnabled(v) island_state.autoscroll_enabled = v end
 
 -- =========================================================
 -- Snap State (PR2)

@@ -18,6 +18,10 @@ local state = {
     browser_error = nil,
     favorites = {},
     bookmarks = {},
+    preset_stats = {},
+    _stats_dirty = false,
+    _editing_metadata = {},  -- {bpm=120, genre="", difficulty=1, tags="", notes=""}
+    _thumbnail_cache = {},  -- keyed by path: {grid=table[8][8] of bool}
 }
 
 function m.Init(defaults)
@@ -120,6 +124,49 @@ function m.SetFavorites(t) state.favorites = t or {} end
 -- Bookmarks
 function m.GetBookmarks() return state.bookmarks end
 function m.SetBookmarks(t) state.bookmarks = t or {} end
+
+-- Stats
+function m.GetPresetStats() return state.preset_stats end
+function m.SetPresetStats(t) state.preset_stats = t or {} end
+function m.GetPresetStat(path) return state.preset_stats[path] end
+function m.IncrementPresetLoadCount(path)
+    state.preset_stats[path] = state.preset_stats[path] or {load_count=0, last_loaded=0, last_modified=0}
+    state.preset_stats[path].load_count = state.preset_stats[path].load_count + 1
+    state.preset_stats[path].last_loaded = os.time()
+    m.MarkStatsDirty()
+end
+function m.MarkStatsDirty() state._stats_dirty = true end
+function m.IsStatsDirty() local d = state._stats_dirty; state._stats_dirty = false; return d end
+function m.SaveStats()
+    local stats = state.preset_stats
+    local parts = {}
+    for path, data in pairs(stats) do
+        table.insert(parts, string.format("[%q] = {load_count=%d,last_loaded=%d,last_modified=%d}",
+            path, data.load_count or 0, data.last_loaded or 0, data.last_modified or 0))
+    end
+    local str = "{" .. table.concat(parts, ",") .. "}"
+    pcall(reaper.SetExtState, "GROVE_Scale_Runner", "preset_stats", str, true)
+end
+function m.LoadStats()
+    local ok, str = pcall(reaper.GetExtState, "GROVE_Scale_Runner", "preset_stats")
+    if not ok or not str or #str == 0 then return end
+    local fn, err = load("return " .. str)
+    if fn then
+        local ok2, result = pcall(fn)
+        if ok2 and type(result) == "table" then
+            state.preset_stats = result
+        end
+    end
+end
+
+-- Editing metadata (for metadata dialog)
+function m.GetEditingMetadata() return state._editing_metadata end
+function m.SetEditingMetadata(t) state._editing_metadata = t or {} end
+
+-- Thumbnail cache
+function m.GetThumbnail(path) return state._thumbnail_cache[path] end
+function m.SetThumbnail(path, grid) state._thumbnail_cache[path] = grid end
+function m.ClearThumbnailCache() state._thumbnail_cache = {} end
 
 -- Clear all browser state to defaults
 function m.ClearBrowserState()

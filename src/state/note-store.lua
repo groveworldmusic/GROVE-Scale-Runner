@@ -423,6 +423,10 @@ function m.SyncNotesToProgression(seq_store, prefs_store, beats_per_slot)
     local scale = config.SCALES[api_guard.ClampIndex(scale_idx, 1, #config.SCALES)]
     if not scale then return 0 end
 
+    -- Push undo for the entire sync operation, suppress individual-entry snapshots
+    seq_store.PushProgUndo(seq_store.ProgSnapshot())
+    seq_store.SetProgUndoGate(true)
+
     local slots_written = 0
 
     for slot_i = 1, 16 do
@@ -492,6 +496,7 @@ function m.SyncNotesToProgression(seq_store, prefs_store, beats_per_slot)
         ::continue::
     end
 
+    seq_store.SetProgUndoGate(false)
     return slots_written
 end
 

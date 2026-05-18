@@ -189,8 +189,9 @@ Issues referenciados en comentarios del código fuente:
 
 1. **NO crear archivos sueltos en la raíz del proyecto.** Todo archivo nuevo debe ir en su directorio correspondiente (`src/`, `tests/`, `.llm/`, `openspec/`, `docs/`).
 2. **NO crear documentación sin estructura.** Los únicos directorios para documentación son `docs/` (documentación de desarrollo, NO modificar) y `.llm/knowledge/` (conocimiento para LLMs).
-3. **docs/ es read-only.** El contenido de `docs/` es documentación de desarrollo escrita por el usuario. NO se modifica, NO se elimina, NO se reorganiza.
+3. **docs/ es read-only (con excepción explícita).** El contenido de `docs/` es documentación de desarrollo escrita por el usuario. NO se elimina, NO se reorganiza. La ÚNICA excepción es `docs/features.md` — el catálogo maestro de features — que DEBE actualizarse al agregar nuevas features o corregir bugs documentados (ver Auto-update table más abajo).
 4. **`.llm/` es el lugar para todo lo relacionado con LLMs.** AGENTS.md hijos, knowledge, templates — todo va allí.
+5. **Siempre actualizar `docs/features.md` al agregar una nueva feature o corregir un bug documentado.** Este archivo es el catálogo maestro y su desactualización causa drift entre la implementación y la documentación del proyecto.
 
 ### Auto-update de conocimiento
 

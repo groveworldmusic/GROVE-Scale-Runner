@@ -5,6 +5,7 @@ local seq_store = require("state.sequencer")
 local midi = require("core.midi")
 local progression = require("core.progression")
 local prefs = require("state.preferences")
+local island_store = require("state.island")
 
 local sequencer = {}
 
@@ -86,6 +87,10 @@ function sequencer.Run()
         sequencer.Stop()
         return 
     end
+    -- Gate loop boundary: autoscroll loops at last filled slot, non-autoscroll uses full 16 slots
+    if not island_store.GetAutoscrollEnabled() then
+        loop = 16
+    end
     
     -- Resolve current subdivision count
     local sub_idx = prefs.GetSubdivisionIndex() or 1
@@ -131,6 +136,33 @@ function sequencer.Run()
             end
         end
     end
+end
+
+--- Snap sequencer position to REAPER's edit cursor position.
+--- Flushes currently held notes, reads transport position via
+--- TimeMap2_timeToBeats, and sets sequencer state to match.
+function sequencer.SyncToTransport()
+    -- Flush any currently held MIDI notes
+    local midi_notes = seq_store.GetMidiNotes() or {}
+    for _, n in ipairs(midi_notes) do
+        midi.SendMidi(n, false, nil, false)
+    end
+    seq_store.SetMidiNotes({})
+
+    -- Read REAPER edit cursor position in measures
+    local ok, m = reaper.TimeMap2_timeToBeats(0, reaper.GetCursorPosition())
+    if not ok then return end
+
+    local cur_m = math.floor(m)
+    local progress = m % 1
+
+    -- Set sequencer state to match
+    seq_store.SetCurrentStep(cur_m + 1)
+    seq_store.SetLastMeasure(cur_m)
+    seq_store.SetProgress(progress)
+    seq_store.SetInternalBeats(m * 4)
+    seq_store.SetCurrentSubStep(0)
+    seq_store.SetLastTime(nil)
 end
 
 return sequencer

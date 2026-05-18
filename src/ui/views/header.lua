@@ -16,6 +16,7 @@ local compact = require("ui.compact")
 local layout = require("ui.layout")
 local persist = require("state.persist")
 local api_guard = require("core.api-guard")
+local midi = require("core.midi")
 
 local m = {}
 
@@ -114,7 +115,9 @@ function m.DrawHeader()
         local reaper_label = (ui_store.GetAutoStartReaper() and "✓ " or "") .. "Iniciar con REAPER"
         local track_label = (ui_store.GetAutoTrackSetup() and "✓ " or "") .. "Auto armar pista al seleccionar"
         local af_label = (prefs.GetAutoFocusEnabled() and "✓ " or " ") .. "Auto-focus al cambiar Slot"
-        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label .. "|" .. af_label
+        local ch_menu_str = ""
+        for ci = 1, 16 do ch_menu_str = ch_menu_str .. tostring(ci) .. (ci < 16 and "|" or "") end
+        local menu = toggle_label .. "|Ajustar Posicion Vista Mini...|Resetear Posicion Vista Mini|" .. scroll_label .. "|" .. compact_label .. "|" .. reaper_label .. "|" .. track_label .. "|" .. af_label .. "|MIDI Channel ->" .. ch_menu_str
         gfx.x, gfx.y = gfx.mouse_x, gfx.mouse_y
         local choice = gfx.showmenu(menu)
         if choice == 1 then
@@ -158,6 +161,8 @@ function m.DrawHeader()
                 ui_store.GetAutoTrackSetup() and "1" or "0", true)
         elseif choice == 8 then
             prefs.SetAutoFocusEnabled(not prefs.GetAutoFocusEnabled())
+        elseif choice >= 9 then
+            midi.SetMidiChannel(choice - 8)
         end
     end
     

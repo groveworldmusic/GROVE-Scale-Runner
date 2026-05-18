@@ -112,7 +112,7 @@ local function FindTransportEmptyArea()
         if seg_w >= cv_w then table.insert(empty_areas, {x = seg_start, w = seg_w}) end
     end
     if #empty_areas == 0 then return nil end
-    return empty_areas[#empty_areas].x
+    return empty_areas[1].x  -- pick leftmost empty area (Item 16: was rightmost, overlapping native controls)
 end
 
 -- =========================================================

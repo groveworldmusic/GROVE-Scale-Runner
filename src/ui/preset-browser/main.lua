@@ -12,6 +12,7 @@ local preset_store = require("state.preset-store")
 local io_mod = require("ui.preset-browser.io")
 local folder_mod = require("ui.preset-browser.folder")
 local list_mod = require("ui.preset-browser.preset-list")
+local preview_mod = require("ui.preset-browser.preview")
 
 local m = {}
 
@@ -29,7 +30,10 @@ local SEARCH_H = 22
 local _last_scan_time = 0
 
 function m.DrawPresetBrowser(x, y, w, h)
-    -- 0. Cross-session auto-refresh (T6)
+    -- 0a. Preview tick: auto-stop expired ghost-note previews
+    preview_mod.TickPreview()
+
+    -- 0b. Cross-session auto-refresh (T6)
     local now = reaper.time_precise()
     if now - _last_scan_time >= 3.0 then
         io_mod.RefreshPresets()

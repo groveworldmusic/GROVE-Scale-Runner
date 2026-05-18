@@ -16,7 +16,26 @@ local m = {}
 
 -- Directory scan cache
 local _scan_cache = {}
+
+-- =========================================================
+-- Metadata helpers (.grove v3)
+-- =========================================================
+
+--- Read metadata fields from the editing-metadata store.
+--- Returns defaults for any nil fields.
+function m.GetMetadataFields()
+    local meta = preset_store.GetEditingMetadata()
+    return {
+        bpm = meta.bpm or 120,
+        genre = meta.genre or "",
+        difficulty = meta.difficulty or 1,
+        tags = meta.tags or "",
+        notes = meta.notes or "",
+        key = meta.key or "",
+    }
+end
 local _has_lfs, _lfs = pcall(require, "lfs")
+local _last_stats_save = 0
 local PRESET_EXT = ".grove"
 
 function m.Init()
@@ -42,6 +61,7 @@ function m.Init()
     preset_store.SetBrowserError(nil)
     m.ScanDirectory(preset_dir)
     m.LoadFavorites()
+    preset_store.LoadStats()
 end
 
 function m.IsValidPresetFile(filename)
@@ -140,7 +160,7 @@ function m.SavePreset(file_path, preset_name)
     local lines = {}
     table.insert(lines, "return {")
     table.insert(lines, string.format("    name = %q,", safe_name))
-    table.insert(lines, "    version = 2,")
+    table.insert(lines, "    version = 3,")
     table.insert(lines, "    notes = {")
     for _, n in ipairs(notes) do
         table.insert(lines, string.format(
@@ -174,8 +194,37 @@ function m.SavePreset(file_path, preset_name)
         end
     end
     table.insert(lines, "    },")
+
+    -- v3 metadata fields
+    local meta = m.GetMetadataFields()
+    table.insert(lines, string.format("    key = %q,", meta.key))
+    table.insert(lines, string.format("    bpm = %d,", meta.bpm))
+    table.insert(lines, string.format("    genre = %q,", meta.genre))
+    table.insert(lines, string.format("    difficulty = %d,", meta.difficulty))
+    -- Serialize tags string (comma-separated) into a Lua table literal
+    local tag_items = {}
+    for t in (meta.tags or ""):gmatch("[^,]+") do
+        local trimmed = t:match("^%s*(.-)%s*$")
+        if trimmed and #trimmed > 0 then
+            table.insert(tag_items, string.format("%q", trimmed))
+        end
+    end
+    table.insert(lines, "    tags = {" .. table.concat(tag_items, ", ") .. "},")
+    table.insert(lines, string.format("    notes = %q,", meta.notes))
+
     table.insert(lines, "}")
     local content = table.concat(lines, "\n")
+
+    -- Automatic versioning if file exists (T3: UX Features)
+    local f_check = io.open(file_path, "r")
+    if f_check then
+        f_check:close()
+        local versioned_path = m.SavePresetWithVersioning(file_path)
+        if versioned_path ~= file_path then
+            file_path = versioned_path
+        end
+    end
+
     local ok, f = pcall(io.open, file_path, "w")
     if not ok or not f then
         preset_store.SetBrowserError("Could not write file: " .. tostring(file_path))
@@ -250,6 +299,23 @@ function m.LoadPreset(file_path)
             seq_store.SetProgression(result.progression)
         end
     end
+    if result.version and result.version >= 3 then
+        -- Cache metadata on the file entry
+        local files = preset_store.GetPresetFiles()
+        local idx = preset_store.GetSelectedPresetIdx()
+        if idx and files[idx] and files[idx].path == file_path then
+            files[idx].metadata = {
+                key = result.key or "",
+                bpm = result.bpm or 120,
+                genre = result.genre or "",
+                difficulty = result.difficulty or 1,
+                tags = result.tags or {},
+                notes = result.notes or "",
+            }
+            preset_store.SetPresetFiles(files)
+        end
+    end
+    preset_store.IncrementPresetLoadCount(file_path)
     preset_store.SetBrowserError(nil)
     return true
 end
@@ -376,6 +442,111 @@ function m.HasLFS()
 end
 
 -- =========================================================
+-- Automatic versioning (T3: UX Features)
+-- =========================================================
+
+--- Save a preset with automatic versioning.
+--- If file exists, appends _v1, _v2, etc.
+--- @param base_path string The desired file path
+--- @return string The actual file path used
+function m.SavePresetWithVersioning(base_path)
+    -- Check if file exists
+    local f = io.open(base_path, "r")
+    if not f then
+        -- No conflict, save directly
+        return base_path
+    end
+    f:close()
+
+    -- File exists: find next version number
+    local dir = base_path:match("^(.+)[/\\]")
+    local name = base_path:match("([^/\\]+)%.grove$")
+    if not name then return base_path end
+
+    local version = 1
+    while true do
+        local vpath = path_utils.PathJoin(dir, name .. "_v" .. version .. ".grove")
+        local vf = io.open(vpath, "r")
+        if not vf then
+            return vpath  -- found unused version
+        end
+        vf:close()
+        version = version + 1
+    end
+end
+
+-- =========================================================
+-- Stats debounced save
+-- =========================================================
+
+function m.TickSaveStats()
+    if preset_store.IsStatsDirty() then
+        local now = reaper.time_precise()
+        if now - _last_stats_save >= 5.0 then
+            preset_store.SaveStats()
+            _last_stats_save = now
+        end
+    end
+end
+
+--- Edit metadata dialog for the current preset.
+--- Uses 5 sequential GetUserInputs calls for BPM, Genre, Difficulty, Tags, and Notes.
+function m.EditMetadataDialog()
+    local meta = preset_store.GetEditingMetadata()
+
+    -- 1. BPM
+    local ret, bpm_str = reaper.GetUserInputs("Preset Metadata", 1, "BPM (20-300):", tostring(meta.bpm or 120))
+    if not ret then return end
+    local bpm = tonumber(bpm_str) or 120
+    if bpm < 20 then bpm = 20 elseif bpm > 300 then bpm = 300 end
+
+    -- 2. Genre
+    local ret2, genre = reaper.GetUserInputs("Preset Metadata", 1, "Genre:", meta.genre or "")
+    if not ret2 then return end
+
+    -- 3. Difficulty
+    local ret3, diff_str = reaper.GetUserInputs("Preset Metadata", 1, "Difficulty (1-5):", tostring(meta.difficulty or 1))
+    if not ret3 then return end
+    local diff = tonumber(diff_str) or 1
+    if diff < 1 then diff = 1 elseif diff > 5 then diff = 5 end
+
+    -- 4. Tags
+    local ret4, tags = reaper.GetUserInputs("Preset Metadata", 1, "Tags (comma separated):", meta.tags or "")
+    if not ret4 then return end
+
+    -- 5. Notes
+    local ret5, notes = reaper.GetUserInputs("Preset Notes", 1, "Notes:", meta.notes or "")
+    if not ret5 then return end
+
+    preset_store.SetEditingMetadata({bpm = bpm, genre = genre, difficulty = diff, tags = tags, notes = notes})
+end
+
+--- Lazy-load metadata for a preset file. Only loads once per file entry.
+--- The metadata is cached on files[idx].metadata for future access.
+--- @param path string Absolute path to .grove file
+function m.LoadMetadataForFile(path)
+    if not path or #path == 0 then return end
+    local files = preset_store.GetPresetFiles()
+    for i, entry in ipairs(files) do
+        if entry.path == path and not entry.metadata then
+            local ok, result = safe_loader.LoadSandboxed(path)
+            if ok and result and result.version and result.version >= 3 then
+                entry.metadata = {
+                    key = result.key or "",
+                    bpm = result.bpm or 120,
+                    genre = result.genre or "",
+                    difficulty = result.difficulty or 1,
+                    tags = result.tags or {},
+                    notes = result.notes or "",
+                }
+                preset_store.SetPresetFiles(files)
+            end
+            break
+        end
+    end
+end
+
+-- =========================================================
 -- Batch operations (presets-phase-2: multi-select)
 -- =========================================================
 
@@ -440,6 +611,65 @@ function m.BatchMergeLoadPresets(indices, files)
     end
 end
 
+--- Compute an 8x8 thumbnail grid from a preset's notes.
+--- Maps pitch (rows) and time (columns) into a low-res representation.
+--- @param notes table Array of note objects {pitch, start_beat, duration}
+--- @return table 8x8 grid of booleans
+function m.ComputeThumbnail(notes)
+    if not notes or #notes == 0 then return {} end
+
+    -- Find ranges
+    local min_pitch, max_pitch = 127, 0
+    local min_beat, max_beat = math.huge, 0
+    for _, n in ipairs(notes) do
+        local p = n.pitch or 60
+        local sb = n.start_beat or 0
+        local eb = sb + (n.duration or 4)
+        if p < min_pitch then min_pitch = p end
+        if p > max_pitch then max_pitch = p end
+        if sb < min_beat then min_beat = sb end
+        if eb > max_beat then max_beat = eb end
+    end
+
+    local pitch_range = math.max(1, max_pitch - min_pitch)
+    local beat_range = math.max(1, max_beat - min_beat)
+
+    -- Build 8x8 grid
+    local grid = {}
+    for row = 1, 8 do
+        grid[row] = {}
+        for col = 1, 8 do
+            grid[row][col] = false
+            local pitch_low = min_pitch + (row - 1) * pitch_range / 8
+            local pitch_high = min_pitch + row * pitch_range / 8
+            local beat_low = min_beat + (col - 1) * beat_range / 8
+            local beat_high = min_beat + col * beat_range / 8
+            for _, n in ipairs(notes) do
+                local p = n.pitch or 60
+                local sb = n.start_beat or 0
+                local eb = sb + (n.duration or 4)
+                if p >= pitch_low and p <= pitch_high and eb > beat_low and sb < beat_high then
+                    grid[row][col] = true
+                    break
+                end
+            end
+        end
+    end
+    return grid
+end
+
+--- Get (or compute and cache) thumbnail for a preset file.
+--- @param notes table Array of note objects from the preset
+--- @param path string Full path for cache key
+--- @return table 8x8 grid
+function m.GetOrComputeThumbnail(notes, path)
+    local cached = preset_store.GetThumbnail(path)
+    if cached then return cached end
+    local grid = m.ComputeThumbnail(notes)
+    preset_store.SetThumbnail(path, grid)
+    return grid
+end
+
 --- Export selected presets as individual MIDI items on the selected track.
 --- Each preset becomes a separate MIDI item at the edit cursor.
 --- @param indices table Sparse set of indices {[idx] = true}
@@ -483,6 +713,61 @@ function m.ExportPresetsToMIDI(indices, files)
         end
     end
     reaper.UpdateArrange()
+end
+
+-- =========================================================
+-- Auto-save slot snapshot (T2: UX Features)
+-- =========================================================
+
+--- Save current notes to a slot-specific preset file.
+--- @param page number Page number (1-4)
+--- @param slot number Slot index (1-16)
+--- @param notes table Array of note objects
+function m.SaveSlotSnapshot(page, slot, notes)
+    local dir = preset_store.GetCurrentDirectory() or preset_store.GetPresetRoot()
+    if not dir or #dir == 0 then return end
+
+    local filename = string.format("_slot_p%d_s%d.grove", page or 1, slot or 1)
+    local filepath = path_utils.PathJoin(dir, filename)
+
+    local lines = {}
+    table.insert(lines, "return {")
+    table.insert(lines, "    name = " .. string.format("%q", filename))
+    table.insert(lines, "    version = 3,")
+    table.insert(lines, "    notes = {")
+    for _, n in ipairs(notes) do
+        table.insert(lines, string.format(
+            "        {pitch=%s,start_beat=%s,duration=%s,velocity=%s,muted=%s},",
+            tostring(n.pitch or 60), tostring(n.start_beat or 0),
+            tostring(n.duration or 4), tostring(n.velocity or 100),
+            n.muted and "true" or "false"
+        ))
+    end
+    table.insert(lines, "    },")
+    table.insert(lines, "}")
+    local content = table.concat(lines, "\n")
+    local f = io.open(filepath, "w")
+    if f then f:write(content); f:close() end
+end
+
+--- Load auto-saved notes from a slot file.
+--- @param page number Page number (1-4)
+--- @param slot number Slot index (1-16)
+--- @return table|nil Notes array, or nil if no auto-save exists
+function m.LoadSlotSnapshot(page, slot)
+    local dir = preset_store.GetCurrentDirectory() or preset_store.GetPresetRoot()
+    if not dir or #dir == 0 then return nil end
+
+    local filename = string.format("_slot_p%d_s%d.grove", page or 1, slot or 1)
+    local filepath = path_utils.PathJoin(dir, filename)
+
+    local f = io.open(filepath, "r")
+    if not f then return nil end
+    f:close()
+
+    local ok, result = safe_loader.LoadSandboxed(filepath)
+    if not ok or not result or not result.notes then return nil end
+    return result.notes
 end
 
 return m

@@ -196,18 +196,38 @@ function m.Draw(char)
         _cached_total_beats_valid = false
     end
 
-    -- Sync playback position from sequencer during playback
+    -- Sync playback position from sequencer during playback (only when autoscroll enabled)
     -- Converts (measure + fractional progress) to absolute beats for the playhead cursor.
     -- GetLastMeasure() is -1 when stopped, so the cursor stays hidden before playback starts.
-    if seq_store.GetIsPlaying() then
+    if seq_store.GetIsPlaying() and island_store.GetAutoscrollEnabled() then
         local cur_m = seq_store.GetLastMeasure()
         if cur_m >= 0 then
             island_store.SetPlaybackPos((cur_m + seq_store.GetProgress()) * 4)
         end
     end
 
-    -- 1. Input Handling
-    input.HandleKeyboard(char)
+    -- 1. Input Handling (progression focus: mouse NOT in piano roll grid body)
+    local mx, my = gfx.mouse_x, gfx.mouse_y
+    local pre_tl_h = timeline.TIMELINE_H
+    local pre_vel_exp = island_store.GetVelocityPanelExpanded()
+    local pre_ve_h = pre_vel_exp and velocity.EDITOR_H or velocity.COLLAPSED_H
+    local pre_btn_y_v = BTN_TOP_V + BTN_Y_OFFSET
+    local pre_b_h = layout.US(BTN_H)
+    local pre_gap_v = math.floor((BTN_AREA_H - BTN_H * 5) / 4 + BTN_GAP_EXTRA)
+    local pre_island_y_v = pre_btn_y_v + pre_b_h + pre_gap_v - BTN_Y_OFFSET
+    local pre_y = layout.UY(pre_island_y_v)
+    local pre_w = layout.US(CANVAS_W)
+    local pre_h = math.max((_min_island_px or layout.US(ISLAND_CONTENT_H)), gfx.h - pre_y - 10)
+    local pre_preset_w = island_store.GetPresetPanelVisible() and 220 or 0
+    local pre_right_x = layout.UX(0) + pre_preset_w
+    local pre_right_w = pre_w - pre_preset_w
+    local pre_pr_y = pre_y + pre_tl_h
+    local pre_pr_h = pre_h - pre_tl_h - pre_ve_h - 7  -- SB_SIZE = 7
+    local pre_grid_body_x = pre_right_x + piano_roll.PITCH_LABEL_W
+    local prog_focused = not (mx >= pre_grid_body_x
+                          and mx < pre_grid_body_x + (pre_right_w - piano_roll.PITCH_LABEL_W - 7)
+                          and my >= pre_pr_y and my < pre_pr_y + pre_pr_h)
+    input.HandleKeyboard(char, prog_focused)
 
     -- 2. Header (also handles RELOAD + SYNC buttons returning request flags)
     local content_w = layout.US(CANVAS_W)

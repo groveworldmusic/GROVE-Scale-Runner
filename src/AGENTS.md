@@ -172,6 +172,8 @@ Ver `core/AGENTS.md` → Dependency Graph y `AGENTS.md` (root) → Circular Depe
 
 **Regla**: NO modificar `config.lua` a menos que sea estrictamente necesario. Nuevas keys de estado van a stores.
 
+**Regla**: Al agregar una nueva feature o modificar una existente, DEBÉS actualizar `docs/features.md` (el catálogo maestro). Este es el archivo que todo desarrollador y LLM consulta para entender qué hace el proyecto.
+
 ## Pitfalls
 
 > ⚠️ **Init order**: stores DEBEN inicializarse antes que cualquier require de core/ui. Si un módulo se carga antes de su store, lee valores default.
@@ -199,3 +201,4 @@ Ver `core/AGENTS.md` → Dependency Graph y `AGENTS.md` (root) → Circular Depe
 | `src/ui/AGENTS.md` | GFX: views, widgets, layout, compact lifecycle, LICE, piano-roll, icons |
 | `src/state/AGENTS.md` | Stores: todos los getters/setters, Init semantics, mutable tables, persist |
 | `tests/AGENTS.md` | Testing infra: inventory, mocks, coverage gaps |
+| `docs/features.md` | Catálogo maestro de features — actualizar al agregar/modificar features |

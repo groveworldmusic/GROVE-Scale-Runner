@@ -146,7 +146,8 @@ function m.DrawIslands()
     if chord_choice then
         prefs.SetChordModeIndex(chord_choice)
     end
-    if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
+    -- Order from bottom to top: Tri, 7ma, 9na (Item 11 fix: position 3 = bottom = Tri, position 1 = top = 9na)
+    if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
                              "TRI", prefs.GetChordModeIndex() == 2, btn_font_size) then
         local new_val = prefs.GetChordModeIndex() == 2 and 1 or 2
         prefs.SetChordModeIndex(new_val)
@@ -156,7 +157,7 @@ function m.DrawIslands()
         local new_val = prefs.GetChordModeIndex() == 3 and 1 or 3
         prefs.SetChordModeIndex(new_val)
     end
-    if components.DrawButton(cbtn_x, oct_content_y + (short_btn_h + oct_gap) * 3, std_btn_w, short_btn_h,
+    if components.DrawButton(cbtn_x, oct_content_y + short_btn_h + oct_gap, std_btn_w, short_btn_h,
                              "9NA", prefs.GetChordModeIndex() == 4, btn_font_size) then
         local new_val = prefs.GetChordModeIndex() == 4 and 1 or 4
         prefs.SetChordModeIndex(new_val)

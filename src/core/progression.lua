@@ -17,11 +17,14 @@ function progression.Remove(idx)
     seq_store.SetProgressionEntry(idx, nil)
 end
 
--- Swap two progression slots
+-- Swap two progression slots (one undo entry for both swaps)
 function progression.Swap(a, b)
+    seq_store.PushProgUndo(seq_store.ProgSnapshot())
+    seq_store.SetProgUndoGate(true)
     local temp = seq_store.GetProgressionEntry(a)
     seq_store.SetProgressionEntry(a, seq_store.GetProgressionEntry(b))
     seq_store.SetProgressionEntry(b, temp)
+    seq_store.SetProgUndoGate(false)
 end
 
 -- Clear all 16 progression slots

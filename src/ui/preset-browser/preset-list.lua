@@ -13,6 +13,8 @@ local path_utils = require("ui.path-utils")
 local preset_store = require("state.preset-store")
 local island_store = require("state.island")
 local note_store = require("state.note-store")
+local preview_mod = require("ui.preset-browser.preview")
+local safe_loader = require("ui.safe-loader")
 
 local m = {}
 
@@ -89,12 +91,44 @@ function m.DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_c
 
         local is_fav = io_mod.IsFavorite(entry.path)
         local star_x = x + w - STAR_SIZE - 4
+        local meta_x = star_x - 18  -- shared by thumbnail and meta icon positioning
         helpers.SetColor(is_fav and STAR_ON_COLOR or STAR_OFF_COLOR)
         gfx.setfont(1, "Calibri", 10)
         local star_sym = is_fav and "★" or "☆"
         local sw, sh = gfx.measurestr(star_sym)
         gfx.x, gfx.y = star_x, item_y + (ITEM_H - sh) / 2
         gfx.drawstr(star_sym)
+
+        -- Thumbnail rendering (8x8 mini-grid, between star and label)
+        local thumb_size = 36
+        local thumb_x = meta_x - thumb_size - 3
+        helpers.SetColor({0.15, 0.15, 0.15, 0.3})
+        gfx.rect(thumb_x, item_y + 2, thumb_size, thumb_size, 1)
+        local thumb = preset_store.GetThumbnail(entry.path)
+        if thumb and #thumb > 0 then
+            local cell_w = thumb_size / 8
+            local cell_h = thumb_size / 8
+            for row = 1, 8 do
+                for col = 1, 8 do
+                    if thumb[row] and thumb[row][col] then
+                        helpers.SetColor({0.4, 0.7, 1, 0.6})
+                        gfx.rect(thumb_x + (col-1) * cell_w, item_y + 2 + (row-1) * cell_h, cell_w, cell_h, 1)
+                    end
+                end
+            end
+        end
+
+        -- Metadata info "i" icon (v3)
+        local meta_hover = hover and gfx.mouse_x >= meta_x and gfx.mouse_x <= meta_x + 14
+        if meta_hover then
+            helpers.SetColor({0.3, 0.6, 1, 0.8})  -- blue tint on hover
+        else
+            helpers.SetColor({0.5, 0.5, 0.5, 0.4})
+        end
+        gfx.setfont(1, "Calibri", 10)
+        local mw, _ = gfx.measurestr("i")
+        gfx.x, gfx.y = meta_x, item_y + (ITEM_H - sh) / 2
+        gfx.drawstr("i")
 
         local label = entry.name
         if #label > 20 then label = label:sub(1, 18) .. ".." end
@@ -104,8 +138,75 @@ function m.DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_c
         gfx.x, gfx.y = x + 4, item_y + (ITEM_H - lh) / 2
         gfx.drawstr(label)
 
+        -- Badge rendering based on stats (T1: UX Features)
+        local badge_text = nil
+        local bw, bh = 0, 0
+        local stats = preset_store.GetPresetStat(entry.path)
+        if stats then
+            local now = os.time()
+            local today_start = now - (now % 86400)
+            if stats.last_modified and stats.last_modified >= today_start then
+                badge_text = "NEW"
+                helpers.SetColor({0.2, 0.8, 0.2, 0.7})
+            elseif stats.load_count > 50 then
+                badge_text = "VETERAN"
+                helpers.SetColor({0.9, 0.7, 0.2, 0.7})
+            elseif stats.load_count > 10 then
+                badge_text = "REGULAR"
+                helpers.SetColor({0.3, 0.6, 0.9, 0.7})
+            elseif stats.load_count > 1 then
+                badge_text = "USED"
+                helpers.SetColor({0.6, 0.6, 0.6, 0.5})
+            end
+        end
+
+        if badge_text then
+            gfx.setfont(1, "Calibri", 8)
+            bw, bh = gfx.measurestr(badge_text)
+            local bx = x + 4 + lw + 4
+            if bx + bw + 4 < star_x then
+                gfx.rect(bx - 1, item_y + (ITEM_H - bh) / 2 - 1, bw + 2, bh + 2, 1)
+                helpers.SetColor({1, 1, 1, 0.8})
+                gfx.x, gfx.y = bx, item_y + (ITEM_H - bh) / 2
+                gfx.drawstr(badge_text)
+            end
+        end
+
+        -- Version indicator (T4: UX Features)
+        local v_match = entry.name:match("_(v%d+)$")
+        if v_match then
+            helpers.SetColor({0.5, 0.5, 0.5, 0.4})
+            gfx.setfont(1, "Calibri", 8)
+            local vt = v_match
+            local vw, vh = gfx.measurestr(vt)
+            local vx = x + 4 + lw + 4 + (badge_text and (bw + 4) or 0)
+            if vx + vw + 4 < star_x then
+                gfx.x, gfx.y = vx, item_y + (ITEM_H - vh) / 2
+                gfx.drawstr(vt)
+            end
+        end
+
+        -- Preview on hover + Ctrl+Click
+        if hover and (gfx.mouse_cap & 4) == 4 and ui_store.GetMouseClick() then
+            preview_mod.PlayPreview(entry.path)
+        end
+
+        -- Lazy thumbnail computation: compute on first hover if not cached
+        if hover and not preset_store.GetThumbnail(entry.path) then
+            local ok, result = safe_loader.LoadSandboxed(entry.path)
+            if ok and result and result.notes then
+                local grid = io_mod.ComputeThumbnail(result.notes)
+                if grid and #grid > 0 then
+                    preset_store.SetThumbnail(entry.path, grid)
+                end
+            end
+        end
+
         if hover and ui_store.GetMouseClick() then
-            if gfx.mouse_x >= star_x and gfx.mouse_x <= star_x + STAR_SIZE then
+            if gfx.mouse_x >= meta_x and gfx.mouse_x <= meta_x + 14 then
+                -- Open metadata editor for this preset
+                io_mod.EditMetadataDialog()
+            elseif gfx.mouse_x >= star_x and gfx.mouse_x <= star_x + STAR_SIZE then
                 result = "fav:" .. entry.path
             else
                 -- Multi-select modifier detection

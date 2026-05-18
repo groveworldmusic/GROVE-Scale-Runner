@@ -72,8 +72,9 @@ function m.DrawDropdown(x, y, w, h, label, value, options, current_index, font_s
     if hover and ui_store.GetUseScroll() then
         local raw = ui_store.ConsumeMouseWheelDelta()
         if raw ~= 0 then
+            local steps = math.min(math.abs(raw), 3)  -- use accumulated magnitude (Item 10)
             local dir = raw > 0 and -1 or 1
-            local new_idx = math.max(1, math.min(#options, current_index + dir))
+            local new_idx = math.max(1, math.min(#options, current_index + dir * steps))
             if new_idx ~= current_index then
                 return new_idx
             end
