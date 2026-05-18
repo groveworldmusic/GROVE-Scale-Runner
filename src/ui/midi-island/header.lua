@@ -130,14 +130,15 @@ function m.DrawHeader(content_w)
     local tool_gap = 2
     local tools_w = tool_btn_w * 2 + tool_gap
 
-    local ps_btn_w = math.floor(b_w * 1.2)
+    local ps_btn_w = math.floor(b_w * 1.0)
     local icon_btn_w = math.floor(b_w * 0.6)
+    local theme_btn_w = math.floor(b_w * 0.9)
     
     local snap_toggle_w = math.floor(b_w * 0.65)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w
-    local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + b_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
 
@@ -188,7 +189,17 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + ps_btn_w + main_gap
 
-    -- 4. SAVE preset to file
+    -- 4. THEME selector dropdown
+    local theme_options = {"Theme: Current", "Theme: Dark", "Theme: HighContrast"}
+    local theme_idx = prefs.GetThemeIndex()
+    local new_theme_idx = components.DrawDropdown(cur_x, header_y, theme_btn_w, b_h, nil, theme_options[theme_idx], theme_options, theme_idx, layout.US(1300))
+    if new_theme_idx then
+        prefs.SetThemeIndex(new_theme_idx)
+        theme.SetThemeIndex(new_theme_idx)
+    end
+    cur_x = cur_x + theme_btn_w + main_gap
+
+    -- 5. SAVE preset to file
     local save_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     helpers.SetColor(save_hover and theme.colors.btn_hover or theme.colors.island_bg)
     components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)

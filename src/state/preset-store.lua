@@ -11,7 +11,8 @@ local state = {
     preset_root = "",
     preset_tree = {},
     preset_files = {},
-    selected_preset_idx = nil,
+    selected_indices = {},
+    _last_selected_idx = nil,
     browser_scroll = 0,
     folder_scroll = 0,
     browser_error = nil,
@@ -40,9 +41,65 @@ function m.SetPresetTree(t) state.preset_tree = t or {} end
 function m.GetPresetFiles() return state.preset_files end
 function m.SetPresetFiles(t) state.preset_files = t or {} end
 
--- Selected preset index
-function m.GetSelectedPresetIdx() return state.selected_preset_idx end
-function m.SetSelectedPresetIdx(v) state.selected_preset_idx = v end
+-- Multi-select API: selected_indices is a sparse table {[idx] = true} for O(1) membership
+function m.GetSelectedIndices() return state.selected_indices end
+function m.SetSelectedIndices(t)
+    state.selected_indices = t or {}
+    -- Update _last_selected_idx from the new set
+    local max_idx = 0
+    for idx in pairs(state.selected_indices) do
+        if idx > max_idx then max_idx = idx end
+    end
+    state._last_selected_idx = max_idx > 0 and max_idx or nil
+end
+function m.ClearSelection()
+    state.selected_indices = {}
+    state._last_selected_idx = nil
+end
+function m.IsPresetSelected(idx) return state.selected_indices[idx] == true end
+function m.TogglePresetSelected(idx)
+    if state.selected_indices[idx] then
+        state.selected_indices[idx] = nil
+    else
+        state.selected_indices[idx] = true
+        state._last_selected_idx = idx
+    end
+end
+function m.GetPrimarySelectedIndex() return state._last_selected_idx end
+function m.GetSelectionCount()
+    local count = 0
+    for _ in pairs(state.selected_indices) do count = count + 1 end
+    return count
+end
+function m.RemoveSelectionFixup(removed_idx)
+    local new_set = {}
+    for idx in pairs(state.selected_indices) do
+        if idx < removed_idx then
+            new_set[idx] = true
+        elseif idx > removed_idx then
+            new_set[idx - 1] = true
+        end
+    end
+    state.selected_indices = new_set
+end
+
+-- Backward-compat shims (used by external code: main.lua, io.lua, monolith)
+function m.GetSelectedPresetIdx()
+    local max = 0
+    for idx in pairs(state.selected_indices) do
+        if idx > max then max = idx end
+    end
+    return max > 0 and max or nil
+end
+function m.SetSelectedPresetIdx(v)
+    if v then
+        state.selected_indices = {[v] = true}
+        state._last_selected_idx = v
+    else
+        state.selected_indices = {}
+        state._last_selected_idx = nil
+    end
+end
 
 -- Browser scroll offset
 function m.GetBrowserScroll() return state.browser_scroll end
@@ -69,7 +126,8 @@ function m.ClearBrowserState()
     state.current_directory = ""
     state.preset_tree = {}
     state.preset_files = {}
-    state.selected_preset_idx = nil
+    state.selected_indices = {}
+    state._last_selected_idx = nil
     state.browser_scroll = 0
     state.browser_error = nil
 end

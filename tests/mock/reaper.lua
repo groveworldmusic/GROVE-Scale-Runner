@@ -160,6 +160,9 @@ stub("GetUserInputs")
 stub("MB")
 stub("ValidatePtr")
 
+-- Console
+stub("ShowConsoleMsg")
+
 -- Undo blocks
 stub("Undo_BeginBlock")
 stub("Undo_EndBlock")

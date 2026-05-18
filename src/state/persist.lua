@@ -26,6 +26,7 @@ local PREF_KEYS = {
     volume            = { "sequencer", "volume" },
     color_mode        = "color_mode",
     auto_focus_enabled = "auto_focus_enabled",
+    theme_index       = "theme_index",
     view_offset_x     = "view_offset_x",
     view_offset_y     = "view_offset_y",
 }

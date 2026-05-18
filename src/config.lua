@@ -69,6 +69,7 @@ config.PREF_KEYS = {
     "volume",
     "color_mode",
     "auto_focus_enabled",
+    "theme_index",
 }
 
 -- Expanded state for Pagination (16 slots, 4 pages)
@@ -94,6 +95,7 @@ config.state = {
     last_mouse_cap = 0, mouse_click = false, mouse_wheel_delta = 0,
     view_offset_x = 200,  -- Issue B5: reduced from 1000 to 200 for 1366×768 display compatibility
     view_offset_y = 0,
+    theme_index = 1,       -- 1=Current, 2=Dark, 3=HighContrast
     -- Auto-start configuration
     auto_start_compact = false,  -- Start compact bar overlay alongside full view
     auto_start_reaper = false,   -- Auto-launch this script when REAPER starts

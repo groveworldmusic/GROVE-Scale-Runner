@@ -6,7 +6,7 @@
 -- Extracted from config.state.* for preference subsystem.
 -- Keys: root_index, scale_index, octave, chord_mode_index,
 --       inversion_index, inversion_direction, subdivision_index,
---       auto_focus_enabled.
+--       auto_focus_enabled, theme_index.
 local prefs_state = {
     root_index = 1,
     scale_index = 1,
@@ -16,6 +16,7 @@ local prefs_state = {
     inversion_direction = 0,
     subdivision_index = 1,
     auto_focus_enabled = true,
+    theme_index = 1,
 }
 
 local persist = require("state.persist")
@@ -35,6 +36,7 @@ function m.Init(defaults)
     if defaults.inversion_direction ~= nil then prefs_state.inversion_direction = defaults.inversion_direction end
     if defaults.subdivision_index ~= nil then prefs_state.subdivision_index = defaults.subdivision_index end
     if defaults.auto_focus_enabled ~= nil then prefs_state.auto_focus_enabled = defaults.auto_focus_enabled end
+    if defaults.theme_index ~= nil then prefs_state.theme_index = defaults.theme_index end
 end
 
 --- Sync values from a state table (typically config.state after persist.Load)
@@ -48,6 +50,7 @@ function m.SyncFromState(state)
     if state.inversion_direction ~= nil then prefs_state.inversion_direction = state.inversion_direction end
     if state.subdivision_index ~= nil then prefs_state.subdivision_index = state.subdivision_index end
     if state.auto_focus_enabled ~= nil then prefs_state.auto_focus_enabled = state.auto_focus_enabled end
+    if state.theme_index ~= nil then prefs_state.theme_index = state.theme_index end
 end
 
 -- Getters
@@ -59,6 +62,7 @@ function m.GetInversionIndex() return prefs_state.inversion_index end
 function m.GetInversionDirection() return prefs_state.inversion_direction end
 function m.GetSubdivisionIndex() return prefs_state.subdivision_index end
 function m.GetAutoFocusEnabled() return prefs_state.auto_focus_enabled end
+function m.GetThemeIndex() return prefs_state.theme_index end
 
 --- Flush pending saves once per frame (called from MainLoop).
 --- Only saves keys that actually changed, reducing SetExtState calls.
@@ -79,5 +83,6 @@ function m.SetInversionIndex(v) prefs_state.inversion_index = v; dirty_keys["inv
 function m.SetInversionDirection(v) prefs_state.inversion_direction = v; dirty_keys["inversion_direction"] = true end
 function m.SetSubdivisionIndex(v) prefs_state.subdivision_index = v; dirty_keys["subdivision_index"] = true end
 function m.SetAutoFocusEnabled(v) prefs_state.auto_focus_enabled = v; dirty_keys["auto_focus_enabled"] = true end
+function m.SetThemeIndex(v) prefs_state.theme_index = v; dirty_keys["theme_index"] = true end
 
 return m

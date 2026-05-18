@@ -115,6 +115,8 @@ local persist = require("state.persist")
 local gfx_safe = require("ui.gfx-safe")
 
 local last_dock_state = 0
+local _last_persisted_vx = 0  -- tracking for view_offset_x/y persist
+local _last_persisted_vy = 0
 local gfx_needs_redraw = true  -- dirty flag: skip GFX redraw when nothing visual changed
 
 -- Toggle dock state (Ctrl+D)
@@ -366,6 +368,18 @@ local function MainLoop()
         end
     end
 
+    -- Persist window position on change (same pattern as window_w/h save)
+    local cur_vx = ui_store.GetViewOffsetX()
+    local cur_vy = ui_store.GetViewOffsetY()
+    if cur_vx ~= _last_persisted_vx then
+        persist.Save("view_offset_x", cur_vx)
+        _last_persisted_vx = cur_vx
+    end
+    if cur_vy ~= _last_persisted_vy then
+        persist.Save("view_offset_y", cur_vy)
+        _last_persisted_vy = cur_vy
+    end
+
     -- Window size enforcement: width fixed at 720px always.
     -- Height minimum: 793px when island expanded, 497px when collapsed.
     -- Título temporal único evita que REAPER use posición cacheada en gfx.ini.
@@ -420,12 +434,19 @@ local function Init()
     -- Load persisted preferences from REAPER ExtState (canonical with legacy fallback)
     persist.Load(config.state)
     preferences_store.SyncFromState(config.state)
+    -- Apply persisted theme after SyncFromState (theme.lua loaded earlier with default idx)
+    theme.SetThemeIndex(preferences_store.GetThemeIndex())
 
     -- Restore persisted volume into sequencer store (persist.Load writes to config.state,
     -- but the sequencer store has its own copy that was initialized before persist.Load)
     sequencer_store.SetVolume(config.state.sequencer.volume or 100)
     -- Issue A7: sync use_scroll from config.state into ui_store after persist.Load
     ui_store.SetUseScroll(config.state.use_scroll)
+
+    -- Sync view offset from persisted config.state into ui_store (persist.Load
+    -- wrote to config.state, but ui_store was initialized before persist.Load ran)
+    ui_store.SetViewOffsetX(config.state.view_offset_x or 0)
+    ui_store.SetViewOffsetY(config.state.view_offset_y or 0)
 
     -- Load persisted window dimensions from ExtState
     local ext_win_w = reaper.GetExtState("GROVE_Scale_Runner", "window_w")
