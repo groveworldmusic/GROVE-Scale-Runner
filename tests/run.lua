@@ -29,6 +29,7 @@ local test_names = {
     "test_midi.lua",
     "test_stores.lua",
     "test_progression.lua",
+    "test_progression_undo.lua",
     "test_sendmidi.lua",
     "test_sequencer_stop.lua",
     "test_keyboard_intercept.lua",
