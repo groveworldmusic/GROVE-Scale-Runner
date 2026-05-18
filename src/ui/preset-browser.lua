@@ -34,6 +34,8 @@ browser.EditMetadataDialog = io_mod.EditMetadataDialog
 browser.SaveSlotSnapshot = io_mod.SaveSlotSnapshot
 browser.LoadSlotSnapshot = io_mod.LoadSlotSnapshot
 browser.SavePresetWithVersioning = io_mod.SavePresetWithVersioning
+browser.SaveProgressionPreset = io_mod.SaveProgressionPreset
+browser.GetProgressionPresetFilePath = io_mod.GetProgressionPresetFilePath
 
 -- Main composition (from main.lua)
 browser.DrawPresetBrowser = main_mod.DrawPresetBrowser
@@ -44,6 +46,11 @@ browser.TickPreview = preview_mod.TickPreview
 
 -- Thumbnail (from io.lua)
 browser.ComputeThumbnail = io_mod.ComputeThumbnail
+
+-- Pack export/import (PR 5)
+browser.ExportPresetsToPack = io_mod.ExportPresetsToPack
+browser.ImportPresetsFromPack = io_mod.ImportPresetsFromPack
+browser.ExportPackFromContext = io_mod.ExportPackFromContext
 
 -- Folder and preset-list are internal to main.lua — not re-exported.
 -- DrawFolderHeader, DrawFolderList, DrawPresetList, HandleContextMenu

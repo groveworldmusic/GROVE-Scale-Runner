@@ -29,6 +29,10 @@ local SEARCH_H = 22
 -- Cross-session sync timer
 local _last_scan_time = 0
 
+-- Type filter state (Phase B: Progression-Only Presets)
+-- Values: "all", "notes", "progression"
+local _type_filter = "all"
+
 function m.DrawPresetBrowser(x, y, w, h)
     -- 0a. Preview tick: auto-stop expired ghost-note previews
     preview_mod.TickPreview()
@@ -174,33 +178,128 @@ function m.DrawPresetBrowser(x, y, w, h)
         files = filtered
     end
 
+    -- Apply type filter (Phase B)
+    if _type_filter ~= "all" then
+        local filtered = {}
+        for _, f in ipairs(files) do
+            local f_type = f.type or "notes"
+            if f_type == _type_filter then
+                table.insert(filtered, f)
+            end
+        end
+        files = filtered
+    end
+
     local scroll = preset_store.GetBrowserScroll()
     local selected = preset_store.GetSelectedPresetIdx()
     local last_cap = ui_store.GetLastMouseCap()
 
-    -- RANDOM button (T5)
+    -- Button bar: filter tabs + Save Progression + IMPORT + RANDOM
     local btn_h = 20
-    local rnd_x = list_x + list_w - 50
-    local rnd_y = list_y
+    local btn_y = list_y
+
+    -- Filter tabs: All / Notes / Progression
+    local TABS = {"all", "notes", "progression"}
+    local TAB_LABELS = {all = "All", notes = "Notes", progression = "Prog."}
+    local tab_x = list_x + 2
+    local tab_gap = 2
+    gfx.setfont(1, "Calibri", 10)
+    for _, tab_key in ipairs(TABS) do
+        local label = TAB_LABELS[tab_key]
+        local lw = gfx.measurestr(label)
+        local tw = lw + 10
+        local t_hover = gfx.mouse_x >= tab_x and gfx.mouse_x <= tab_x + tw
+                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
+        if tab_key == _type_filter then
+            helpers.SetColor({0.25, 0.45, 0.8, 0.5})
+        elseif t_hover then
+            helpers.SetColor({0.35, 0.35, 0.35, 0.4})
+        else
+            helpers.SetColor({0.2, 0.2, 0.2, 0.3})
+        end
+        gfx.rect(tab_x, btn_y, tw, btn_h, 1)
+        helpers.SetColor(tab_key == _type_filter and {0.9, 0.9, 0.9, 0.95} or SEARCH_TEXT)
+        gfx.setfont(1, "Calibri", 10)
+        gfx.x, gfx.y = tab_x + 5, btn_y + 2
+        gfx.drawstr(label)
+        if t_hover and ui_store.GetMouseClick() then
+            _type_filter = tab_key
+        end
+        tab_x = tab_x + tw + tab_gap
+    end
+
+    -- Save Progression button (Phase B)
+    local save_prog_x = tab_x + 4
+    local save_prog_w = 58
+    local save_prog_hover = gfx.mouse_x >= save_prog_x and gfx.mouse_x <= save_prog_x + save_prog_w
+                        and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
+    if save_prog_hover then helpers.SetColor({0.3, 0.6, 0.3, 0.4})
+    else helpers.SetColor({0.2, 0.4, 0.2, 0.3}) end
+    gfx.rect(save_prog_x, btn_y, save_prog_w, btn_h, 1)
+    helpers.SetColor(SEARCH_TEXT)
+    gfx.setfont(1, "Calibri", 10)
+    gfx.x, gfx.y = save_prog_x + 4, btn_y + 2
+    gfx.drawstr("S-PROG")
+    if save_prog_hover and ui_store.GetMouseClick() then
+        local ret, csv = reaper.GetUserInputs("Save Progression Preset", 1, "Preset name:", "Untitled")
+        if ret and csv and #csv > 0 then
+            local dir = preset_store.GetCurrentDirectory()
+            if not dir or #dir == 0 then dir = preset_store.GetPresetRoot() end
+            local filename = csv:gsub("[^%w_%-%s]", ""):gsub("%.grove%-prog$", ""):gsub("%.grove$", "")
+            if #filename > 0 then
+                io_mod.SaveProgressionPreset(io_mod.GetProgressionPresetFilePath(dir, filename), filename)
+            end
+        end
+    end
+    if save_prog_hover and not ui_store.GetMouseClick() then
+        helpers.DrawTooltip("Save progression-only preset (no notes)", 10)
+    end
+
+    -- IMPORT button (T4: Export/Import Packs)
+    local import_w = 40
+    local import_x = save_prog_x + save_prog_w + 4
+    local import_hover = gfx.mouse_x >= import_x and gfx.mouse_x <= import_x + import_w
+                    and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
+    if import_hover then helpers.SetColor({0.35, 0.35, 0.5, 0.4})
+    else helpers.SetColor({0.25, 0.25, 0.35, 0.3}) end
+    gfx.rect(import_x, btn_y, import_w, btn_h, 1)
+    helpers.SetColor(SEARCH_TEXT)
+    gfx.setfont(1, "Calibri", 10)
+    gfx.x, gfx.y = import_x + 4, btn_y + 2
+    gfx.drawstr("IMPORT")
+    if import_hover and ui_store.GetMouseClick() then
+        local ret, path = reaper.GetUserInputs("Import Pack", 1, "Pack file path:", "")
+        if ret and path and #path > 0 then
+            local count = io_mod.ImportPresetsFromPack(path)
+            if count > 0 then
+                reaper.ShowConsoleMsg("Imported " .. count .. " presets from pack.\n")
+            end
+        end
+    end
+
+    -- RANDOM button (T5)
+    local rnd_w = 48
+    local rnd_x = import_x + import_w + 4
     if #files > 0 then
-        local rnd_hover = gfx.mouse_x >= rnd_x and gfx.mouse_x <= rnd_x + 48
-                      and gfx.mouse_y >= rnd_y and gfx.mouse_y <= rnd_y + btn_h
+        local rnd_hover = gfx.mouse_x >= rnd_x and gfx.mouse_x <= rnd_x + rnd_w
+                      and gfx.mouse_y >= btn_y and gfx.mouse_y <= btn_y + btn_h
         if rnd_hover then helpers.SetColor({0.35, 0.35, 0.5, 0.4})
         else helpers.SetColor({0.25, 0.25, 0.35, 0.3}) end
-        gfx.rect(rnd_x, rnd_y, 48, btn_h, 1)
+        gfx.rect(rnd_x, btn_y, rnd_w, btn_h, 1)
         helpers.SetColor(SEARCH_TEXT)
         gfx.setfont(1, "Calibri", 10)
-        gfx.x, gfx.y = rnd_x + 4, rnd_y + 2
+        gfx.x, gfx.y = rnd_x + 4, btn_y + 2
         gfx.drawstr("RANDOM")
         if rnd_hover and ui_store.GetMouseClick() then
             local pick = math.random(#files)
             io_mod.LoadPreset(files[pick].path)
         end
     end
-    list_y = list_y + btn_h + 2
+
+    list_y = btn_y + btn_h + 2
     list_h = list_h - btn_h - 2
 
-    local new_scroll, result = list_mod.DrawPresetList(list_x, list_y, list_w, list_h, files, scroll, selected, last_cap)
+    local new_scroll, result = list_mod.DrawPresetList(list_x, list_y, list_w, list_h, files, scroll, selected, last_cap, nil, _type_filter)
 
     if new_scroll ~= scroll then
         preset_store.SetBrowserScroll(new_scroll)

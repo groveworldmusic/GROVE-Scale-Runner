@@ -51,6 +51,10 @@ local _cached_notes_count = 0
 -- AutoFocusNotes runs to center the piano roll on all notes.
 local _last_focused_revision = -1
 
+-- Cached gfx.h for window resize detection (Phase: batch-c-piano-visual).
+-- When height changes by more than 20px, re-trigger AutoFocusNotes.
+local _last_gfx_h = nil
+
 -- Cached minimum island content height in pixels, captured on first draw.
 -- This prevents the minimum from shifting when gfx.w changes the scale factor.
 -- ToggleIsland() always recreates the window at 720×793, so first draw
@@ -285,6 +289,14 @@ function m.Draw(char)
         _last_focused_revision = _island_progression_revision
         AutoFocusNotes(grid_w, pr_h)
     end
+
+    -- Auto-focus on window resize: when gfx.h changes by more than 20px,
+    -- re-trigger AutoFocusNotes to center notes in the new viewport size.
+    if _last_gfx_h ~= nil and math.abs(gfx.h - _last_gfx_h) > 20 and prefs.GetAutoFocusEnabled() then
+        piano_roll.InvalidateVisibleRangesCache()
+        AutoFocusNotes(grid_w, pr_h)
+    end
+    _last_gfx_h = gfx.h
 
     -- Zoom toggle logic (deferred: stores target, applied at start of next Draw call)
     local panel_visible = island_store.GetPresetPanelVisible()

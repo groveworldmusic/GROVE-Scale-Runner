@@ -114,10 +114,18 @@ function m.DrawNoteBlock(note, nx, ny, nw, nh, selected)
         gfx.roundrect(draw_nx + 1, ny + 1, math.max(1, draw_nw - 2), math.max(1, nh - 2), 3, 0)
     end
 
-    -- Note label (only when wide enough)
-    if nw > 30 then
-        local label = OctaveLabel(note.pitch)
-        local fs = math.min(20, math.max(16, nh - 1))
+    -- Note label (height-gated: full label when nh >= 20, abbreviated when
+    -- 14 <= nh < 20, hidden when nh < 14 to avoid unreadable tiny text).
+    if nw > 30 and nh >= 14 then
+        local label
+        if nh >= 20 then
+            label = OctaveLabel(note.pitch)
+        else
+            -- Abbreviated: note name only (no octave)
+            local note_names = config.NOTE_NAMES
+            label = note_names[(note.pitch % 12) + 1]
+        end
+        local fs = math.min(18, math.max(10, nh - 2))
         gfx.setfont(1, "Calibri", fs)
         local lw, lh = gfx.measurestr(label)
         helpers.SetColor(theme.colors.text_dark)
@@ -208,10 +216,22 @@ function m.DrawNoteBlocks(x, y, w, h, scroll_y, scroll_x, zoom_x,
             local clip_nx = math.max(x, math.floor(nx))
             local clip_nw = math.max(1, math.min(nw, x + w - clip_nx))
 
-            -- Clip note height to viewport bottom
+            -- Clip note height to viewport edges. When a note overflows the
+            -- bottom or top edge, adjust draw_ny so clipped_nh stays at full
+            -- row height (integral). This prevents the rounded rect's partial
+            -- corners from creating a visible dip or deformation at viewport
+            -- boundaries (issue: bottom-edge dip + scroll culling deformation).
             if ny < y + h and ny + nh > y then
-                local clipped_nh = math.min(nh, y + h - ny)
-                m.DrawNoteBlock(note, clip_nx, ny, clip_nw, clipped_nh, island_store.IsNoteSelected(i))
+                local draw_ny = ny
+                if ny + nh > y + h then
+                    -- Overflowing bottom edge: shift up so bottom aligns with viewport
+                    draw_ny = y + h - nh
+                end
+                if draw_ny < y then
+                    -- Overflowing top edge: shift down so top aligns with viewport
+                    draw_ny = y
+                end
+                m.DrawNoteBlock(note, clip_nx, draw_ny, clip_nw, nh, island_store.IsNoteSelected(i))
             end
         end
     end

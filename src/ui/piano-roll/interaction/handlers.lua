@@ -72,7 +72,14 @@ function m.HandlePaintClick(mx, my, grid_x, grid_y, scroll_y, scroll_x, zoom_x, 
         local scroll_px_off = (scroll_y - math.floor(scroll_y)) * PITCH_ROW_H
         local pitch_row = math.floor((my - grid_y + scroll_px_off) / PITCH_ROW_H)
         local top_pitch = math.max(MIN_PITCH, MAX_PITCH - math.floor(scroll_y))
-        local pitch = math.max(MIN_PITCH, math.min(MAX_PITCH, top_pitch - pitch_row))
+        -- Guard: if raw pitch maps below MIN_PITCH or pitch_row is negative,
+        -- the click is outside the visible pitch range (e.g. near velocity bar).
+        -- Reject the click to prevent notes being created at unexpected positions.
+        local raw_pitch = top_pitch - pitch_row
+        if raw_pitch < MIN_PITCH or pitch_row < 0 then
+            return false
+        end
+        local pitch = math.max(MIN_PITCH, math.min(MAX_PITCH, raw_pitch))
 
         local new_note = {
             pitch = pitch,

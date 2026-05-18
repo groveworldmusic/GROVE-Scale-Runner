@@ -39,7 +39,7 @@ function m.DrawFavoriteStar(x, y, is_fav)
     gfx.drawstr(star_sym)
 end
 
-function m.DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_cap, search_query)
+function m.DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_cap, search_query, type_filter)
     local result = nil
     local right_click_pressed = (gfx.mouse_cap & 2) == 2 and (last_cap & 2) == 0
 
@@ -184,6 +184,23 @@ function m.DrawPresetList(x, y, w, h, files, scroll_offset, selected_idx, last_c
                 gfx.x, gfx.y = vx, item_y + (ITEM_H - vh) / 2
                 gfx.drawstr(vt)
             end
+        end
+
+        -- Type badge (Phase B: Progression-Only Presets)
+        local entry_type = entry.type or "notes"
+        local type_badge = entry_type == "progression" and "Prog." or "Notes"
+        local type_color = entry_type == "progression"
+            and {0.3, 0.7, 0.3, 0.6}   -- green for progression
+            or {0.3, 0.5, 0.8, 0.6}    -- blue for notes
+        gfx.setfont(1, "Calibri", 8)
+        local tbw, tbh = gfx.measurestr(type_badge)
+        local tbx = x + 4 + lw + 4 + (badge_text and (bw + 4) or 0) + (v_match and (vw + 4) or 0)
+        if tbx + tbw + 4 < star_x then
+            helpers.SetColor(type_color)
+            gfx.rect(tbx - 1, item_y + (ITEM_H - tbh) / 2 - 1, tbw + 2, tbh + 2, 1)
+            helpers.SetColor({1, 1, 1, 0.8})
+            gfx.x, gfx.y = tbx, item_y + (ITEM_H - tbh) / 2
+            gfx.drawstr(type_badge)
         end
 
         -- Preview on hover + Ctrl+Click
@@ -354,7 +371,8 @@ function m.HandleContextMenu(idx, files, dir)
     -- Check if multiple presets are selected → show batch menu
     local sel_count = preset_store.GetSelectionCount()
     if sel_count > 1 then
-        local choice = gfx.showmenu("Load Primary|Merge Load All|Export to MIDI|Delete All")
+        local choice = gfx.showmenu("Load Primary|Merge Load All|Export to MIDI|Export "
+            .. sel_count .. " as pack...|Delete All")
         if not choice or choice <= 0 then return end
 
         local sel_indices = preset_store.GetSelectedIndices()
@@ -369,6 +387,8 @@ function m.HandleContextMenu(idx, files, dir)
         elseif choice == 3 then
             io_mod.ExportPresetsToMIDI(sel_indices, files)
         elseif choice == 4 then
+            io_mod.ExportPackFromContext(sel_indices, files)
+        elseif choice == 5 then
             local count = sel_count
             local ret = reaper.MB("Delete " .. count .. " selected presets?", "Delete Presets", 4)
             if ret == 6 then
@@ -382,18 +402,26 @@ function m.HandleContextMenu(idx, files, dir)
         return
     end
 
-    -- Single selection context menu (existing behavior)
-    local choice = gfx.showmenu("Load|Rename|Duplicate|Delete|Show in Explorer")
+    -- Single selection context menu (existing behavior + import pack option)
+    local choice = gfx.showmenu("Import pack...|Load|Rename|Duplicate|Delete|Show in Explorer")
     if not choice or choice <= 0 then return end
 
     if choice == 1 then
+        local ret, path = reaper.GetUserInputs("Import Pack", 1, "Pack file path:", "")
+        if ret and path and #path > 0 then
+            local count = io_mod.ImportPresetsFromPack(path)
+            if count > 0 then
+                reaper.ShowConsoleMsg("Imported " .. count .. " presets from pack.\n")
+            end
+        end
+    elseif choice == 2 then
         if io_mod.LoadPreset(entry.path) then
             island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
             note_store.ClearSelection()
         end
-    elseif choice == 2 then
-        io_mod.RenamePreset()
     elseif choice == 3 then
+        io_mod.RenamePreset()
+    elseif choice == 4 then
         local dup_path = path_utils.PathJoin(dir, entry.name .. "_copy.grove")
         local f_in = io.open(entry.path, "rb")
         if f_in then
@@ -406,14 +434,14 @@ function m.HandleContextMenu(idx, files, dir)
                 io_mod.RefreshPresets()
             end
         end
-    elseif choice == 4 then
+    elseif choice == 5 then
         if reaper.MB("Delete preset \"" .. entry.name .. "\"?", "Delete Preset", 4) == 6 then
             if io_mod.DeletePreset(entry.path) then
                 preset_store.SetSelectedPresetIdx(nil)
                 io_mod.RefreshPresets()
             end
         end
-    elseif choice == 5 then
+    elseif choice == 6 then
         reaper.ExecProcess("explorer.exe /select,\" " .. entry.path .. "\"")
     end
 end

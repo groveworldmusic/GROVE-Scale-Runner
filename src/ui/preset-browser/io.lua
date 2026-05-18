@@ -37,6 +37,7 @@ end
 local _has_lfs, _lfs = pcall(require, "lfs")
 local _last_stats_save = 0
 local PRESET_EXT = ".grove"
+local PROG_EXT = ".grove-prog"
 
 function m.Init()
     local ok, root = pcall(reaper.GetResourcePath)
@@ -66,11 +67,16 @@ end
 
 function m.IsValidPresetFile(filename)
     if not filename or #filename == 0 then return false end
-    return filename:lower():match("%.grove$") ~= nil
+    local lower = filename:lower()
+    return lower:match("%.grove$") ~= nil or lower:match("%.grove%-prog$") ~= nil
 end
 
 function m.GetPresetFilePath(directory, name)
     return path_utils.PathJoin(directory, name .. PRESET_EXT)
+end
+
+function m.GetProgressionPresetFilePath(directory, name)
+    return path_utils.PathJoin(directory, name .. PROG_EXT)
 end
 
 function m.ScanDirectory(dir_path, force_refresh)
@@ -111,11 +117,18 @@ function m.ScanDirectory(dir_path, force_refresh)
     table.sort(dirs, function(a, b) return a.name:lower() < b.name:lower() end)
 
     local files = {}
+    local function AddFile(entry, ext, type_val)
+        local name = entry:gsub(ext .. "$", "")
+        local filename = entry
+        -- For .grove-prog, name extraction keeps the full name without ext
+        table.insert(files, {name = name, filename = filename, path = path_utils.PathJoin(dir_path, entry), type = type_val})
+    end
     if _has_lfs then
         for entry in _lfs.dir(dir_path) do
             if entry:match("%.grove$") then
-                local name = entry:gsub("%.grove$", "")
-                table.insert(files, {name = name, filename = entry, path = path_utils.PathJoin(dir_path, entry)})
+                AddFile(entry, ".grove", "notes")
+            elseif entry:match("%.grove%-prog$") then
+                AddFile(entry, ".grove-prog", "progression")
             end
         end
     else
@@ -123,11 +136,19 @@ function m.ScanDirectory(dir_path, force_refresh)
         if ok2 and handle2 then
             for line in handle2:lines() do
                 if #line > 0 then
-                    local name = line:gsub("%.grove$", "")
-                    table.insert(files, {name = name, filename = line, path = path_utils.PathJoin(dir_path, line)})
+                    AddFile(line, ".grove", "notes")
                 end
             end
             handle2:close()
+        end
+        local ok3, handle3 = pcall(io.popen, 'dir "' .. dir_path .. '\\*.grove-prog" /B 2>nul')
+        if ok3 and handle3 then
+            for line in handle3:lines() do
+                if #line > 0 then
+                    AddFile(line, ".grove-prog", "progression")
+                end
+            end
+            handle3:close()
         end
     end
 
@@ -237,6 +258,66 @@ function m.SavePreset(file_path, preset_name)
     return true
 end
 
+function m.SaveProgressionPreset(file_path, preset_name)
+    local safe_name = path_utils.SanitizePresetName(preset_name)
+    if safe_name == "" then
+        preset_store.SetBrowserError("Invalid preset name")
+        return false
+    end
+    local lines = {}
+    table.insert(lines, "return {")
+    table.insert(lines, string.format("    name = %q,", safe_name))
+    table.insert(lines, "    type = \"progression\",")
+    table.insert(lines, "    version = 3,")
+    table.insert(lines, string.format("    root_index = %d,", prefs.GetRootIndex() or 1))
+    table.insert(lines, string.format("    scale_index = %d,", prefs.GetScaleIndex() or 1))
+    table.insert(lines, string.format("    octave = %d,", prefs.GetOctave() or 4))
+    table.insert(lines, string.format("    chord_mode_index = %d,", prefs.GetChordModeIndex() or 1))
+    local progression = seq_store.GetProgression()
+    table.insert(lines, "    progression = {")
+    for i = 1, 16 do
+        local entry = progression[i]
+        if entry then
+            local parts = {
+                "degree=" .. (entry.degree or 1),
+                "root_index=" .. (entry.root_index or 1),
+                "scale_index=" .. (entry.scale_index or 1),
+                "octave=" .. (entry.octave or 4),
+                "chord_mode_index=" .. (entry.chord_mode_index or 1),
+            }
+            if entry.velocity then table.insert(parts, "velocity=" .. entry.velocity) end
+            if entry.duration then table.insert(parts, "duration=" .. entry.duration) end
+            table.insert(lines, "        {" .. table.concat(parts, ",") .. "},")
+        else
+            table.insert(lines, "        nil,")
+        end
+    end
+    table.insert(lines, "    },")
+    table.insert(lines, "}")
+    local content = table.concat(lines, "\n")
+
+    -- Automatic versioning if file exists
+    local f_check = io.open(file_path, "r")
+    if f_check then
+        f_check:close()
+        local versioned_path = m.SavePresetWithVersioning(file_path)
+        if versioned_path ~= file_path then
+            file_path = versioned_path
+        end
+    end
+
+    local ok, f = pcall(io.open, file_path, "w")
+    if not ok or not f then
+        preset_store.SetBrowserError("Could not write file: " .. tostring(file_path))
+        return false
+    end
+    f:write(content)
+    f:close()
+    m.RefreshPresets()
+    preset_store.SetBrowserError(nil)
+    return true
+end
+
 function m.LoadPreset(file_path)
     if not file_path then
         preset_store.SetBrowserError("No preset selected")
@@ -252,6 +333,24 @@ function m.LoadPreset(file_path)
         preset_store.SetBrowserError("Invalid preset file: expected table, got " .. type(result))
         return false
     end
+    -- Detect progression-only preset by type field or extension
+    local is_progression = (result.type == "progression")
+        or file_path:lower():match("%.grove%-prog$") ~= nil
+    if is_progression then
+        -- Progression-only load: skip notes validation, restore progression + context
+        seq_store.ClearProgUndoStacks()
+        if result.root_index then prefs.SetRootIndex(result.root_index) end
+        if result.scale_index then prefs.SetScaleIndex(result.scale_index) end
+        if result.octave then prefs.SetOctave(result.octave) end
+        if result.chord_mode_index then prefs.SetChordModeIndex(result.chord_mode_index) end
+        if result.progression and type(result.progression) == "table" then
+            seq_store.SetProgression(result.progression)
+        end
+        preset_store.IncrementPresetLoadCount(file_path)
+        preset_store.SetBrowserError(nil)
+        return true
+    end
+    -- Notes preset: existing v2/v3 logic
     if not result.notes or type(result.notes) ~= "table" then
         preset_store.SetBrowserError("Invalid preset: missing 'notes' array")
         return false
@@ -432,10 +531,6 @@ function m.SaveFavorites()
     pcall(reaper.SetExtState, "GROVE_Scale_Runner", "preset_favorites", str, true)
 end
 
-function m.GetPresetFilePath(directory, name)
-    return path_utils.PathJoin(directory, name .. PRESET_EXT)
-end
-
 --- Check if LuaFileSystem is available.
 function m.HasLFS()
     return _has_lfs
@@ -460,12 +555,16 @@ function m.SavePresetWithVersioning(base_path)
 
     -- File exists: find next version number
     local dir = base_path:match("^(.+)[/\\]")
-    local name = base_path:match("([^/\\]+)%.grove$")
+    -- Detect extension: .grove or .grove-prog
+    local ext = base_path:match("%.grove%-prog$") and ".grove-prog"
+            or base_path:match("%.grove$") and ".grove"
+    if not ext or not dir then return base_path end
+    local name = base_path:match("([^/\\]+)" .. ext .. "$")
     if not name then return base_path end
 
     local version = 1
     while true do
-        local vpath = path_utils.PathJoin(dir, name .. "_v" .. version .. ".grove")
+        local vpath = path_utils.PathJoin(dir, name .. "_v" .. version .. ext)
         local vf = io.open(vpath, "r")
         if not vf then
             return vpath  -- found unused version
@@ -768,6 +867,137 @@ function m.LoadSlotSnapshot(page, slot)
     local ok, result = safe_loader.LoadSandboxed(filepath)
     if not ok or not result or not result.notes then return nil end
     return result.notes
+end
+
+-- =========================================================
+-- Pack export/import (PR 5: Export/Import Packs)
+-- =========================================================
+
+--- Export multiple presets to a .grove-pack file.
+--- Pack format: Lua table with manifest + serialized .grove content.
+--- @param indices table Sparse set {[idx]=true}
+--- @param files table Array of file entries
+--- @param output_path string Destination path for .grove-pack
+function m.ExportPresetsToPack(indices, files, output_path)
+    if not indices or not files then return false, "No presets selected" end
+
+    -- Collect presets to export
+    local presets = {}
+    for idx in pairs(indices) do
+        local entry = files[idx]
+        if entry and entry.path then
+            local f = io.open(entry.path, "rb")
+            if f then
+                local content = f:read("*all")
+                f:close()
+                table.insert(presets, {
+                    name = entry.name,
+                    filename = entry.filename or (entry.name .. ".grove"),
+                    content = content,
+                })
+            end
+        end
+    end
+
+    if #presets == 0 then
+        return false, "No valid presets to export"
+    end
+
+    -- Write pack file as a Lua loader table (same format as .grove)
+    local lines = {}
+    table.insert(lines, "return {")
+    table.insert(lines, string.format("    version = 1,"))
+    table.insert(lines, string.format("    name = %q,", output_path:match("([^/\\]+)%.grove%-pack$") or "preset-pack"))
+    table.insert(lines, string.format("    date = %d,", os.time()))
+    table.insert(lines, "    presets = {")
+    for _, p in ipairs(presets) do
+        table.insert(lines, "        {")
+        table.insert(lines, string.format("            name = %q,", p.name))
+        table.insert(lines, string.format("            filename = %q,", p.filename))
+        -- Use long bracket for raw content to avoid escaping issues
+        table.insert(lines, "            content = [====[")
+        table.insert(lines, p.content)
+        table.insert(lines, "            ]====],")
+        table.insert(lines, "        },")
+    end
+    table.insert(lines, "    },")
+    table.insert(lines, "}")
+
+    local content = table.concat(lines, "\n")
+    local f = io.open(output_path, "wb")
+    if not f then
+        return false, "Could not create pack file"
+    end
+    f:write(content)
+    f:close()
+    return true, nil
+end
+
+--- Import presets from a .grove-pack file into the preset directory.
+--- @param pack_path string Path to .grove-pack file
+--- @return number Number of presets imported
+function m.ImportPresetsFromPack(pack_path)
+    if not pack_path then return 0 end
+
+    local ok, result = safe_loader.LoadSandboxed(pack_path)
+    if not ok or not result or not result.presets then
+        preset_store.SetBrowserError("Invalid pack file")
+        return 0
+    end
+
+    local dir = preset_store.GetCurrentDirectory() or preset_store.GetPresetRoot()
+    if not dir or #dir == 0 then
+        preset_store.SetBrowserError("No preset directory configured")
+        return 0
+    end
+
+    local count = 0
+    for _, p in ipairs(result.presets) do
+        local filename = p.filename or (p.name .. ".grove")
+        local filepath = path_utils.PathJoin(dir, filename)
+
+        -- Check for name conflicts and version if needed
+        local check = io.open(filepath, "r")
+        if check then
+            check:close()
+            -- Name conflict: append _imported
+            local base = filename:gsub("%.grove$", "")
+            filepath = path_utils.PathJoin(dir, base .. "_imported.grove")
+        end
+
+        local f = io.open(filepath, "wb")
+        if f then
+            f:write(p.content)
+            f:close()
+            count = count + 1
+        end
+    end
+
+    m.RefreshPresets()
+    return count
+end
+
+--- Handle pack export from UI context menu.
+--- @param indices table Sparse set {[idx]=true}
+--- @param files table Array of file entries
+function m.ExportPackFromContext(indices, files)
+    if not indices then return end
+    local count = 0
+    for _ in pairs(indices) do count = count + 1 end
+    if count == 0 then return end
+
+    local ret, name = reaper.GetUserInputs("Export Pack", 1, "Pack name:", "preset-pack")
+    if not ret or not name or #name == 0 then return end
+
+    local dir = preset_store.GetCurrentDirectory() or preset_store.GetPresetRoot()
+    local output_path = path_utils.PathJoin(dir or "C:\\", name .. ".grove-pack")
+
+    local ok, err = m.ExportPresetsToPack(indices, files, output_path)
+    if ok then
+        reaper.ShowConsoleMsg("Exported " .. count .. " presets to " .. output_path .. "\n")
+    else
+        preset_store.SetBrowserError("Export failed: " .. tostring(err))
+    end
 end
 
 return m

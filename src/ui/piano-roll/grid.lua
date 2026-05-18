@@ -311,6 +311,26 @@ function m.DrawVerticalPianoKeyboard(kx, ky, kw, kh, scroll_y, top_pitch)
         end
     end
 
+    -- ================================================================
+    -- PASS 4: Hover highlight (no key pressed) — 15% white overlay
+    -- Shows a subtle brightness increase on the pitch row the mouse is
+    -- hovering over in the keyboard strip, without requiring a click.
+    -- Only renders when no key is actively pressed (pressed-key > hover).
+    -- ================================================================
+    if in_key_strip and _pressed_key_pitch == nil then
+        local row = math.floor((my - ky + scroll_px_offset) / RH)
+        local hover_pitch = math.max(MIN, top_pitch - row)
+        if hover_pitch >= MIN and hover_pitch <= m.MAX_PITCH then
+            local py = ky + row * RH - scroll_px_offset
+            local clip_y = math.max(ky, py)
+            local clip_h = math.min(py + RH, ky + kh) - clip_y
+            if clip_h > 0 then
+                helpers.SetColor({1, 1, 1, 0.15})
+                gfx.rect(kx, clip_y, kw, clip_h, 1)
+            end
+        end
+    end
+
     -- Note-off helper: decrement ref-count, send 0x80 only when count reaches 0
     local function ReleasePitch(pitch)
         local cur = midi_store.GetActiveNote(pitch)

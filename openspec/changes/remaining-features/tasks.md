@@ -35,10 +35,10 @@ Chain strategy: pending
 
 ## Phase 2: Progression-Only Presets (B)
 
-- [ ] 2.1 Add dual-ext scanning `.grove`/`.grove-prog`, `SaveProgressionPreset()`, and `type`-based LoadPreset branching in `src/ui/preset-browser/io.lua`
-- [ ] 2.2 Add Notes/Progression/All filter tabs + "Save Progression" button in `src/ui/preset-browser/main.lua`
-- [ ] 2.3 Add `type_filter` param and type badge rendering in `src/ui/preset-browser/preset-list.lua`
-- [ ] 2.4 Re-export `SaveProgressionPreset` in `src/ui/preset-browser.lua`
+- [x] 2.1 Add dual-ext scanning `.grove`/`.grove-prog`, `SaveProgressionPreset()`, and `type`-based LoadPreset branching in `src/ui/preset-browser/io.lua`
+- [x] 2.2 Add Notes/Progression/All filter tabs + "Save Progression" button in `src/ui/preset-browser/main.lua`
+- [x] 2.3 Add `type_filter` param and type badge rendering in `src/ui/preset-browser/preset-list.lua`
+- [x] 2.4 Re-export `SaveProgressionPreset` in `src/ui/preset-browser.lua`
 
 ## Phase 3: Vkey-Map Configurables (C)
 
