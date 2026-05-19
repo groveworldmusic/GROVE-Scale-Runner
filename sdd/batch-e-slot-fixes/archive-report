@@ -1,0 +1,85 @@
+## Archive Report: Batch E — Slot Fixes
+
+**Status**: Archived
+**SDD Cycle**: Complete
+**Date**: 2026-05-18
+
+---
+
+### Artifact Traceability
+
+| Artifact | Engram ID | Status |
+|----------|-----------|--------|
+| Proposal | — | No Engram observation found — scope was communicated conversationally |
+| Spec | — | No Engram observation found — 5 fixes described in apply-progress |
+| Design | #1152 | Apply-progress (covers design decisions + implementation details for all 5 fixes) |
+| Tasks | #1152 | Apply-progress (5/5 tasks complete) |
+| Verify | #1153 | PASS WITH WARNINGS (5 pre-existing test failures unrelated to this change) |
+| Archive | This report | Complete |
+
+---
+
+### 1. Files Changed
+
+**2 files changed, ~116 lines total:**
+
+| File | Lines | What Changed |
+|------|-------|-------------|
+| `src/ui/slots.lua` | ~+108 | All 5 fixes: slot number visibility (opacity 0.7, font h*0.2, color text), right-click removes last sub only, clear-subs red circle button, chord mode update on drop, mouse wheel sub-pad cycling |
+| `src/state/sequencer.lua` | ~+8 | Added `slot_hover_idx` (default -1) and `slot_hover_sub` (default 0) state with 4 getters/setters for mouse wheel sub preview |
+
+---
+
+### 2. The 5 Fixes Implemented
+
+| # | Fix | What Was Done |
+|---|-----|---------------|
+| 1 | **Chord mode dropdown updates subdivided slots** | When appending a new sub to existing subs array, `entry.chord_mode_index` is set from `prefs.GetChordModeIndex()` before `table.insert` |
+| 2 | **Right-click deletes only last sub** | Checks `slot.subs` and `#subs > 0`, uses `table.remove(entry.subs)`. Falls through to `progression.Remove` only when last sub remains |
+| 3 | **Red circle with X to clear all subs** | `GetClearSubsRect` helper draws red circle (r=10, 0.7 alpha) with white X at bottom-right of subdivided slots. Euclidean hit-test in right-click block |
+| 4 | **Slot number visibility** | Opacity 0.3→0.7, font size h*0.15→h*0.2, color text_dim→text |
+| 5 | **Mouse wheel cycles sub-pads** | `slot_hover_idx`/`slot_hover_sub` in sequencer store. `ConsumeMouseWheelDelta` with wrap-around cycling. Hover preview in `DrawSlotLabel`, preview-aware click-to-play, dot highlighting, reset on mouse leave |
+
+---
+
+### 3. Edge Cases Covered
+
+- **Empty subdivision** (1/1): no subs, wheel does nothing
+- **Single sub remaining**: right-click removes entire slot
+- **Clear circle vs sub removal**: Euclidean distance check, circle hit-tested first
+- **Wheel during drag**: wheel only processed when hover is true
+- **Preview reset**: automatically clears when mouse leaves slot bounds
+
+---
+
+### 4. Deviations from Design
+
+None — implementation matches the bug descriptions for all 5 fixes.
+
+---
+
+### 5. Pre-Existing Issues Found (Out of Scope)
+
+- **`ProgSnapshot()` does NOT capture `subs` field** — undo for subdivided slots is broken pre-existing. Not fixed in this batch.
+- **5 pre-existing test failures** identified during verify (test_stores, test_keyboard_intercept, test_toggle_island, snap-tests, undo-tests). None are related to batch-e-slot-fixes.
+
+---
+
+### 6. Final Verdict
+
+**SDD Cycle: COMPLETE ✅**
+
+- **5/5 fixes implemented** — all matching the original bug descriptions
+- **0 deviations from design** — implementation matches spec
+- **~116 lines changed across 2 files** — well under 400-line PR budget
+- **No migration needed** — additive changes to state and UI rendering only
+- **Verify result**: PASS WITH WARNINGS (warnings are pre-existing failures unrelated to this change)
+
+---
+
+### 7. Knowledge Saved for Future SDD Cycles
+
+- **Slot hover preview pattern**: `slot_hover_idx`/`slot_hover_sub` in sequencer store enables mouse wheel sub-pad preview without committing selection. Must reset on mouse leave to avoid stale preview state.
+- **Subdivided slot lifecycle**: A single entry can have multiple `subs`. Operations must distinguish between "remove last sub" (clear slot entirely) and "remove sub but keep slot" (table.remove only one sub). The `#entry.subs` count determines which behavior applies.
+- **Chord mode propagation**: When adding subs to an existing entry, the parent entry's `chord_mode_index` must be explicitly set — `table.insert` does not auto-update parent state.
+- **Pre-existing test failures**: 5 test files fail independently of this change. The keyboard intercept failure is a test-side `vkey-map Init()` omission.

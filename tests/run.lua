@@ -46,6 +46,9 @@ local test_names = {
     "test_preferences.lua",
     "test_preset_store.lua",
     "barrel-backward-compat.lua",
+    "test_piano_roll_grid.lua",
+    "test_preset_browser_io.lua",
+    "test_piano_roll_drag.lua",
 }
 for _, name in ipairs(test_names) do
     local path = script_dir .. name

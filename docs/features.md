@@ -2,8 +2,8 @@
 
 > **Convención**: Este documento es el catálogo maestro de features. Toda feature nueva que se implemente debe agregarse aquí con su estado (`✅ Implementada` / `🚧 En progreso` / `📋 Planificada`).
 >
-> **Última actualización**: 2026-05-18
-> **Versión del script**: v1.0.0
+> **Última actualización**: 2026-05-18 (sesión presets-full-features + Phase 1 & 2)
+> **Versión del script**: v1.1.0-dev
 
 ---
 
@@ -273,9 +273,9 @@ La Isla MIDI es un panel expandible dentro del modo FULL que agrega:
 
 ## 7. Preset Browser (Panel Izquierdo)
 
-*Módulos: `src/ui/preset-browser.lua` (barrel), `src/ui/preset-browser/main.lua` (composición), `src/ui/preset-browser/io.lua` (filesystem), `src/ui/preset-browser/folder.lua` (árbol de directorios), `src/ui/preset-browser/preset-list.lua` (lista + multi-select)*
+*Módulos: `src/ui/preset-browser.lua` (barrel), `src/ui/preset-browser/main.lua` (composición), `src/ui/preset-browser/io.lua` (filesystem + batch ops + packs + versioning), `src/ui/preset-browser/folder.lua` (árbol de directorios), `src/ui/preset-browser/preset-list.lua` (lista + multi-select + badges), `src/ui/preset-browser/preview.lua` (preview auditivo ghost-notes)*
 
-### 7.1 Funcionalidades
+### 7.1 Funcionalidades Base
 | Feature | Detalle |
 |---------|---------|
 | Directorios de presets | Navegación por carpetas del sistema de archivos |
@@ -285,14 +285,104 @@ La Isla MIDI es un panel expandible dentro del modo FULL que agrega:
 | Error banner | Muestra errores de lectura de directorios sin crashear |
 | Formato de archivo | `.grove` — archivo Lua serializado via `dofile()` con sandbox (`safe-loader.lua`) |
 
-- **`preset-browser/main.lua`**: composición del panel — botón RANDOM, multi-select (Ctrl+click toggle, Shift+click range)
-- **`preset-browser/io.lua`**: `Init()` (resource path), `ScanDirectory()` (LuaFileSystem o fallback io.popen), `SavePreset()`/`LoadPreset()` (serialización con sandbox), `RenamePreset()`, `DeletePreset()`, `BatchDeletePresets()`, `BatchMergeLoadPresets()`, `ExportPresetsToMIDI()`
-- **`preset-browser/folder.lua`**: `DrawFolderHeader` (up button + folder name), `DrawFolderList` (scrollable con ▶/▼ icons), `HandleFolderClick`, `HandleFolderWheel`
-- **`preset-browser/preset-list.lua`**: `DrawPresetList` (star favorito, hover/selected highlighting), `HandlePresetClick`, `HandleMultiSelectClick` (Ctrl/Shift modifiers), `HandleContextMenu` (batch menu vs single)
+### 7.2 Formato .grove v3 (Metadata)
+A partir de Phase 1, los presets incluyen metadata estructurada:
 
-### 7.2 Gestión de directorios favoritos
+```lua
+-- .grove v3 format (simplificado)
+return {
+  version = 3,
+  bpm = 120,
+  genre = "pop",
+  difficulty = 3,          -- 1-5
+  tags = "pop,ballad,piano",
+  notes = "Inspired by...",
+  scale = { root="C", scale="Major", octave=3, chord_mode="Tri" },
+  note_entries = { ... }   -- las notas del preset
+}
+```
+
+- **`io.SavePresetV3()`**: serializa con metadata; **`LoadPreset()`** compatible con v1/v2/v3
+- **`preset_store.GetEditingMetadata()`** / **`SetEditingMetadata()`**: estado transitorio para el modal de edición de metadata
+- Tags y notas libres por preset, parseados en la UI
+
+### 7.3 Multi-Select (Set-based Sparse)
+- **Ctrl+click**: toggle individual de selección
+- **Shift+click**: rango desde el anchor (último click sin Shift) hasta el click actual
+- **Anchor point**: `_last_anchor_idx` en `preset-list.lua` — se actualiza en cada click sin Shift
+- Implementación: `selected_indices = { [idx] = true }` — set sparse con O(1) lookup y toggle
+- `preset_store.SetSelectedIndices()` / `GetSelectedIndices()` / `ClearSelectedIndices()`
+- UI feedback: highlight azul semi-transparente en items seleccionados
+
+### 7.4 Batch Operations
+Cuando hay 2+ presets seleccionados, el menú contextual muestra opciones batch:
+
+| Operación | Descripción |
+|-----------|-------------|
+| **Batch Delete** | `io.BatchDeletePresets(indices)` — elimina todos los presets seleccionados |
+| **Merge Load** | `io.BatchMergeLoadPresets(indices)` — carga todas las notas de los presets seleccionados en el piano roll actual |
+| **Export as MIDI** | `io.ExportPresetsToMIDI(indices)` — exporta cada preset seleccionado como item MIDI separado |
+
+### 7.5 Preview Auditivo (Ghost Notes)
+*Módulo: `src/ui/preset-browser/preview.lua` (74 LOC)*
+
+- **Ctrl+Click** sobre un preset → reproduce preview de las notas sin mutar el estado actual
+- Usa `reaper.StuffMIDIMessage` directo (bypassea ref-counting de active notes)
+- Note-off automático después de `PREVIEW_DURATION = 0.5s`
+- Solo un preview activo a la vez
+- **Ghost rendering**: las notas del preview se dibujan semi-transparentes sobre la grilla del piano roll
+
+### 7.6 Miniaturas 8×8 (Thumbnail Grid)
+- **`preset_store.GetThumbnail(path)`** / **`SetThumbnail(path, grid)`**: grid `table[8][8]` de booleanos (activo/silencio)
+- Generadas al guardar el preset analizando la densidad de notas por celda
+- **`_thumbnail_cache`**: cache en memoria keyeado por path, `ClearThumbnailCache()` para invalidar
+- Renderizadas como matriz 8×8 en la lista de presets junto al nombre
+
+### 7.7 Badges
+Indicadores visuales al lado de cada preset en la lista:
+
+| Badge | Condición |
+|-------|-----------|
+| **Entry Type** | "Prog." (progression-only) ↔ "Notes" (piano-roll notes) |
+| **Load Count** | Número de veces cargado desde `preset_stats` |
+| **Stats Summary** | Última carga, última modificación (tooltip hover) |
+
+- Badge "Prog." usa `entry_type == "progression"` detectado desde el contenido del archivo
+- Stats se muestran en hover tooltip con formato "Loaded 5 times / Last: 2h ago"
+
+### 7.8 Auto-Versioning
+*`src/ui/preset-browser/io.lua` (líneas 239, 299, 540-543)*
+
+- **Auto versioning**: si el archivo ya existe, `SavePresetWithVersioning()` genera `_v1`, `_v2`, etc. antes de sobrescribir
+- Preserva versiones anteriores en el mismo directorio
+
+### 7.9 Pack Export / Import
+*`src/ui/preset-browser/io.lua`*
+
+| Operación | Descripción |
+|-----------|-------------|
+| **Export Pack** | `ExportPresetsAsPack()` — selecciona N presets, los empaqueta en un archivo `.grove-pack` (Lua table con todos los presets inline) |
+| **Import Pack** | `ImportPresetsFromPack(pack_path)` — lee `.grove-pack`, extrae presets, los escribe individualmente en el directorio activo, retorna count |
+
+### 7.10 Preset Stats (Load Tracking)
+- **`preset_stats[path]`**: `{ load_count, last_loaded, last_modified }`
+- `IncrementLoadStat(path)`: incrementa contador + actualiza timestamp
+- Persistido via ExtState (`reaper.SetExtState "preset_stats"`)
+- `LoadPresetStats()` / `SavePresetStats()`: carga/guarda desde ExtState
+- Stats visibles en tooltip hover del preset
+
+### 7.11 Módulos Internos
+| Módulo | LOC | Propósito |
+|--------|-----|-----------|
+| `preset-browser/main.lua` | — | Composición del panel: botón RANDOM, delega a folder + preset-list |
+| `preset-browser/io.lua` | ~940 | Init, ScanDirectory, SavePreset/LoadPreset (v1-v3), Rename, Delete, Batch*, Export*, Pack*, versioning |
+| `preset-browser/folder.lua` | — | DrawFolderHeader, DrawFolderList (scrollable), HandleFolderClick/Wheel |
+| `preset-browser/preset-list.lua` | — | DrawPresetList (star, hover, selected), HandleMultiSelectClick (Ctrl/Shift), HandleContextMenu batch vs single |
+| `preset-browser/preview.lua` | 74 | Preview auditivo con ghost notes, PREVIEW_DURATION=0.5s |
+
+### 7.12 Gestión de directorios favoritos
 - Agregar/quitar directorios de la lista de favoritos
-- Los favoritos se serializan como tabla Lua `{"path1","path2",...}` por `reaper.GetExtState/SetExtState`
+- Serializados como tabla Lua `{"path1","path2",...}` por `reaper.GetExtState/SetExtState`
 - Error handling: `dofile()` envuelto en `pcall` con rollback ante archivos corruptos
 
 ---
@@ -428,7 +518,7 @@ El sistema de estado se compone de 9 stores + persistencia:
 | **island** | `src/state/island.lua` | island_active, scroll_offset_x/y, zoom_x, snap, tool_mode, notes, selection, lasso, undo/redo (max 50) |
 | **note-store** | `src/state/note-store.lua` | Notes CRUD: AddNote, RemoveNoteAtIndex, ClearNotes, InsertNoteAtIndex; UUID-based (AllocNoteUUID, FindNoteByUUID); Undo/Redo stacks (50 cap) |
 | **piano-roll-store** | `src/state/piano-roll-store.lua` | init interno via island_store; Undo/Redo stacks con UUID-based identification (94 checks en tests) |
-| **preset-store** | `src/state/preset-store.lua` | preset_root, directory, preset_tree, files, favorites, bookmarks, search, multi-select (set-based sparse) |
+| **preset-store** | `src/state/preset-store.lua` | preset_root, directory, preset_tree, files, favorites, bookmarks, search, selected_indices (set-based sparse), preset_stats (load tracking), _editing_metadata (bpm/genre/difficulty/tags/notes), _thumbnail_cache (grid 8×8 keyed by path) |
 | **preferences** | `src/state/preferences.lua` | root_index, scale_index, octave, chord_mode_index, inversion_index/direction, subdivision_index, theme_index, show_qwerty_labels, midi_channel — marca save_pending en cada setter, `TickSaveDebounce()` flush por frame |
 
 **Patrón consumable**: `mouse_click` y `mouse_wheel_delta` tienen ciclo de 1 frame — `SetMouseClick()` en MainLoop, `ConsumeMouseClick()` en widget target.
@@ -492,6 +582,7 @@ El sistema de estado se compone de 9 stores + persistencia:
 | **Frame-cached Visible Ranges** | Evitar recomputar rangos visibles en cada frame | `grid.lua` — `ComputeVisibleRanges()` cachea resultado, invalida solo cuando cambian scroll/zoom/dimensiones |
 | **Debounced Preference Save** | Evitar N escrituras sincrónicas por frame | `preferences.lua` — marca `save_pending` en cada setter, `TickSaveDebounce()` flush batch por frame |
 | **Play/Stop → sequencer.Stop()** | Asegurar note-offs al detener reproducción | `views.lua` → `sequencer.Stop()` itera MidiNotes y envía note-offs explícitos antes de limpiar estado |
+| **Set-based Multi-Select** | Selección múltiple con O(1) lookup, toggle, y anchor para Shift+click range | `preset-store` — `selected_indices = { [idx] = true }`, anchor en `_last_anchor_idx`; Ctrl+click toggle, Shift+click range |
 
 ---
 
@@ -513,6 +604,7 @@ El sistema de estado se compone de 9 stores + persistencia:
 | #12 | `src/core/keyboard.lua` | Reusable `temp_ctx` table — zero-allocation en hot path |
 | #13 | `src/ui/piano.lua` | Cached `active_mod12` — evita recomputar cada frame |
 | #14 | `src/ui/views.lua` | Add name comparison (`ne`) to main scale menu style picker in QUICK_SWITCH |
+| #14b | `src/ui/preset-browser/` | Preset bugs resueltos en presets-full-features Phase 1 & 2: metadata v3, multi-select, batch ops, preview, thumbnails, badges, versioning, packs, stats, auto-save |
 | #15 | `src/core/keyboard.lua` | Velocity humanization: `85 + math.random(30)` |
 | #16 | `src/ui/checkbox.lua` | Change toggle icon glyph from '>' to '✓' |
 | #17 | `src/ui/dropdown.lua` | Rework mouse wheel handling — mouse_wheel sniff test with frame separation detection |
@@ -521,6 +613,7 @@ El sistema de estado se compone de 9 stores + persistencia:
 | #20 | `src/ui/piano.lua`, `src/ui/views.lua` | Piano chord tones: always show chord tones highlighting from progression |
 | #21 | `src/core/keyboard.lua` | Velocity humanization activada: `85 + math.random(30)` |
 | #22 | `src/ui/views.lua` | Stuck note en play/stop toggle — `sequencer.Stop()` envía note-offs explícitos |
+| #23 | `src/state/note-store.lua`, `src/state/island.lua`, `src/ui/midi-island.lua`, `src/ui/views/islands.lua` | Inversion Island sync to MIDI island piano roll — `ProgressionToNotes` ahora acepta `inv_idx/inv_dir`, se regeneran notas al cambiar inversión cuando notes_state=LOADED |
 
 ---
 
@@ -531,7 +624,7 @@ El sistema de estado se compone de 9 stores + persistencia:
 | F01 | **Documento de features** — este mismo archivo | Alta | ✅ Implementada |
 | F02 | Actualizar AGENTS.md para referenciar este documento | Alta | ✅ Implementada |
 | F03 | Refactor SPDX headers (49 archivos stale) | Baja | 📋 Pendiente |
-| F04 | Persistir `view_offset_x/y` para no perder posición al reiniciar REAPER | Media | 📋 Pendiente |
+| F04 | Persistir `view_offset_x/y` para no perder posición al reiniciar REAPER | Media | ✅ Implementada (window-repositioning-fix) |
 
 ---
 
@@ -551,8 +644,8 @@ El sistema de estado se compone de 9 stores + persistencia:
 | B10 | CH button: posición invertida de botones Tri/7ma/9na | `src/ui/midi-island/header.lua` | 🐛 Pendiente |
 | B11 | Ctrl + drag izquierdo no activa lasso (debería ser selección por rectángulo) | `src/ui/midi-island/input.lua` | 🐛 Pendiente |
 | B12 | Redimensionar ventana FULL: auto-zoom/scroll del piano roll no se reajusta | `src/ui/midi-island.lua` | 🐛 Pendiente |
-| B13 | Isla inversión no sincroniza cambios al piano roll | `src/state/island.lua`, `src/state/piano-roll-store.lua` | 🐛 Pendiente |
-| B14 | Panel de presets: bugs sin especificar (necesita investigación) | `src/ui/preset-browser/` | 🐛 Pendiente |
+| B13 | Isla inversión no sincroniza cambios al piano roll | `src/state/note-store.lua`, `src/state/island.lua`, `src/ui/midi-island.lua`, `src/ui/views/islands.lua` | ✅ Resuelto (batch-g-inversion-sync: `ProgressionToNotes` + `LoadNotesFromProgression` aceptan `inv_idx/inv_dir`, islands.lua trigger) |
+| B14 | Panel de presets: bugs sin especificar (necesita investigación) | `src/ui/preset-browser/` | ✅ Resuelto (presets-full-features Phase 1 & 2) |
 | B15 | Botón X al lado de Cut para eliminar notas (no existe actualmente) | `src/ui/midi-island/header.lua` | 📋 Planificada |
 | B16 | Botón Quantize con popup de 3 knobs (start/duration/strength) | `src/core/quantize.lua` (existe), `quantize-popup.lua` (nuevo) | 📋 Planificada |
 | B17 | Botón SYNC en header isla MIDI: sincronizar cabezal de reproducción al cabezal de REAPER | `src/ui/midi-island/header.lua` | 📋 Planificada |

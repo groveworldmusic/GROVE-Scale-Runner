@@ -223,7 +223,7 @@ local function ProgressionEntryToPitch(root_idx, scale_idx, degree_idx, octave_v
     return midi.GetMidiNote(root_idx, scale_idx, degree_idx, octave_val)
 end
 
-local function EntryToPitches(entry)
+local function EntryToPitches(entry, inv_idx, inv_dir)
     local ci = api_guard.ClampIndex(entry.chord_mode_index or 1, 1, #config.CHORD_MODES)
     local chord_mode = config.CHORD_MODES[ci]
     local pitches = {}
@@ -236,6 +236,10 @@ local function EntryToPitches(entry)
         )
         table.insert(pitches, pitch)
     end
+    -- Apply inversion to the chord notes as a set (mirrors midi.TriggerChord behavior)
+    if inv_idx and inv_idx > 1 then
+        pitches = require("core.midi").InvertChord(pitches, inv_idx, inv_dir or 0)
+    end
     return pitches
 end
 
@@ -247,9 +251,10 @@ end
 --- @param beats_per_slot number Beats per slot (default 4)
 --- @param velocity number Default velocity (default 100)
 --- @return table Array of {pitch, start_beat, duration, velocity, muted, uuid}
-function m.ProgressionToNotes(progression, beats_per_slot, velocity)
+function m.ProgressionToNotes(progression, beats_per_slot, velocity, inv_idx, inv_dir)
     beats_per_slot = beats_per_slot or 4
     velocity = velocity or 100
+    inv_dir = inv_dir or 0
     local notes = {}
     if not progression then return notes end
 
@@ -271,7 +276,7 @@ function m.ProgressionToNotes(progression, beats_per_slot, velocity)
                         octave = entry.octave,
                         chord_mode_index = entry.chord_mode_index,
                     }
-                    local pitches = EntryToPitches(sub_entry)
+                    local pitches = EntryToPitches(sub_entry, inv_idx, inv_dir)
                     for _, pitch in ipairs(pitches) do
                         table.insert(notes, {
                             pitch = pitch,
@@ -285,7 +290,7 @@ function m.ProgressionToNotes(progression, beats_per_slot, velocity)
                 end
             else
                 local start_beat = (i - 1) * beats_per_slot
-                local pitches = EntryToPitches(entry)
+                local pitches = EntryToPitches(entry, inv_idx, inv_dir)
                 for _, pitch in ipairs(pitches) do
                     table.insert(notes, {
                         pitch = pitch,
@@ -305,9 +310,9 @@ end
 
 --- Convenience: reads progression from sequencer_store and populates notes.
 --- @param seq_store table The sequencer store module
-function m.LoadNotesFromProgression(seq_store)
+function m.LoadNotesFromProgression(seq_store, inv_idx, inv_dir)
     local progression = seq_store.GetProgression()
-    local notes = m.ProgressionToNotes(progression, 4, 100)
+    local notes = m.ProgressionToNotes(progression, 4, 100, inv_idx, inv_dir)
     m.SetNotes(notes)
 end
 

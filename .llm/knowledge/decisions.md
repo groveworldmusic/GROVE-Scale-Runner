@@ -66,6 +66,8 @@
 **Decisión**: Unificar todo a `Andrik Sanz Cordoví` — `@author`, SPDX copyright, y README credit. Separar rol de autor (persona real) vs nombre del producto (`APP_NAME = "GROVE Scale Runner"`).
 **Consecuencias**: Consistencia total en headers y documentación. 49 source files restantes con SPDX `Andrik on the beat` quedan como follow-up scope separado. No afecta paths de código.
 
-**Contexto**: Cuando múltiples notas están seleccionadas, el drag en velocity editor debe modificar TODAS las notas seleccionadas. Diferentes notas pueden tener diferentes velocidades base.
-**Decisión**: Aplicar delta relativo desde el click inicial. `drag_initial_vel` se captura en mousedown. Cada frame computa `delta = new_vel - drag_initial_vel` y aplica a todas las notas seleccionadas.
-**Consecuencias**: Preserva diferencias relativas entre notas (nota suave sigue siendo más suave que nota fuerte). Si solo una nota está seleccionada, aplica el valor absoluto directo (comportamiento legacy).
+## ADR-012: Features catalog as single source of truth
+
+**Contexto**: `docs/features.md` estaba desactualizado — la sección 7 (Preset Browser) solo cubría features base sin mencionar v3 metadata, multi-select, batch ops, preview audio, thumbnails, badges, versioning, packs, ni stats.
+**Decisión**: Reescribir Section 7 completa documentando todas las features de presets, actualizar Section 13.2 con los nuevos campos de preset-store, agregar el set-based multi-select pattern a Section 15, resolver B14 en Section 16, y marcar F04 como implementada.
+**Consecuencias**: El catálogo es ahora representativo del estado real del proyecto (~656 líneas). Sirve como referencia única tanto para desarrolladores como para LLMs. Se actualiza automáticamente con cada feature nueva.

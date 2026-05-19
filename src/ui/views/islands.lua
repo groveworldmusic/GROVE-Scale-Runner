@@ -42,6 +42,15 @@ local function SplitWidths(total, gap)
     return left, avail - left
 end
 
+--- Sync inversion changes to the MIDI island piano roll.
+--- If the MIDI island is expanded and notes are in LOADED state (not manually edited),
+--- re-generates notes from progression using the current inversion settings.
+local function SyncInversionToMidiIsland()
+    if island_store.GetMidiIslandExpanded() and island_store.GetNotesState() == island_store.NOTES_STATE_LOADED then
+        island_store.LoadNotesFromProgression(seq_store, prefs.GetInversionIndex(), prefs.GetInversionDirection())
+    end
+end
+
 function m.DrawIslands()
     local y_start = layout.UY(2196)
     local island_h = layout.US(11750)
@@ -197,6 +206,7 @@ function m.DrawIslands()
     if components.DrawButton(bx1, inv_item_y, inv_btn_w, inv_item_h, dir_text, true, inv_font) then
         local new_dir = prefs.GetInversionDirection() == 0 and 1 or 0
         prefs.SetInversionDirection(new_dir)
+        SyncInversionToMidiIsland()
     end
 
     -- Buttons 2-4: 1st, 2nd, 3rd inversion (click active → root; click another → select)
@@ -208,6 +218,7 @@ function m.DrawIslands()
                                  inv_labels[i], prefs.GetInversionIndex() == inv_idx, inv_font) then
             local new_inv = (prefs.GetInversionIndex() == inv_idx) and 1 or inv_idx
             prefs.SetInversionIndex(new_inv)
+            SyncInversionToMidiIsland()
         end
     end
 

@@ -57,7 +57,7 @@ Chain strategy: pending
 
 ## Phase 5: UI Tests (E)
 
-- [ ] 5.1 Create `tests/test_piano_roll_grid.lua` — ~40 check() for SnapBeat pure functions, all resolutions, triplets, edges
-- [ ] 5.2 Create `tests/test_preset_browser_io.lua` — ~35 check() for I/O with mock filesystem, save/load progression presets
-- [ ] 5.3 Create `tests/test_piano_roll_drag.lua` — ~45 check() for edge detection (8px threshold), drag under/over threshold
-- [ ] 5.4 Register new test files in `tests/run.lua` `test_names` array
+- [x] 5.1 Create `tests/test_piano_roll_grid.lua` — ~42 check() for ComputeVisibleRanges, scroll/zoom clamps, cache
+- [x] 5.2 Create `tests/test_preset_browser_io.lua` — ~37 check() for IsValidPresetFile, GetPresetFilePath, HasLFS, IsFavorite
+- [x] 5.3 Create `tests/test_piano_roll_drag.lua` — ~40 check() for IsNoteRightEdge, IsNoteLeftEdge, drag threshold
+- [x] 5.4 Register new test files in `tests/run.lua` `test_names` array

@@ -34,6 +34,30 @@ local drag_note_index = nil
 local drag_initial_vel = nil   -- velocity of clicked note when drag started (for delta)
 local drag_initial_my = nil    -- mouse Y when drag started (for delta tracking)
 
+--- Compute the handle (circle pinhead) center position for a note.
+--- Matches where DrawVelocityBar renders the circular handle.
+--- Used by HandleVelocityMouse for precision hit test (Fix 1).
+--- @param note table Note data from island_store
+--- @param grid_x number Grid left edge (pixel)
+--- @param ed_y number Editor area top (pixel)
+--- @param ed_h number Editor area total height (pixel, includes collapse handle)
+--- @param scroll_x number Horizontal scroll offset in beats
+--- @param zoom_x number Pixels per beat
+--- @return number, number handle_x, handle_y (pixel coordinates of circle center)
+local function GetHandlePosition(note, grid_x, ed_y, ed_h, scroll_x, zoom_x)
+    local handle_h = velocity.COLLAPSE_HANDLE_H
+    local content_h = ed_h - handle_h
+    local bar_area_bot = ed_y + content_h            -- baseline; matches DrawVelocityEditor
+    local bar_area_h = math.max(1, content_h)
+    local nvel = note.velocity or 100
+    local bar_h = velocity.VELOCITY_MIN_H + (nvel / 127) * (velocity.VELOCITY_MAX_H - velocity.VELOCITY_MIN_H)
+    bar_h = math.min(bar_h, bar_area_h)
+    local nx = grid_x + (note.start_beat - scroll_x) * zoom_x
+    local hx = math.max(grid_x, math.floor(nx))      -- matches clip_nx in DrawVelocityEditor
+    local hy = bar_area_bot - bar_h
+    return hx, hy
+end
+
 --- Compute a velocity bar color using red→green gradient.
 --- @param velocity number 0-127
 --- @return table {r, g, b, a}
@@ -58,7 +82,7 @@ end
 --- @param velocity number 0-127
 --- @param selected boolean Whether this bar is selected
 --- @param muted boolean Whether the note is muted
-function velocity.DrawVelocityBar(x, y, w, h, velocity_val, selected, muted)
+function velocity.DrawVelocityBar(x, y, w, h, velocity_val, selected, muted, left_boundary)
     if w < 1 or h < 1 then return end
 
     local color
@@ -96,12 +120,20 @@ function velocity.DrawVelocityBar(x, y, w, h, velocity_val, selected, muted)
     end
 
     -- Value label (above the circle top)
+    -- Fix 2: if the centered label would overflow past left_boundary (e.g. note near
+    -- the piano keyboard strip), position it on the RIGHT side of the handle instead.
     if selected and h > 20 then
         helpers.SetColor(VEL_LABEL_COLOR)
         gfx.setfont(1, "Calibri", 10)
         local label = tostring(velocity_val)
         local lw, lh = gfx.measurestr(label)
-        gfx.x, gfx.y = x - lw/2, circle_y - pinR - lh - 4
+        local lb = left_boundary or 0
+        if x - lw/2 < lb then
+            -- Overflow left → draw on right side of handle
+            gfx.x, gfx.y = x + pinR + 4, circle_y - pinR - lh - 4
+        else
+            gfx.x, gfx.y = x - lw/2, circle_y - pinR - lh - 4
+        end
         gfx.drawstr(label)
     end
 end
@@ -209,7 +241,7 @@ function velocity.DrawVelocityEditor(x, y, w, h, notes, scroll_x, zoom_x, select
                 local bar_h = velocity.VELOCITY_MIN_H + (nvel / 127) * (velocity.VELOCITY_MAX_H - velocity.VELOCITY_MIN_H)
                 bar_h = math.min(bar_h, bar_area_height)
 
-                velocity.DrawVelocityBar(clip_nx, bar_area_bottom, clip_nw, bar_h, nvel, is_selected, note.muted)
+                velocity.DrawVelocityBar(clip_nx, bar_area_bottom, clip_nw, bar_h, nvel, is_selected, note.muted, grid_x)
         end
     end
 
@@ -364,31 +396,52 @@ function velocity.HandleVelocityMouse(mx, my, grid_x, ed_y, ed_h, scroll_x, zoom
     end
 
     -- Start drag on fresh click
+    -- Fix 1: Precision drag — only start drag if click is within 6px of the circular
+    -- handle center. Clicks elsewhere on the bar only update selection, not velocity.
     if click and mouse_down then
         local idx = island_store.GetPrimarySelectedIndex()
         if not idx then
             idx = velocity.VelocityHitTest(mx, my, notes, grid_x, ed_y, ed_h, scroll_x, zoom_x)
         end
-        if idx then
-            -- Store initial state for delta tracking
-            drag_initial_vel = notes[idx].velocity or 100
-            drag_initial_my = my
-            drag_active = true
-            drag_note_index = idx
-            -- Preserve multi-selection: only change selection if clicked note is NOT already selected
-            local selected = island_store.GetSelectedIndices()
-            if not selected[idx] then
-                selected[idx] = true
+        if idx and notes[idx] then
+            -- Check proximity to handle center
+            local hx, hy = GetHandlePosition(notes[idx], grid_x, ed_y, ed_h, scroll_x, zoom_x)
+            local dx = mx - hx
+            local dy = my - hy
+            local dist = math.sqrt(dx*dx + dy*dy)
+
+            if dist <= 6 then
+                -- Within handle zone: start drag
+                drag_initial_vel = notes[idx].velocity or 100
+                drag_initial_my = my
+                drag_active = true
+                drag_note_index = idx
+                -- Preserve multi-selection: only change selection if clicked note is NOT already selected
+                local selected = island_store.GetSelectedIndices()
+                if not selected[idx] then
+                    selected[idx] = true
+                end
+                -- Update velocity immediately on click
+                local padding = 4
+                local bar_area_bot = ed_y + ed_h - padding
+                local bar_area_top = ed_y + padding
+                local bar_area_h = math.max(1, bar_area_bot - bar_area_top)
+                local ratio = (bar_area_bot - my) / bar_area_h
+                local new_vel = math.max(0, math.min(127, math.floor(ratio * 127 + 0.5)))
+                ApplyVelocity(notes, idx, new_vel)
+                return true
+            else
+                -- Outside handle zone: just select the note without changing velocity
+                local selected = island_store.GetSelectedIndices()
+                -- Clear other selections if clicking on a non-selected note
+                if not selected[idx] then
+                    local new_sel = {}
+                    new_sel[idx] = true
+                    island_store.SetSelectedIndices(new_sel)
+                end
+                -- Don't start drag, don't change velocity
+                return true
             end
-            -- Update velocity immediately on click
-            local padding = 4
-            local bar_area_bot = ed_y + ed_h - padding
-            local bar_area_top = ed_y + padding
-            local bar_area_h = math.max(1, bar_area_bot - bar_area_top)
-            local ratio = (bar_area_bot - my) / bar_area_h
-            local new_vel = math.max(0, math.min(127, math.floor(ratio * 127 + 0.5)))
-            ApplyVelocity(notes, idx, new_vel)
-            return true
         end
     end
 

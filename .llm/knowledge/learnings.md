@@ -184,6 +184,20 @@ Para llegar al root se necesita `JS_Window_GetRoot(hwnd)` (que llama `GetAncesto
 - ❌ `JS_Window_Resize/SetPosition` — existen en código fuente pero no constriñen GFX windows durante drag
 - ❌ `JS_Window_SetBounds` — NO EXISTE en js_ReaScriptAPI (nombre incorrecto)
 
+## batch-f-velocity-editor: Velocity editor fixes
+
+### Fix 1: Precision drag gate on handle proximity
+**Contexto**: Velocity edits started on any click within the note's beat range (broad area hit test via VelocityHitTest). A click on the stem or duration bar would immediately jump velocity to the mouse Y.
+**Solución**: Added `GetHandlePosition()` which computes the exact handle circle center matching the render position in `DrawVelocityBar`. Drag only starts when `sqrt(dx² + dy²) <= 6px` from center. Clicks outside the handle zone on a velocity bar update note selection without changing velocity.
+**Archivos**: `src/ui/velocity.lua` — GetHandlePosition (nuevo), HandleVelocityMouse (modificado)
+**Lección**: The handle position depends on `COLLAPSE_HANDLE_H` (not just `padding`) to match the render baseline. `DrawVelocityEditor` uses `y + content_h` where `content_h = h - COLLAPSE_HANDLE_H`, while the drag handler used `ed_y + ed_h - padding`. The new helper matches the render code exactly.
+
+### Fix 2: Label overflow on left edge → flip to right side
+**Contexto**: The velocity value label (centered above the handle) would overflow past the pitch label strip when the note is near the left edge of the grid.
+**Solución**: Added `left_boundary` parameter to `DrawVelocityBar`. When `x - lw/2 < left_boundary`, the label is drawn at `x + pinR + 4` (right side of handle) instead of centered.
+**Archivos**: `src/ui/velocity.lua` — DrawVelocityBar signature and label block
+**Lección**: The label needs `left_boundary` (the grid_x = x + PITCH_LABEL_W edge) to detect overflow. A fallback of `0` prevents crashes if called without the parameter.
+
 ### Phase 5: view_offset_x/y migration to ui_store
 **Contexto**: 12 referencias a `config.state.view_offset_x/y` en 4 archivos.
 **Solución**: Agregar a `ui_store` con getters/setters + reemplazar todas las referencias.

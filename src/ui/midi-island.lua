@@ -205,7 +205,7 @@ function m.Draw(char)
                 preset_browser.SaveSlotSnapshot(cur_page, rev_slot, cur_notes)
             end
         end
-        island_store.LoadNotesFromProgression(seq_store)
+        island_store.LoadNotesFromProgression(seq_store, prefs.GetInversionIndex(), prefs.GetInversionDirection())
         _island_progression_revision = cur_rev
         _cached_total_beats_valid = false
     end
@@ -247,7 +247,7 @@ function m.Draw(char)
     local content_w = layout.US(CANVAS_W)
     local _, reload_requested, sync_requested = header.DrawHeader(content_w)
     if reload_requested then
-        island_store.LoadNotesFromProgression(seq_store)
+        island_store.LoadNotesFromProgression(seq_store, prefs.GetInversionIndex(), prefs.GetInversionDirection())
         island_store.SetNotesState(island_store.NOTES_STATE_LOADED)
         _island_progression_revision = seq_store.GetProgressionRevision()
         island_store.ClearSelection()

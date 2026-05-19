@@ -353,8 +353,8 @@ function m.ResetScrollbarDragState()
     island_state.vsb_scroll_at_drag_start = 0
 end
 
-function m.LoadNotesFromProgression(seq_store)
-    note_store.LoadNotesFromProgression(seq_store)
+function m.LoadNotesFromProgression(seq_store, inv_idx, inv_dir)
+    note_store.LoadNotesFromProgression(seq_store, inv_idx, inv_dir)
     island_state.note_count = note_store.GetNoteCount()
     island_state.notes_state = NOTES_STATE_LOADED  -- freshly loaded from progression
 
