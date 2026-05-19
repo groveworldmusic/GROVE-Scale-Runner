@@ -47,6 +47,9 @@ local island_state = {
     midi_island_expanded = false,
     midi_island_toggled = false,
     autoscroll_enabled = false,
+    -- Time selection for playback range (Batch D)
+    time_selection_start = 0,
+    time_selection_end = 16,  -- Default: 4 measures (16 beats)
     -- Scrollbar drag state (Phase 5: moved from midi-island.lua locals)
     sb_dragging = false,
     sb_drag_start_x = 0,
@@ -69,6 +72,8 @@ function m.Init(defaults)
         island_state._last_selected_idx = defaults.selected_note_index
     end
     if defaults.velocity_panel_expanded ~= nil then island_state.velocity_panel_expanded = defaults.velocity_panel_expanded end
+    if defaults.time_selection_start ~= nil then island_state.time_selection_start = defaults.time_selection_start end
+    if defaults.time_selection_end ~= nil then island_state.time_selection_end = defaults.time_selection_end end
     -- Delegate notes + undo/redo init to note-store
     note_store.Init(defaults)
     -- Delegate preset browser init to preset-store
@@ -257,6 +262,14 @@ function m.GetAutoscrollEnabled() return island_state.autoscroll_enabled end
 function m.SetAutoscrollEnabled(v) island_state.autoscroll_enabled = v end
 
 -- =========================================================
+-- Time Selection State (Batch D)
+-- =========================================================
+function m.GetTimeSelectionStart() return island_state.time_selection_start end
+function m.SetTimeSelectionStart(v) island_state.time_selection_start = v end
+function m.GetTimeSelectionEnd() return island_state.time_selection_end end
+function m.SetTimeSelectionEnd(v) island_state.time_selection_end = v end
+
+-- =========================================================
 -- Snap State (PR2)
 -- =========================================================
 function m.GetSnapEnabled() return island_state.snap_enabled end
@@ -344,6 +357,22 @@ function m.LoadNotesFromProgression(seq_store)
     note_store.LoadNotesFromProgression(seq_store)
     island_state.note_count = note_store.GetNoteCount()
     island_state.notes_state = NOTES_STATE_LOADED  -- freshly loaded from progression
+
+    -- Auto-select time selection to match the progression range (Batch D)
+    local loop = 0
+    local prog = seq_store.GetProgression()
+    if prog then
+        for i = 16, 1, -1 do
+            if prog[i] and prog[i].degree then
+                loop = i
+                break
+            end
+        end
+    end
+    if loop > 0 then
+        island_state.time_selection_start = 0
+        island_state.time_selection_end = loop * 4
+    end
 end
 
 return m

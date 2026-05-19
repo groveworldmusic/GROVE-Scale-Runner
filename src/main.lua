@@ -111,6 +111,7 @@ local sequencer = require("core.sequencer")
 local views = require("ui.views")
 local compact = require("ui.compact")
 local keyboard = require("core.keyboard")
+local vkey_map = require("core.vkey-map")
 local persist = require("state.persist")
 local gfx_safe = require("ui.gfx-safe")
 
@@ -322,11 +323,12 @@ local function MainLoop()
     local char = gfx.getchar()
 
     -- Only redraw GFX when something visual changed, but always call gfx.getchar() for responsiveness
+    local esc_consumed = false
     if gfx_needs_redraw then
         if ui_store.GetDockedMode() then
             views.DrawDockedTransportBar(gfx.w, gfx.h)
         else
-            views.DrawFullView(char)
+            esc_consumed = views.DrawFullView(char)
         end
         gfx_needs_redraw = false
     end
@@ -400,7 +402,7 @@ local function MainLoop()
     if char == 4 then
         ToggleDock()
     end
-    if char == -1 or char == 27 then
+    if char == -1 or (char == 27 and not esc_consumed) then
         if ui_store.GetDidCleanup() then return end
         ui_store.SetDidCleanup(true)
         CleanupAll()
@@ -436,6 +438,9 @@ local function Init()
     preferences_store.SyncFromState(config.state)
     -- Apply persisted theme after SyncFromState (theme.lua loaded earlier with default idx)
     theme.SetThemeIndex(preferences_store.GetThemeIndex())
+    -- Initialize vkey-map with persisted overlay (reads config.state.vkey_map_raw)
+    vkey_map.Init(config.state)
+    keyboard.RebuildKeyStates()
 
     -- Restore persisted volume into sequencer store (persist.Load writes to config.state,
     -- but the sequencer store has its own copy that was initialized before persist.Load)

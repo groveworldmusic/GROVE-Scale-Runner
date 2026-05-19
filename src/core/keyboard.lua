@@ -2,6 +2,7 @@
 -- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Keyboard Handling — VKeys intercept, focus detection, key dispatch
 local config = require("config")
+local vkey_map = require("core.vkey-map")
 local midi = require("core.midi")
 local midi_store = require("state.midi")
 local sequencer = require("core.sequencer")
@@ -31,7 +32,7 @@ function keyboard.HandleKeyboard()
         local is_down = vk_state:byte(k_code) ~= 0
         if is_down and not state.is_pressed then
             state.is_pressed = true
-            local map = config.VKEY_MAP[k_code]
+            local map = vkey_map.GetVkeyMap()[k_code]
             if map then
                 -- Velocity Humanization (Issue 21)
                 local vel = midi_store.GetUseVelocity() and (85 + math.random(30)) or 100
@@ -59,8 +60,31 @@ function keyboard.InterceptMappedKeys(state)
     -- This allows the VKB and Reaper shortcuts to work normally for unmapped keys.
     if not HAS_VKEYS_INTERCEPT then return end
     local action = state and 1 or -1
-    for k_code, _ in pairs(config.VKEY_MAP) do
+    local cur_map = vkey_map.GetVkeyMap()
+    for k_code, _ in pairs(cur_map) do
         reaper.JS_VKeys_Intercept(k_code, action)
+    end
+end
+
+-- Rebuild midi_store key_states from the current vkey map.
+-- Clears stale keys and adds any new VK codes.
+-- Called after vkey-map changes (SetEntry, ResetToDefaults) and from InterceptMappedKeys.
+function keyboard.RebuildKeyStates()
+    local new_map = vkey_map.GetVkeyMap()
+    local key_states = midi_store.GetKeyStates()
+
+    -- Remove key states for VK codes no longer in the map
+    for k in pairs(key_states) do
+        if not new_map[k] then
+            key_states[k] = nil
+        end
+    end
+
+    -- Add key states for VK codes not yet in key_states
+    for k in pairs(new_map) do
+        if not key_states[k] then
+            key_states[k] = { is_pressed = false, midi_notes = {}, code = k }
+        end
     end
 end
 

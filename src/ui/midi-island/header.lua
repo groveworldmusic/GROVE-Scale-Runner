@@ -13,6 +13,7 @@ local velocity = require("ui.velocity")
 local prefs = require("state.preferences")
 local preset_browser = require("ui.preset-browser")
 local preset_store = require("state.preset-store")
+local remap = require("ui.midi-island.remap")
 
 local m = {}
 
@@ -137,14 +138,35 @@ function m.DrawHeader(content_w)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w
-    local total_header_w = tools_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + icon_btn_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
 
     -- 1. Tools (Paint / Knife)
     cur_x = DrawToolModeRow(cur_x, b_w, b_h, header_y) + main_gap
 
-    -- 2. PRESETS Toggle
+    -- 2. Gear (Remap modal toggle)
+    local gear_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    local gear_active = remap.GetVisible()
+    local gear_bg = gear_active and theme.colors.btn_active or (gear_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    helpers.SetColor(gear_bg)
+    components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and gear_hover and not drag_store.GetIsDragging() then
+        ui_store.ConsumeMouseClick()
+        remap.SetVisible(not remap.GetVisible())
+    end
+    helpers.SetColor(gear_active and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(2400))
+    local gear_label = "\226\154\153"  -- ⚙ (U+2699 gear)
+    local glw, glh = gfx.measurestr(gear_label)
+    gfx.x, gfx.y = cur_x + (icon_btn_w - glw) / 2, header_y + (b_h - glh) / 2 - 2
+    gfx.drawstr(gear_label)
+    if gear_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(gear_active and "Close key remap" or "Remap keyboard shortcuts", layout.US(700))
+    end
+    cur_x = cur_x + icon_btn_w + main_gap
+
+    -- 3. PRESETS Toggle
     local ps_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + ps_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     local ps_active = island_store.GetPresetPanelVisible()
     helpers.SetColor(ps_hover and theme.colors.btn_hover or (ps_active and theme.colors.btn_active or theme.colors.island_bg))

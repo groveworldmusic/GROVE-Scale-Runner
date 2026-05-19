@@ -70,6 +70,7 @@ config.PREF_KEYS = {
     "color_mode",
     "auto_focus_enabled",
     "theme_index",
+    "vkey_map_raw",
 }
 
 -- Expanded state for Pagination (16 slots, 4 pages)
@@ -108,6 +109,8 @@ config.state = {
     -- Compact composite state (for JS_Composite transport bar view)
     last_gfx_state = {dock=0, x=100, y=100, w=720, h=500},
     -- Compact composite resources (managed by ui/compact.lua)
+    vkey_map_raw = "",       -- Serialized VKEY_MAP override (string), loaded by vkey-map.lua Init
+    vkey_map_modified = false, -- Whether the VKEY_MAP deviates from defaults
     compact = {
         transport_hwnd = nil,
         lice_bitmap = nil,

@@ -19,6 +19,12 @@ local m = {}
 -- =========================================================
 local _rc_gate_active = false  -- true while right button held within grid
 
+-- =========================================================
+-- Time selection drag state (module-local, per drag session)
+-- =========================================================
+local _ts_dragging = false
+local _ts_drag_start_beat = 0
+
 function m.HandleKeyboard(char, prog_focused)
     local keyboard_consumed = false
 
@@ -90,14 +96,37 @@ function m.HandleMouse(ctx)
         end
     end
 
-    -- 2. Timeline ruler click -> seek
+    -- 2. Timeline ruler click/drag -> time selection + seek
     if not click_consumed and mx >= right_x and mx < right_x + right_w
        and my >= y and my < y + tl_h then
+        local grid_x = right_x + timeline.PITCH_LABEL_W
         if click then
-            local grid_x = right_x + timeline.PITCH_LABEL_W
+            -- Start time selection drag
+            _ts_dragging = true
             local beat = timeline.TimelineHitTest(mx, grid_x, island_store.GetScrollOffsetX(), island_store.GetZoomX())
+            _ts_drag_start_beat = beat
+            island_store.SetTimeSelectionStart(beat)
+            island_store.SetTimeSelectionEnd(beat)
             island_store.SetPlaybackPos(beat)
             click_consumed = true
+        elseif _ts_dragging and left_held then
+            -- Update time selection end while dragging
+            local beat = timeline.TimelineHitTest(mx, grid_x, island_store.GetScrollOffsetX(), island_store.GetZoomX())
+            island_store.SetTimeSelectionEnd(beat)
+            click_consumed = true
+        end
+        -- Time selection drag cleanup
+        if not left_held then
+            if _ts_dragging then
+                -- Ensure start is min, end is max (defensive)
+                local s = island_store.GetTimeSelectionStart()
+                local e = island_store.GetTimeSelectionEnd()
+                if s > e then
+                    island_store.SetTimeSelectionStart(e)
+                    island_store.SetTimeSelectionEnd(s)
+                end
+            end
+            _ts_dragging = false
         end
     end
 
@@ -207,8 +236,19 @@ function m.HandleMouse(ctx)
                     click_consumed = true
                 end
 
-                -- Armed drag check
-                if not island_store.GetNoteDragActive() and left_held then
+                -- Ctrl+drag lasso initiation (fires even without left_down,
+                -- e.g. Ctrl pressed mid-drag or when initial click is on a note)
+                if not island_store.GetLassoActive() and not island_store.GetNoteDragActive()
+                   and ctrl_held and left_held and in_grid_body then
+                    island_store.SetLassoActive(true)
+                    island_store.SetLassoStartX(mx)
+                    island_store.SetLassoStartY(my)
+                    island_store.SetLassoEndX(mx)
+                    island_store.SetLassoEndY(my)
+                end
+
+                -- Armed drag check (skip when lasso is active)
+                if not island_store.GetLassoActive() and not island_store.GetNoteDragActive() and left_held then
                     if piano_roll.CheckAndStartDrag(mx, my, grid_x, pr_y,
                         island_store.GetScrollOffsetY(), island_store.GetScrollOffsetX(),
                         island_store.GetZoomX()) then

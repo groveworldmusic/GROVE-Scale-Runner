@@ -2,6 +2,7 @@
 -- Copyright (c) 2026 Andrik Sanz Cordoví
 -- GROVE Scale Runner: Scale Pad UI (extracted from components.lua)
 local config = require("config")
+local vkey_map = require("core.vkey-map")
 local drag_store = require("state.drag")
 local midi_store = require("state.midi")
 local ui_store = require("state.ui")
@@ -29,7 +30,7 @@ function m.DrawScalePad(x, y, w, h, degree, main_font_size, sub_font_size, total
 
     local active = false
     if not disabled then
-        for _, state in pairs(midi_store.GetKeyStates()) do if state.is_pressed and config.VKEY_MAP[state.code].deg == degree then active = true break end end
+        for _, state in pairs(midi_store.GetKeyStates()) do if state.is_pressed and vkey_map.GetVkeyMap()[state.code].deg == degree then active = true break end end
         if midi_store.GetMousePadState().active_degree == degree then active = true end
     end
 

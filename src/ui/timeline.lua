@@ -103,6 +103,45 @@ function timeline.DrawBeatTicks(x, y, w, h, zoom_x, scroll_x)
     end
 end
 
+--- Draw time selection highlight on the ruler.
+--- Draws a semi-transparent rectangle over the selected beat range.
+--- @param x number Left edge of the grid portion (after labels)
+--- @param y number Top edge of the ruler
+--- @param w number Width of the grid portion
+--- @param h number Height of the ruler
+--- @param zoom_x number Pixels per beat
+--- @param scroll_x number Horizontal scroll offset in beats
+function timeline.DrawTimeSelection(x, y, w, h, zoom_x, scroll_x)
+    if w <= 0 or h <= 0 then return end
+
+    local ts_start = island_store.GetTimeSelectionStart() or 0
+    local ts_end = island_store.GetTimeSelectionEnd() or 16
+
+    -- Ensure start <= end (defensive)
+    if ts_end <= ts_start then return end
+
+    -- Convert to screen coordinates
+    local sx = x + (ts_start - scroll_x) * zoom_x
+    local ex = x + (ts_end - scroll_x) * zoom_x
+
+    -- Clip to visible area
+    if ex < x or sx > x + w then return end
+    sx = math.max(sx, x)
+    ex = math.min(ex, x + w)
+
+    local sw = ex - sx
+    if sw < 1 then return end
+
+    -- Semi-transparent highlight
+    helpers.SetColor({0.2, 0.4, 0.8, 0.15})
+    gfx.rect(sx, y, sw, h, 1)
+
+    -- Subtle border at edges
+    helpers.SetColor({0.3, 0.5, 0.9, 0.3})
+    gfx.line(sx, y, sx, y + h)
+    gfx.line(ex, y, ex, y + h)
+end
+
 --- Draw the playback head line and triangle handle.
 --- @param x number Left edge of the grid portion
 --- @param y number Top edge of the ruler
@@ -196,6 +235,7 @@ function timeline.DrawTimelineRuler(x, y, w, h, grid_h, round_tl)
     grid_w = w - LABEL_W - SB_SIZE  -- Remove `local`: already declared at line 182
     if grid_w > 0 then
         timeline.DrawBeatTicks(grid_x, y, grid_w, h, zoom_x, scroll_x)
+        timeline.DrawTimeSelection(grid_x, y, grid_w, h, zoom_x, scroll_x)
         timeline.DrawPlaybackHead(grid_x, y, h, grid_h, island_store.GetPlaybackPos(), zoom_x, scroll_x, grid_w, false)
     end
 end

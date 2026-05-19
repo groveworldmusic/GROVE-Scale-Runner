@@ -29,6 +29,7 @@ local PREF_KEYS = {
     theme_index       = "theme_index",
     view_offset_x     = "view_offset_x",
     view_offset_y     = "view_offset_y",
+    vkey_map_raw      = "vkey_map_raw",
 }
 
 local m = {}

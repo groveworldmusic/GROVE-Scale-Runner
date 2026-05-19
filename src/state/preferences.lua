@@ -17,6 +17,8 @@ local prefs_state = {
     subdivision_index = 1,
     auto_focus_enabled = true,
     theme_index = 1,
+    vkey_map_raw = "",
+    vkey_map_modified = false,
 }
 
 local persist = require("state.persist")
@@ -37,6 +39,8 @@ function m.Init(defaults)
     if defaults.subdivision_index ~= nil then prefs_state.subdivision_index = defaults.subdivision_index end
     if defaults.auto_focus_enabled ~= nil then prefs_state.auto_focus_enabled = defaults.auto_focus_enabled end
     if defaults.theme_index ~= nil then prefs_state.theme_index = defaults.theme_index end
+    if defaults.vkey_map_raw ~= nil then prefs_state.vkey_map_raw = defaults.vkey_map_raw end
+    if defaults.vkey_map_modified ~= nil then prefs_state.vkey_map_modified = defaults.vkey_map_modified end
 end
 
 --- Sync values from a state table (typically config.state after persist.Load)
@@ -51,6 +55,8 @@ function m.SyncFromState(state)
     if state.subdivision_index ~= nil then prefs_state.subdivision_index = state.subdivision_index end
     if state.auto_focus_enabled ~= nil then prefs_state.auto_focus_enabled = state.auto_focus_enabled end
     if state.theme_index ~= nil then prefs_state.theme_index = state.theme_index end
+    if state.vkey_map_raw ~= nil then prefs_state.vkey_map_raw = state.vkey_map_raw end
+    if state.vkey_map_modified ~= nil then prefs_state.vkey_map_modified = state.vkey_map_modified end
 end
 
 -- Getters
@@ -63,6 +69,8 @@ function m.GetInversionDirection() return prefs_state.inversion_direction end
 function m.GetSubdivisionIndex() return prefs_state.subdivision_index end
 function m.GetAutoFocusEnabled() return prefs_state.auto_focus_enabled end
 function m.GetThemeIndex() return prefs_state.theme_index end
+function m.GetVkeyMapRaw() return prefs_state.vkey_map_raw end
+function m.GetVkeyMapModified() return prefs_state.vkey_map_modified end
 
 --- Flush pending saves once per frame (called from MainLoop).
 --- Only saves keys that actually changed, reducing SetExtState calls.

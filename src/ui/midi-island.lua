@@ -14,6 +14,7 @@ local seq_store = require("state.sequencer")
 local prefs = require("state.preferences")
 local midi = require("core.midi")
 local piano_roll = require("ui.piano-roll")
+local remap = require("ui.midi-island.remap")
 local timeline = require("ui.timeline")
 local velocity = require("ui.velocity")
 local preset_browser = require("ui.preset-browser")
@@ -195,6 +196,15 @@ function m.Draw(char)
     -- progression — the user explicitly changed slots, so they want to see those notes.
     local cur_rev = seq_store.GetProgressionRevision()
     if cur_rev ~= _island_progression_revision then
+        -- Auto-save current notes to slot-specific file before loading new progression
+        local cur_page = seq_store.GetCurrentPage()
+        local rev_slot = _island_progression_revision > 0 and _island_progression_revision or nil
+        if cur_page and rev_slot then
+            local cur_notes = note_store.GetNotes()
+            if cur_notes and #cur_notes > 0 then
+                preset_browser.SaveSlotSnapshot(cur_page, rev_slot, cur_notes)
+            end
+        end
         island_store.LoadNotesFromProgression(seq_store)
         _island_progression_revision = cur_rev
         _cached_total_beats_valid = false
@@ -368,6 +378,15 @@ function m.Draw(char)
             gfx.line(right_x + LABEL_W, ve_y, right_x + LABEL_W, bot)
         end
     end
+
+    -- 8. Remap modal overlay (drawn on top of everything)
+    -- Returns whether Escape was consumed (modal closed instead of script quit)
+    local remap_consumed_esc = false
+    if remap.GetVisible() then
+        remap_consumed_esc = remap.Draw(right_x, y, right_w, h, char)
+    end
+
+    return remap_consumed_esc
 end
 
 function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_SIZE)

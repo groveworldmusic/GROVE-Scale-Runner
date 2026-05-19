@@ -59,7 +59,7 @@ function m.DrawFullView(char)
     m.DrawHeader()
     m.DrawIslands()
     m.DrawPerformanceArea()
-    m.DrawMIDIIsland(char)
+    return m.DrawMIDIIsland(char)  -- returns esc_consumed for remap modal
 end
 
 -- =========================================================
@@ -67,7 +67,7 @@ end
 -- =========================================================
 
 function m.DrawMIDIIsland(char)
-    midi_island.Draw(char)
+    return midi_island.Draw(char)  -- returns esc_consumed for remap modal
 end
 
 return m

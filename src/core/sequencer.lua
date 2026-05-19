@@ -92,6 +92,11 @@ function sequencer.Run()
         loop = 16
     end
     
+    -- Time selection gate (Batch D): compute visible beat range
+    -- Playback only triggers chords whose measure overlaps [ts_start, ts_end).
+    local ts_start = island_store.GetTimeSelectionStart() or 0
+    local ts_end = island_store.GetTimeSelectionEnd() or 16
+    
     -- Resolve current subdivision count
     local sub_idx = prefs.GetSubdivisionIndex() or 1
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
@@ -115,9 +120,14 @@ function sequencer.Run()
         -- Auto-paginate
         seq_store.SetCurrentPage(math.floor((seq_store.GetCurrentStep() - 1) / 4) + 1)
         
-        local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
-        if slot and type(slot) == "table" then
-            seq_store.SetMidiNotes(TriggerSubChord(slot, 0))
+        -- Time selection gate: only trigger chord if current measure overlaps range
+        local step_start = cur_m * 4
+        local step_end = (cur_m + 1) * 4
+        if step_end > ts_start and step_start < ts_end then
+            local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
+            if slot and type(slot) == "table" then
+                seq_store.SetMidiNotes(TriggerSubChord(slot, 0))
+            end
         end
     
     -- SAME MEASURE: check for sub-step boundary
@@ -130,9 +140,14 @@ function sequencer.Run()
             for _, n in ipairs(seq_store.GetMidiNotes()) do midi.SendMidi(n, false) end
             
             seq_store.SetCurrentSubStep(current_sub)
-            local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
-            if slot and type(slot) == "table" then
-                seq_store.SetMidiNotes(TriggerSubChord(slot, current_sub))
+            -- Time selection gate: only trigger chord if current measure overlaps range
+            local step_start = cur_m * 4
+            local step_end = (cur_m + 1) * 4
+            if step_end > ts_start and step_start < ts_end then
+                local slot = seq_store.GetProgressionEntry(seq_store.GetCurrentStep())
+                if slot and type(slot) == "table" then
+                    seq_store.SetMidiNotes(TriggerSubChord(slot, current_sub))
+                end
             end
         end
     end

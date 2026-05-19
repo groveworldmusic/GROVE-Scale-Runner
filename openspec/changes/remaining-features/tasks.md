@@ -42,11 +42,11 @@ Chain strategy: pending
 
 ## Phase 3: Vkey-Map Configurables (C)
 
-- [ ] 3.1 Create `src/core/vkey-map.lua` with `GetVkeyMap()`, `SetEntry()`, `ResetToDefaults()`, `Serialize()`, `Deserialize()`, `IsModified()`
-- [ ] 3.2 Add `vkey_map_raw` + `vkey_map_modified` keys to `src/state/preferences.lua`, `src/state/persist.lua`, `src/config.lua`
-- [ ] 3.3 Replace `config.VKEY_MAP` with `vkey_map.GetVkeyMap()` in `src/core/keyboard.lua`
-- [ ] 3.4 Create `src/ui/midi-island/remap.lua` — 4×7 grid overlay, cell click handler, degree/octave dropdown, conflict detection
-- [ ] 3.5 Add gear button between SYNC and SNAP in `src/ui/midi-island/header.lua`
+- [x] 3.1 Create `src/core/vkey-map.lua` with `GetVkeyMap()`, `SetEntry()`, `ResetToDefaults()`, `Serialize()`, `Deserialize()`, `IsModified()`
+- [x] 3.2 Add `vkey_map_raw` + `vkey_map_modified` keys to `src/state/preferences.lua`, `src/state/persist.lua`, `src/config.lua`
+- [x] 3.3 Replace `config.VKEY_MAP` with `vkey_map.GetVkeyMap()` in `src/core/keyboard.lua` + `src/ui/pads.lua`
+- [x] 3.4 Create `src/ui/midi-island/remap.lua` — 4×7 grid overlay, cell click handler, degree/octave dropdown, conflict detection
+- [x] 3.5 Add gear button between TOOLS and PRESETS in `src/ui/midi-island/header.lua`
 
 ## Phase 4: MIDI Input Recording (D)
 
