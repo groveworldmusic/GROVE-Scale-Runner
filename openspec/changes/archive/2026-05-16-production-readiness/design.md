@@ -1,0 +1,1 @@
+Concise implementation design for Production Readiness Lockdown (SDD). Covers: new modules (safe-loader.lua, constants.lua, path-utils.lua), modified files (15+), algorithm snippets (sandbox load, LICE tracking, GFX guards, hot path caching), dependency check (no cycles), rollback strategies, and open decisions. Practical "what to code" plan derived from spec #798.

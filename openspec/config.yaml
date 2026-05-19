@@ -1,0 +1,48 @@
+# openspec/config.yaml
+schema: spec-driven
+
+context: |
+  Grove Scale Runner — REAPER GFX Lua script for QWERTY-to-MIDI mapping.
+  
+  Stack: Lua 5.x / LuaJIT via REAPER, REAPER GFX API (gfx.*), REAPER Lua API (reaper.*).
+  Architecture: module-per-file with local + return pattern. Global mutable state in config.state.
+  UI: immediate-mode GFX rendering (main GFX context + separate compact panel GFX context).
+  Testing: single standalone manual test (tests/test_midi.lua), no test runner, no Lua CLI on dev machine.
+  Style: PascalCase module files, snake_case functions, local module pattern (local m = {}; return m).
+
+rules:
+  proposal:
+    - Scope each change to a single concern (dropdowns, layout, MIDI, etc.)
+    - Include any REAPER GFX gotchas (gfx.mouse_wheel zeroing, GFX context separation)
+    - Mention whether the change affects main window, compact panel, or both
+  specs:
+    - Use Given/When/Then for scenarios
+    - Use RFC 2119 keywords (MUST, SHALL, SHOULD, MAY)
+    - Include REAPER GFX behavior notes where relevant
+  design:
+    - Document GFX context separation (main vs compact) when both are affected
+    - Document config.state changes explicitly (new fields, modified fields)
+    - Note circular dependency constraints (sequencer cannot require midi)
+  tasks:
+    - Group by phase, use hierarchical numbering
+    - Keep tasks completable in one session
+    - Flag tasks that require manual REAPER testing
+  apply:
+    - Follow existing code patterns (local m = {} modules, config.state for state)
+    - Document gfx.mouse_wheel zeroing pattern when adding scroll features
+    - Always zero gfx.mouse_wheel after reading in each GFX context
+    - Always consume config.state.mouse_wheel_delta after each widget
+    tdd: false
+    test_command: ""
+  verify:
+    - Static analysis only — no test runner available
+    - Verify by code review against spec scenarios
+    - Flag untestable UI logic for manual REAPER testing
+    - For mouse_wheel features: verify delta consumption and GFX zeroing
+    test_command: ""
+    build_command: ""
+    coverage_threshold: 0
+  archive:
+    - Move change folder to openspec/changes/archive/YYYY-MM-DD-{change-name}/
+    - Merge delta specs into openspec/specs/{domain}/spec.md
+    - Include gfx.mouse_wheel zeroing pattern as knowledge for future cycles

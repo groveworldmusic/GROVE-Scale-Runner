@@ -1,6 +1,10 @@
--- GROVE FL MIDI: Global Configuration and State
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik Sanz Cordoví
+-- GROVE Scale Runner: Global Configuration and State
 local config = {}
 
+config.APP_NAME = "GROVE Scale Runner"
+config.EXTSTATE_NS = "GROVE_Scale_Runner"
 config.script_title = "Scale Runner"
 
 config.NOTE_NAMES = {"C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"}
@@ -30,21 +34,49 @@ config.SCALES = {
 }
 
 config.CHORD_MODES = {
-    {name="Off", offsets={0}},
+    {name="NOTE", offsets={0}},
     {name="Tri", offsets={0, 2, 4}},
     {name="7ma", offsets={0, 2, 4, 6}},
-    {name="9na", offsets={0, 2, 4, 6, 8}}
+    {name="9na", offsets={0, 2, 4, 6, 8}},
+    {name="sus2", offsets={0, 2, 7}},
+    {name="sus4", offsets={0, 5, 7}},
+    {name="dim", offsets={0, 3, 6}},
+    {name="aug", offsets={0, 4, 8}},
+    {name="11th", offsets={0, 4, 7, 10, 14, 17}},
+    {name="13th", offsets={0, 4, 7, 10, 14, 17, 21}}
 }
+
+config.INVERSION_MODES = {"Base", "1st", "2nd", "3rd"}
+
+config.SUBDIVISION_MODES = {1, 2, 3, 4, 8, 16}
+config.SUBDIVISION_LABELS = {"1/1", "1/2", "1/3", "1/4", "1/8", "1/16"}
 
 config.VIEW_MODES = { FULL = 1, COMPACT = 2 }
 
 -- Docked Transport Bar dimensions
 config.DOCK_MIN_W, config.DOCK_MIN_H = 400, 50
 
+-- Preference keys persisted via reaper.SetExtState/GetExtState.
+-- These must match the key registry in state/persist.lua.
+config.PREF_KEYS = {
+    "root_index",
+    "scale_index",
+    "octave",
+    "chord_mode_index",
+    "inversion_index",
+    "inversion_direction",
+    "subdivision_index",
+    "volume",
+    "color_mode",
+    "auto_focus_enabled",
+    "theme_index",
+    "vkey_map_raw",
+}
+
 -- Expanded state for Pagination (16 slots, 4 pages)
 config.state = {
     view_mode = config.VIEW_MODES.FULL,
-    root_index = 1, scale_index = 1, octave = 4, chord_mode_index = 1,
+    root_index = 1, scale_index = 1, octave = 4, chord_mode_index = 1, inversion_index = 1, inversion_direction = 0, subdivision_index = 1,
     use_velocity = true,
     use_scroll = true,
     show_tooltips = false,
@@ -62,22 +94,23 @@ config.state = {
     active_notes = {},  -- ref-counted: [midi_note] = count
     color_mode = "grade", -- "grade" = grade_colors per degree, "flat" = all blue
     last_mouse_cap = 0, mouse_click = false, mouse_wheel_delta = 0,
-    view_offset_x = 1000,
+    view_offset_x = 200,  -- Issue B5: reduced from 1000 to 200 for 1366×768 display compatibility
     view_offset_y = 0,
+    theme_index = 1,       -- 1=Current, 2=Dark, 3=HighContrast
     -- Auto-start configuration
     auto_start_compact = false,  -- Start compact bar overlay alongside full view
     auto_start_reaper = false,   -- Auto-launch this script when REAPER starts
+    auto_track_setup = true,     -- Auto-arm + monitor + MIDI input on track selection
     compact_overlay_active = false,  -- Compact bar visible alongside full view
     -- Docked transport bar state
     docked_mode = false,
     dock_id = 0,
-    -- MIDI Island
-    midi_island_expanded = false,
-    midi_channel = 1,
-    midi_island_toggled = false,
+    -- (MIDI Island state moved to core/midi.lua)
     -- Compact composite state (for JS_Composite transport bar view)
     last_gfx_state = {dock=0, x=100, y=100, w=720, h=500},
     -- Compact composite resources (managed by ui/compact.lua)
+    vkey_map_raw = "",       -- Serialized VKEY_MAP override (string), loaded by vkey-map.lua Init
+    vkey_map_modified = false, -- Whether the VKEY_MAP deviates from defaults
     compact = {
         transport_hwnd = nil,
         lice_bitmap = nil,

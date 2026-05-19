@@ -1,0 +1,20 @@
+Comportamiento de la isla MIDI:
+La idea de este apartado es que además de poder escuchar los acordes en los slots también el usuario pueda visualizarlo en el piano roll de la isla MIDI que funcionan como un inspector de acordes o notas y editarlos en caso de ser necesario.
+Trabajará de forma dinámica junto con los slots:
+Si se arrastran un pad a un slot las notas que forman ese pad deben dibujarse en el piano roll en su octava correspondiente con su Velocity reflejada correctamente, y con la duración correcta.
+El piano roll debe tener su cabezal de reproducción con la barra de progreso sincronizada a la barra de progreso de los slots.
+Las notas en posicion vertical del piano roll deben estar bien representadas con su color correspondiente blanco o negro y su nomenclatura correspondiente.
+Los scroll deben funcionar correctamente.
+En la grilla las proporciones entre compases deben ser coherentes, debe haber subdivisiones en cara compás.
+La idea del apartado de Presets en tener los guardados y renombrados las progresiones de acordes usados en tus proyectos para poder reutilizarlas en otras e incluso tenerlos por si es necesario buscar que progresión se uso en una canción específica rápidamente.
+El botón save guarda la progresión, slots cargados escala seleccionada octava, tipo de acorde. Y el botón load se encarga de cargar toda esta información.
+
+Actualmente para que mi script funciona correctamente debo armar la pista activar el monitoreo y cambiar el input de la pista a virtual MIDI keyboard, esto es un proceso tedioso para el usuario debes buscar una estrategia para automatizar todo este proceso o averiguar la ruta más simple para que funcione sin tener que hacer tantos pasos automáticamente.
+
+Necesito buscar e identificar absolutamente todos los errores de lógica y posibles gaps de funanciamiento que puedan suceder durante el uso del script para mitigarlos antes de lanzar el script a producción.
+
+Una nueva isla llamada INVERSIÓN que va a controlar la inversión de acordes con 4 modos,
+Base, 1 Inv,  2 Inv, 3 inv. Base: acorde normal, 1 Inv: haciendo la primera inversión del acorde, y así para la segunda y tercera inversión.
+
+Un nuevo botón dropdown para controlar las subdiviciones de los slots de acordes y las grillas del piano roll. Con varios modos: 1/1, 1/2, 1/3, 1/4, 1/8, 1/16.
+Esto lo que va a hacer es subdividir cada compás en el número correspondiente por ejemplo son 4 compases porque estamos en compases de a 4 al poner 1/1 se mantiene el mismo funcionamiento que es el normal pero al cambiar 1/2 por ejemplo cada compás de a cuatro se subdivide en dos esto da la posibilidad al usuario de poder arrastrar más de un pad al mismo slot si normalmente el usuario podía arrastrar un solo pad lo que hacía sonar un solo acorde en el tiyde ese compás ahora podrá arrastrar dos acordes al mismo slot por lo que en el mismo tiempo que transcurre ese compás van a sonar dos acordes el primero que se arrastró y después a mitad de tiempo del copas sonará el segundo posteriormente continuando al otro compás, las subdivisiones y demás de verán reflejadas también en la grilla del piano roll de la isla MIDI. Los slots van a manejar este comportamiento de la siguiente forma: un la parte inferior del propio slot se van a mostrar círculos parecidos a los círculos de paginado que actuarán como barra de progreso del compás permitiéndole al usuario identificar por qué acorde dentro del copas va sonando a la vez que el texto que marca el acorde se vuelve dinámico cambiando dependiendo del acorde que este sonando en el copas, tendríamos en la parte inferior circulos idénticos al paginado pero alumbrando solo el círculo que está sonando en el momento del color del grado del acorde igual y esto acompañado de un texto y color dinámico del slot que también cambia, los círculos de progreso van dentro del propio slot para ello vas a acomodar, el texto de adentro y el número de grado para que esté en una posición favorable quedando así el los textos en la parte superior de tri del slot y los círculos de progreso en la parte inferior.

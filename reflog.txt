@@ -1,0 +1,30 @@
+﻿6bc66cb HEAD@{0}: commit: fix(ui): reduce vertical scroll factor to 0.08 for true fluid scroll
+5654773 HEAD@{1}: commit: fix(ui): remove duplicate keyboard strip function body causing syntax error
+db81f88 HEAD@{2}: commit: fix(ui): VSB visible_pitches usa pr_h no vsb_h para sincronizar con el grid
+2fe4e84 HEAD@{3}: commit: feat(ui): smooth vertical scroll with sub-pixel positioning
+4a7d1d4 HEAD@{4}: commit: fix(ui): clamp VSB and HSB thumb positions to prevent overflow and drag jumps
+5377c4c HEAD@{5}: commit: fix(piano-roll): scrollbars en m├írgenes 7px, keyboard display centrado en C3, MIDI toggle fix
+03748ba HEAD@{6}: reset: moving to HEAD
+03748ba HEAD@{7}: reset: moving to HEAD
+03748ba HEAD@{8}: commit: fix(piano-roll): GetPrimarySelectedIndex now returns last-selected index
+3ad1bfb HEAD@{9}: commit: refactor(ui): convert compact.lua and components.lua to barrel modules, cleanup openspec
+6b0ba87 HEAD@{10}: commit: refactor(core): consolidate MIDI, sequencer, main loop and improve preset browser
+55b1e4d HEAD@{11}: commit: feat(ui): integrate P4 tool selector, lasso, and bulk velocity into views
+2e607d6 HEAD@{12}: commit: feat(piano-roll): add P3 vertical keyboard and P4 tool/lasso/multi-select state and interactions
+cf63c9f HEAD@{13}: commit: refactor(piano-roll): split monolith into grid.lua + note.lua sub-modules
+3294352 HEAD@{14}: commit: feat(piano-roll): add DAW-style 4-tier grid hierarchy and note gradient with velocity opacity
+ea9a9d7 HEAD@{15}: checkout: moving from refactor/project-refactor-phase-3a-components to inversion-subdivision
+ea9a9d7 HEAD@{16}: commit: fix(ui): use actual viewport rows for scrollbar ratio, not cached +2 range
+157585d HEAD@{17}: commit: perf(ui): optimize piano roll frame rate
+db9d3c0 HEAD@{18}: commit: feat(ui): add keyboard shortcuts for island mode
+011683d HEAD@{19}: commit: feat(ui): add smooth island transitions and docked mode support
+cafd922 HEAD@{20}: commit: feat(ui): add island-specific theme colors and polish
+640f4d0 HEAD@{21}: commit: fix(ui): fix save button double-trigger and folder scroll overwriting file scroll in preset browser
+45b231c HEAD@{22}: commit: feat(ui): add velocity editor and preset browser (Isla MIDI Unit 3)
+2675589 HEAD@{23}: reset: moving to HEAD
+2675589 HEAD@{24}: commit: refactor(ui): add barrel re-export in components.lua
+d258b6c HEAD@{25}: commit: refactor(ui): extract dropdown.lua from components.lua
+b4fc8ae HEAD@{26}: commit: refactor(ui): extract paginator.lua from components.lua
+59dc6f1 HEAD@{27}: commit: refactor(ui): extract buttons.lua from components.lua
+e6e680e HEAD@{28}: checkout: moving from master to refactor/project-refactor-phase-3a-components
+e6e680e HEAD@{29}: commit: feat: MIDI island spacing, window sizing, and layout adjustments

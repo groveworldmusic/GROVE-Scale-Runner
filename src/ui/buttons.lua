@@ -1,0 +1,121 @@
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik Sanz Cordoví
+-- GROVE Scale Runner: Button UI Components (extracted from components.lua)
+local config = require("config")
+local drag_store = require("state.drag")
+local ui_store = require("state.ui")
+local helpers = require("ui.helpers")
+local theme = require("ui.theme")
+
+-- NOTE: `components` (for DrawRoundedRect) is resolved lazily inside each function
+-- to avoid circular require at load time (components.lua also requires buttons.lua)
+
+local m = {}
+
+function m.DrawToolIcon(type, x, y, size, active)
+    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + size and gfx.mouse_y >= y and gfx.mouse_y <= y + size
+    local col = active and theme.colors.text or theme.colors.text_dim
+    
+    -- All icons render as Unicode glyphs via gfx.drawstr (same as MIDI island PAINT/KNIFE)
+    -- Each icon: g=glyph, s=size scale, yo=vertical offset, xo=horizontal offset
+    local icons = {
+        help = { g = "?", s = 0.95, yo = 0, xo = 0 },
+        settings = { g = "\226\154\153", s = 0.75, yo = 0, xo = 0 },  -- U+2699 ⚙
+        view = { g = "\226\138\159", s = 1.2, yo = -1, xo = 0 },      -- U+229F ⊟
+        clear = { g = "\226\140\171", s = 0.9, yo = -1, xo = 0 },       -- U+232B ⌫
+        export = { g = "\226\158\166", s = 1.05, yo = -1, xo = 2 },     -- U+27A6 ➦
+    }
+    local icon = icons[type]
+    if not icon then
+        return ui_store.GetMouseClick() and hover
+    end
+    
+    helpers.SetColor(col)
+    gfx.setfont(1, "Calibri", math.floor(size * icon.s))
+    local gw, gh = gfx.measurestr(icon.g)
+    gfx.x, gfx.y = x + (size - gw) / 2 + (icon.xo or 0), y + (size - gh) / 2 + (icon.yo or 0)
+    gfx.drawstr(icon.g)
+    
+    return ui_store.GetMouseClick() and hover
+end
+
+function m.DrawNoteDisplay(x, y, w, h, note)
+    local components = require("ui.components")
+    helpers.SetColor(theme.colors.bg)
+    components.DrawRoundedRect(x, y, w, h, 6, true)
+    
+    helpers.SetColor(theme.colors.text)
+    gfx.setfont(1, "Calibri", math.floor(h * 0.7))
+    local note_str = note == "None" and "-" or note
+    local nw, nh = gfx.measurestr(note_str)
+    gfx.x, gfx.y = x + (w - nw) / 2, y + (h - nh) / 2
+    gfx.drawstr(note_str)
+end
+
+function m.DrawButton(x, y, w, h, label, active, font_size)
+    local components = require("ui.components")
+    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
+    local is_mouse_down = (gfx.mouse_cap & 1) == 1
+    local pressed = hover and is_mouse_down
+
+    -- 1. Base background: btn_bg or btn_active
+    helpers.SetColor(active and theme.colors.btn_active or theme.colors.btn_bg)
+    components.DrawRoundedRect(x, y, w, h, 6, true)
+
+    -- 2. Stroke on inactive buttons (rounded outline)
+    if not active then
+        helpers.SetColor(theme.colors.text_dim, 0.25)
+        gfx.roundrect(x, y, w, h, 6, 0)
+    end
+
+    -- 3. Hover overlay (white semi-transparent instead of swapping bg)
+    if hover and not active then
+        helpers.SetColor({1, 1, 1, 0.08})
+        components.DrawRoundedRect(x, y, w, h, 6, true)
+    end
+
+    -- 4. Press effect: darker top half shadow + text offset
+    if pressed then
+        helpers.SetColor({0, 0, 0, 0.15})
+        gfx.rect(x, y, w, math.floor(h/2), 1)
+    end
+
+    -- 5. Active toggle: subtle white inner border (rounded)
+    if active then
+        helpers.SetColor({1, 1, 1, 0.2})
+        components.DrawRoundedRect(x+1, y+1, w-2, h-2, 5, true)
+        helpers.SetColor(theme.colors.btn_active)
+        components.DrawRoundedRect(x+2, y+2, w-4, h-4, 4, true)
+    end
+
+    -- Label (pressed offset: +1px down)
+    helpers.SetColor(active and theme.colors.text or theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", font_size or 12)
+    local sw, sh = gfx.measurestr(label)
+    local off = pressed and 1 or 0
+    gfx.x, gfx.y = x+(w-sw)/2, y+(h-sh)/2 + off
+    gfx.drawstr(label)
+
+    return not drag_store.GetIsDragging() and ui_store.GetMouseClick() and hover
+end
+
+function m.DrawTransportButton(label, x, y, w, h)
+    local components = require("ui.components")
+    local hover = gfx.mouse_x >= x and gfx.mouse_x <= x + w and gfx.mouse_y >= y and gfx.mouse_y <= y + h
+    local is_mouse_down = (gfx.mouse_cap & 1) == 1
+    local pressed = hover and is_mouse_down
+
+    helpers.SetColor(pressed and theme.colors.btn_active or (hover and theme.colors.btn_hover or theme.colors.btn_bg))
+    components.DrawRoundedRect(x, y, w, h, 6, true)
+
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", 11)
+    local lw, lh = gfx.measurestr(label)
+    local off = pressed and 1 or 0
+    gfx.x, gfx.y = x + (w - lw) / 2, y + (h - lh) / 2 + off
+    gfx.drawstr(label)
+
+    return ui_store.GetMouseClick() and hover
+end
+
+return m

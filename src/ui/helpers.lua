@@ -1,6 +1,10 @@
--- GROVE FL MIDI: Shared UI Helpers
+-- SPDX-License-Identifier: MIT
+-- Copyright (c) 2026 Andrik Sanz Cordoví
+-- GROVE Scale Runner: Shared UI Helpers
 local config = require("config")
+local ui_store = require("state.ui")
 local theme = require("ui.theme")
+local api_guard = require("core.api-guard")
 local helpers = {}
 
 -- Set GFX color from {r,g,b,a} table with optional alpha multiplier
@@ -10,7 +14,7 @@ end
 
 -- Draw a tooltip at mouse position with optional font_size (default 11)
 function helpers.DrawTooltip(text, font_size)
-    if not config.state.show_tooltips then return end
+    if not ui_store.GetShowTooltips() then return end
     local fs = font_size or 11
     gfx.setfont(1, "Calibri", fs)
     local tw, th = gfx.measurestr(text)
@@ -82,6 +86,24 @@ local COMPACT_ABBREV = {
     ["Neopolitan"] = "Neopo",
     ["Phrygian"] = "Phryg",
 }
+
+--- Compute scale note sets from root and scale indices.
+--- Returns (scale_notes, note_to_degree) where scale_notes[note_idx] = true
+--- and note_to_degree[note_idx] = degree for each scale interval.
+--- Follows the Issue 13 caching pattern for reuse across caches.
+function helpers.ComputeScaleNotes(root_idx, scale_idx)
+    local scale_notes = {}
+    local note_to_degree = {}
+    local si = api_guard.ClampIndex(scale_idx, 1, #config.SCALES)
+    local ri = api_guard.ClampIndex(root_idx, 1, 12)
+    local intervals = config.SCALES[si].intervals
+    for degree, interval in ipairs(intervals) do
+        local note_idx = ((ri - 1 + interval) % 12) + 1
+        scale_notes[note_idx] = true
+        note_to_degree[note_idx] = degree
+    end
+    return scale_notes, note_to_degree
+end
 
 function helpers.AbbreviateScale(name)
     return FULL_ABBREV[name] or name
