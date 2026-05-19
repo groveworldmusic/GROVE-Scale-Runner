@@ -20,6 +20,8 @@ local seq_state = {
     page_override_timer = 0,
     slot_flash = { idx = -1, timer = 0 },
     current_sub_step = 0,
+    slot_hover_idx = -1,
+    slot_hover_sub = 0,
 }
 
 -- Volume save debounce: slider drag calls SetVolume every frame,
@@ -211,5 +213,11 @@ function m.SetSlotFlashTimer(v) seq_state.slot_flash.timer = v end
 -- Sub-step tracking for subdivision playback
 function m.GetCurrentSubStep() return seq_state.current_sub_step end
 function m.SetCurrentSubStep(v) seq_state.current_sub_step = v end
+
+-- Slot hover sub preview (mouse wheel cycling through subdivided slot subs)
+function m.GetSlotHoverIdx() return seq_state.slot_hover_idx end
+function m.SetSlotHoverIdx(v) seq_state.slot_hover_idx = v end
+function m.GetSlotHoverSub() return seq_state.slot_hover_sub end
+function m.SetSlotHoverSub(v) seq_state.slot_hover_sub = v end
 
 return m

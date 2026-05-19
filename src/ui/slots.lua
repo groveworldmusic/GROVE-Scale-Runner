@@ -19,6 +19,14 @@ local prefs = require("state.preferences")
 
 local m = {}
 
+-- Returns (cx, cy, r) for the clear-subs circle in bottom-right of slot
+local function GetClearSubsRect(x, y, w, h)
+    local r = 10
+    local cx = x + w - r - 6
+    local cy = y + h - r - 6
+    return cx, cy, r
+end
+
 -- Extracted: background, glow, progress bar, flash overlay
 local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
     local components = require("ui.components")
@@ -71,6 +79,7 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
     local subdivision = config.SUBDIVISION_MODES[sub_idx] or 1
     if slot and subdivision > 1 then
         local active_sub = play and (seq_store.GetCurrentSubStep() or 0) or -1
+        local preview_sub = (not play) and (seq_store.GetSlotHoverIdx() == global_idx) and (seq_store.GetSlotHoverSub() or 0) or -1
         local circle_r = math.max(2, math.min(4, math.floor(h * 0.035)))
         local spacing = circle_r * 3.5
         local rows = subdivision > 8 and 2 or 1
@@ -85,6 +94,8 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
             local cy = circle_y_base - row * (circle_r * 3)
             if i == active_sub then
                 helpers.SetColor(theme.colors.page_active)
+            elseif i == preview_sub - 1 then
+                helpers.SetColor(theme.colors.slot_playing)  -- hover preview highlight
             elseif slot.subs and slot.subs[i + 1] then
                 helpers.SetColor(theme.colors.text)  -- filled (has sub-entry)
             elseif not slot.subs and i == 0 then
@@ -95,6 +106,18 @@ local function DrawSlotBackground(global_idx, x, y, w, h, slot, play)
             gfx.circle(cx, cy, circle_r, 1, 1)
         end
     end
+
+    -- SUBS CLEAR BUTTON: red circle with X when slot is subdivided
+    if slot and slot.subs and #slot.subs > 0 then
+        local cx, cy, r = GetClearSubsRect(x, y, w, h)
+        helpers.SetColor({1, 0.2, 0.2}, 0.7)
+        gfx.circle(cx, cy, r, 1, 1)
+        helpers.SetColor({1, 1, 1}, 0.9)
+        gfx.setfont(1, "Calibri", math.floor(r * 1.5))
+        local xw, xh = gfx.measurestr("X")
+        gfx.x, gfx.y = cx - xw / 2, cy - xh / 2
+        gfx.drawstr("X")
+    end
 end
 
 -- Extracted: note name, roman numeral, slot number
@@ -102,22 +125,32 @@ end
 local function DrawSlotLabel(global_idx, x, y, w, h, slot, play)
     local components = require("ui.components")
     -- Slot number (top-left corner)
-    helpers.SetColor(theme.colors.text_dim, 0.3)
-    gfx.setfont(1, "Calibri", math.floor(h * 0.15))
+    helpers.SetColor(theme.colors.text, 0.7)
+    gfx.setfont(1, "Calibri", math.floor(h * 0.2))
     local num_str = tostring(global_idx)
     gfx.x, gfx.y = x + 4, y + 2
     gfx.drawstr(num_str)
 
     if slot then
-        -- Resolve the effective degree: use active sub-step during playback if subdivided
+        -- Resolve the effective degree: use active sub-step during playback if subdivided,
+        -- or hover preview when mouse wheel cycling
         local display_degree = slot.degree
         local display_velocity = slot.velocity
-        if play and slot.subs and #slot.subs > 0 then
-            local active_sub = seq_store.GetCurrentSubStep() or 0
-            local sub = slot.subs[active_sub + 1]
-            if sub and sub.degree then
-                display_degree = sub.degree
-                display_velocity = sub.velocity
+        if slot.subs and #slot.subs > 0 then
+            if play then
+                local active_sub = seq_store.GetCurrentSubStep() or 0
+                local sub = slot.subs[active_sub + 1]
+                if sub and sub.degree then
+                    display_degree = sub.degree
+                    display_velocity = sub.velocity
+                end
+            elseif seq_store.GetSlotHoverIdx() == global_idx and seq_store.GetSlotHoverSub() > 0 then
+                local preview_sub = seq_store.GetSlotHoverSub()
+                local sub = slot.subs[preview_sub]
+                if sub and sub.degree then
+                    display_degree = sub.degree
+                    display_velocity = sub.velocity
+                end
             end
         end
         
@@ -142,6 +175,24 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
     local components = require("ui.components")
     if not hover then return end
 
+    -- MOUSE WHEEL: cycle sub-pads in subdivided slot
+    if slot and slot.subs and #slot.subs > 0 then
+        local wheel_delta = ui_store.ConsumeMouseWheelDelta()
+        if wheel_delta ~= 0 then
+            local cur = seq_store.GetSlotHoverSub()
+            if wheel_delta > 0 then
+                cur = cur - 1  -- scroll up = previous sub
+            else
+                cur = cur + 1  -- scroll down = next sub
+            end
+            -- Wrap around 1..#slot.subs
+            if cur < 1 then cur = #slot.subs end
+            if cur > #slot.subs then cur = 1 end
+            seq_store.SetSlotHoverSub(cur)
+            seq_store.SetSlotHoverIdx(global_idx)
+        end
+    end
+
     helpers.SetColor({1,1,1,0.1})
     components.DrawRoundedRect(x, y, w, h, 8, true)
 
@@ -159,7 +210,28 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
 
     -- RIGHT CLICK TO DELETE (on fresh click-down only)
     if (gfx.mouse_cap & 2) == 2 and (ui_store.GetLastMouseCap() & 2) == 0 then
-        progression.Remove(global_idx)
+        if slot and slot.subs and #slot.subs > 0 then
+            -- Check if clicking on the clear-circle (red X in bottom-right)
+            local cx, cy, r = GetClearSubsRect(x, y, w, h)
+            local mx, my = gfx.mouse_x, gfx.mouse_y
+            if (mx - cx)^2 + (my - cy)^2 <= r^2 then
+                -- Click on clear-circle: remove ENTIRE slot
+                progression.Remove(global_idx)
+            else
+                -- Click elsewhere on subdivided slot: remove LAST sub only
+                local entry = seq_store.GetProgressionEntry(global_idx)
+                if entry and entry.subs then
+                    if #entry.subs > 1 then
+                        table.remove(entry.subs)
+                        seq_store.SetProgressionEntry(global_idx, entry)
+                    else
+                        progression.Remove(global_idx)
+                    end
+                end
+            end
+        else
+            progression.Remove(global_idx)
+        end
     end
 
     -- CLICK + DRAG: track pending, start drag only after 8px threshold
@@ -187,7 +259,13 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
             local inv = prefs.GetInversionIndex()
             local click_degree = slot.degree
             if slot.subs and #slot.subs > 0 then
-                click_degree = slot.subs[1].degree
+                -- Use hover preview sub if active, otherwise first sub
+                local preview_sub = seq_store.GetSlotHoverSub()
+                if preview_sub > 0 and preview_sub <= #slot.subs then
+                    click_degree = slot.subs[preview_sub].degree
+                else
+                    click_degree = slot.subs[1].degree
+                end
             end
             midi.TriggerChord(click_degree, true, slot, nil, inv)
             midi.TriggerChord(click_degree, false, slot, nil, inv)
@@ -221,6 +299,8 @@ function m.HandleSlotInteraction(global_idx, x, y, w, h, slot, hover)
                     -- Append to existing subs array (up to subdivision count)
                     entry = existing
                     if #entry.subs < subdivision then
+                        -- Update to current chord mode from preferences
+                        entry.chord_mode_index = prefs.GetChordModeIndex()
                         table.insert(entry.subs, {
                             degree = drag_store.GetSourceDegree(),
                             velocity = entry_velocity,
@@ -291,6 +371,12 @@ function m.DrawProgressionSlot(global_idx, x, y, w, h)
     local slot = seq_store.GetProgressionEntry(global_idx)
     local play = seq_store.GetIsPlaying() and seq_store.GetCurrentStep() == global_idx
     local hover = gfx.mouse_x >= x and gfx.mouse_x <= x+w and gfx.mouse_y >= y and gfx.mouse_y <= y+h
+    
+    -- Reset hover sub preview if mouse left this slot
+    if not hover and seq_store.GetSlotHoverIdx() == global_idx then
+        seq_store.SetSlotHoverIdx(-1)
+        seq_store.SetSlotHoverSub(0)
+    end
     
     DrawSlotBackground(global_idx, x, y, w, h, slot, play)
     DrawSlotLabel(global_idx, x, y, w, h, slot, play)

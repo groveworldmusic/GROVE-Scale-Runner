@@ -50,10 +50,10 @@ Chain strategy: pending
 
 ## Phase 4: MIDI Input Recording (D)
 
-- [ ] 4.1 Create `src/core/midi-input.lua` with `Poll()`, `SetArmed()`, `IsArmed()`, `Cleanup()`, `_open_notes` tracking, 5s auto-close timeout
-- [ ] 4.2 Add `UpdateOpenNoteDuration(pitch, duration)` to `src/state/note-store.lua`
-- [ ] 4.3 Add record-arm toggle button (red circle, glow when armed) in `src/ui/midi-island/header.lua`
-- [ ] 4.4 Wire midi-input in `src/main.lua` — require in Init, `Poll()` after HandleKeyboard in MainLoop, `Cleanup()` in CleanupAll
+- [x] 4.1 Create `src/core/midi-input.lua` with `Poll()`, `SetArmed()`, `IsArmed()`, `Cleanup()`, `_open_notes` tracking, 5s auto-close timeout
+- [x] 4.2 Add `UpdateOpenNoteDuration(pitch, duration)` to `src/state/note-store.lua`
+- [x] 4.3 Add record-arm toggle button (red circle, glow when armed) in `src/ui/midi-island/header.lua`
+- [x] 4.4 Wire midi-input in `src/main.lua` — require in Init, `Poll()` after HandleKeyboard in MainLoop, `Cleanup()` in CleanupAll
 
 ## Phase 5: UI Tests (E)
 

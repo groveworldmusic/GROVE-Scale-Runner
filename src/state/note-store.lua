@@ -89,6 +89,22 @@ function m.AddNote(note)
     end
 end
 
+--- Update the duration of the most recent open note (origin="midi-input")
+--- matching the given pitch. Finds in reverse order (most recent first).
+--- Silent no-op if no matching note found (e.g., note-off arrived without
+--- a prior note-on, or the note was already finalized).
+--- @param pitch number MIDI pitch (0-127)
+--- @param duration number New duration in beats
+function m.UpdateOpenNoteDuration(pitch, duration)
+    for i = #state.notes, 1, -1 do
+        local note = state.notes[i]
+        if note.pitch == pitch and note.origin == "midi-input" and note.duration == 0 then
+            note.duration = duration
+            return
+        end
+    end
+end
+
 --- Remove a note at the given index. Shifts subsequent entries.
 --- Does NOT fix selection state (caller handles that).
 --- Does rebuild UUID reverse index since indices shifted.

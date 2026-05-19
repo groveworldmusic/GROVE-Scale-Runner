@@ -112,6 +112,7 @@ local views = require("ui.views")
 local compact = require("ui.compact")
 local keyboard = require("core.keyboard")
 local vkey_map = require("core.vkey-map")
+local midi_input = require("core.midi-input")
 local persist = require("state.persist")
 local gfx_safe = require("ui.gfx-safe")
 
@@ -214,6 +215,7 @@ local function CleanupAll()
     sequencer.Stop()  -- Stop sequencer FIRST so note-offs are sent via ref-counted notes
     midi.AllNotesOff(true)  -- force=true: bypasses ref-count gate on cleanup (belt + suspenders)
     keyboard.Cleanup()
+    midi_input.Cleanup()  -- finalize any open recording notes
     compact.Cleanup()
 end
 
@@ -240,6 +242,7 @@ local function MainLoop()
     keyboard.CheckFocus()
     sequencer.Run()
     keyboard.HandleKeyboard()
+    midi_input.Poll()  -- record MIDI input when armed (no-op if disarmed)
     preferences_store.TickSaveDebounce()
     sequencer_store.TickVolumeSave()  -- debounced volume persist (slider drag)
 

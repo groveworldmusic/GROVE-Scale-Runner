@@ -14,6 +14,7 @@ local prefs = require("state.preferences")
 local preset_browser = require("ui.preset-browser")
 local preset_store = require("state.preset-store")
 local remap = require("ui.midi-island.remap")
+local midi_input = require("core.midi-input")
 
 local m = {}
 
@@ -133,12 +134,13 @@ function m.DrawHeader(content_w)
     local ps_btn_w = math.floor(b_w * 1.0)
     local icon_btn_w = math.floor(b_w * 0.6)
     local theme_btn_w = math.floor(b_w * 0.9)
+    local rec_btn_w = math.floor(b_w * 0.45)       -- record-arm circle (Phase D)
     
     local snap_toggle_w = math.floor(b_w * 0.65)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w
-    local total_header_w = tools_w + main_gap + icon_btn_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + icon_btn_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + rec_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
 
@@ -196,7 +198,41 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + theme_btn_w + main_gap
 
-    -- 4. SAVE preset to file
+    -- 4. RECORD-ARM toggle (red circle, glows when armed)
+    local rec_center_x = cur_x + math.floor(rec_btn_w / 2)
+    local rec_center_y = header_y + math.floor(b_h / 2)
+    local rec_radius = math.floor(math.min(rec_btn_w, b_h) * 0.32)
+    local rec_armed = midi_input.IsArmed()
+    local rec_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + rec_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+
+    -- Glow ring when armed (pulsing brightness)
+    if rec_armed then
+        local pulse = 0.5 + 0.5 * math.sin(reaper.time_precise() * 4)
+        -- Outer glow ring (unfilled circle)
+        helpers.SetColor({1.0, 0.3 + pulse * 0.3, 0.3 + pulse * 0.3, 0.3 + pulse * 0.3})
+        gfx.circle(rec_center_x, rec_center_y, rec_radius + 3, 1, 0)
+        -- Filled circle (bright red)
+        helpers.SetColor({1.0, 0.2 + pulse * 0.2, 0.2 + pulse * 0.2, 1.0})
+    else
+        -- Dim red (hover brightens slightly)
+        local dim = rec_hover and 0.6 or 0.45
+        helpers.SetColor({dim, 0.05, 0.05, 1.0})
+    end
+    gfx.circle(rec_center_x, rec_center_y, rec_radius, 1, 1)
+
+    -- Click handler
+    if ui_store.GetMouseClick() and rec_hover and not drag_store.GetIsDragging() then
+        ui_store.ConsumeMouseClick()
+        midi_input.SetArmed(not rec_armed)
+    end
+
+    -- Tooltip
+    if rec_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip(rec_armed and "Recording MIDI input — click to stop" or "Record MIDI input (external controller)", layout.US(700))
+    end
+    cur_x = cur_x + rec_btn_w + main_gap
+
+    -- 5. SAVE preset to file
     local save_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     helpers.SetColor(save_hover and theme.colors.btn_hover or theme.colors.island_bg)
     components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)
