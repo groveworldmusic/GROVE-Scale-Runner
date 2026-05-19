@@ -324,6 +324,7 @@ local function MainLoop()
     if prev_dock ~= last_dock_state then gfx_needs_redraw = true end
 
     local char = gfx.getchar()
+    ui_store.SetLastChar(char)  -- Expose to preset browser search and other consumers
 
     -- Only redraw GFX when something visual changed, but always call gfx.getchar() for responsiveness
     local esc_consumed = false

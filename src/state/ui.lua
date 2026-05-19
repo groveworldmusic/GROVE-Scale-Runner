@@ -29,6 +29,8 @@ local ui_state = {
     last_mouse_x = 0,
     last_mouse_y = 0,
     force_next_redraw = false,
+    search_active = false,
+    last_char = 0,
 }
 
 local m = {}
@@ -149,5 +151,13 @@ function m.SetLastMouseY(v) ui_state.last_mouse_y = v end
 
 function m.GetForceNextRedraw() return ui_state.force_next_redraw end
 function m.SetForceNextRedraw(v) ui_state.force_next_redraw = v end
+
+-- Search active flag (preset browser)
+function m.GetSearchActive() return ui_state.search_active end
+function m.SetSearchActive(v) ui_state.search_active = v end
+
+-- Last char from gfx.getchar() (for preset browser search input)
+function m.GetLastChar() return ui_state.last_char end
+function m.SetLastChar(v) ui_state.last_char = v or 0 end
 
 return m

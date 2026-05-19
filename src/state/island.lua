@@ -57,6 +57,11 @@ local island_state = {
     vsb_dragging = false,
     vsb_drag_start_y = 0,
     vsb_scroll_at_drag_start = 0,
+    -- Quantize dialog state (Batch I)
+    quantize_dialog_open = false,
+    quantize_start = 100,
+    quantize_duration = 0,
+    quantize_strength = 100,
 }
 
 function m.Init(defaults)
@@ -352,6 +357,18 @@ function m.ResetScrollbarDragState()
     island_state.vsb_drag_start_y = 0
     island_state.vsb_scroll_at_drag_start = 0
 end
+
+-- =========================================================
+-- Quantize Dialog State (Batch I)
+-- =========================================================
+function m.GetQuantizeDialogOpen() return island_state.quantize_dialog_open end
+function m.SetQuantizeDialogOpen(v) island_state.quantize_dialog_open = v end
+function m.GetQuantizeStart() return island_state.quantize_start end
+function m.SetQuantizeStart(v) island_state.quantize_start = math.max(0, math.min(100, v)) end
+function m.GetQuantizeDuration() return island_state.quantize_duration end
+function m.SetQuantizeDuration(v) island_state.quantize_duration = math.max(0, math.min(100, v)) end
+function m.GetQuantizeStrength() return island_state.quantize_strength end
+function m.SetQuantizeStrength(v) island_state.quantize_strength = math.max(0, math.min(100, v)) end
 
 function m.LoadNotesFromProgression(seq_store, inv_idx, inv_dir)
     note_store.LoadNotesFromProgression(seq_store, inv_idx, inv_dir)

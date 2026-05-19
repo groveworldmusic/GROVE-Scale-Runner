@@ -28,6 +28,11 @@ local _ts_drag_start_beat = 0
 function m.HandleKeyboard(char, prog_focused)
     local keyboard_consumed = false
 
+    -- Quantize dialog open: block all keyboard input (Escape handled by DrawQuantizeDialog)
+    if island_store.GetQuantizeDialogOpen() then
+        return false
+    end
+
     -- Progression undo/redo shortcuts when mouse is not in piano roll grid
     if prog_focused then
         if char == 346 then  -- Ctrl+Z (90 + 256)
@@ -55,6 +60,9 @@ function m.HandleKeyboard(char, prog_focused)
 end
 
 function m.HandleMouse(ctx)
+    -- Block normal input when quantize dialog is open (dialog handles its own mouse)
+    if island_store.GetQuantizeDialogOpen() then return false end
+
     local mx, my = gfx.mouse_x, gfx.mouse_y
     local click = ui_store.GetMouseClick()
     local last_cap = ui_store.GetLastMouseCap()

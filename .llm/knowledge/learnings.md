@@ -153,6 +153,28 @@ When notes are replaced (e.g., on progression reload), `SetNotes()` now calls `C
 **Lección**: Revision counter es más barato que comparar tablas enteras. Bump en mutaciones, check en reads.
 **Archivos**: `src/state/midi.lua`, `src/ui/piano.lua`, `src/core/slots.lua`
 
+## batch-h-presets-panel: Preset Browser bugs
+
+### Bug: Search query/setLastChar store functions missing
+**Síntoma**: `preset_store.GetSearchQuery()` y `ui_store.GetLastChar()` no existían. El preset browser llamaba funciones nil → runtime error al mostrar el panel.
+**Causa raíz**: La feature "Live Search" (openspec preset-browser-enhancements T3) implementó la UI del search bar en `main.lua` pero nunca agregó los getters/setters al store. `search_query`, `search_active`, y `last_char` faltaban tanto en el state table como en los getters/setters.
+**Solución**: Agregar `search_query` field + `GetSearchQuery()`/`SetSearchQuery()`/`ClearSearchQuery()` a `preset-store.lua`. Agregar `search_active` + `GetSearchActive()`/`SetSearchActive()` y `last_char` + `GetLastChar()`/`SetLastChar()` a `ui.lua`. Wire up `ui_store.SetLastChar(char)` en `main.lua` después de `gfx.getchar()`.
+**Archivos**: `src/state/preset-store.lua`, `src/state/ui.lua`, `src/main.lua`
+
+### Bug: RefreshPresets clears selection every 3 seconds
+**Síntoma**: Multi-select visual feedback desaparece después de 3 segundos. Usuario Ctrl+clickea varios presets pero el highlight se pierde.
+**Causa raíz**: `ScanDirectory()` llama `SetSelectedPresetIdx(nil)` en ambos paths (cache-hit y cache-miss). `RefreshPresets()` llama `ScanDirectory()` cada 3 segundos desde `DrawPresetBrowser`, borrando la selección del usuario.
+**Solución**: En el cache-hit path de `ScanDirectory`, NO llamar `SetSelectedPresetIdx(nil)` ni `SetBrowserScroll(0)` — solo actualizar la cache y el error. La selección se preserva cuando el directorio no cambió (refresh periódico).
+**Archivos**: `src/ui/preset-browser/io.lua`
+
+### Bug: folder_scroll no se resetea al navegar directorios
+**Síntoma**: Al navegar a un directorio con menos subdirectorios, el folder_scroll apunta a un valor fuera de rango. El rendering lo clampéa pero el valor almacenado queda stale.
+**Solución**: Agregar `preset_store.SetFolderScroll(0)` en el cache-miss path de `ScanDirectory` (junto al `SetBrowserScroll(0)` existente).
+**Archivos**: `src/ui/preset-browser/io.lua`
+
+### Lección: Verificar que store functions existan para TODOS los calls en UI
+La UI de preset browser llamaba 4 funciones que no existían en stores. Cualquier nueva feature de UI que lea/escriba estado debe verificar que los getters/setters correspondientes estén implementados en la store. No asumir que existen solo porque la UI está escrita.
+
 ## MIDI Island Window Minimum Height Enforcement
 
 ### REAPER GFX no tiene API para mínimo de ventana

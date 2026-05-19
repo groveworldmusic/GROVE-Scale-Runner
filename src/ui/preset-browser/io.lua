@@ -85,8 +85,8 @@ function m.ScanDirectory(dir_path, force_refresh)
         local cached = _scan_cache[dir_path]
         preset_store.SetPresetTree({path = dir_path, dirs = cached.dirs, files_count = #cached.files})
         preset_store.SetPresetFiles(cached.files)
-        preset_store.SetSelectedPresetIdx(nil)
-        preset_store.SetBrowserScroll(0)
+        -- Preserve selection on cache-hit (periodic refresh — files unchanged)
+        -- Only reset scroll + selection on explicit directory navigation
         preset_store.SetBrowserError(nil)
         return
     end
@@ -158,6 +158,7 @@ function m.ScanDirectory(dir_path, force_refresh)
     preset_store.SetPresetFiles(files)
     preset_store.SetSelectedPresetIdx(nil)
     preset_store.SetBrowserScroll(0)
+    preset_store.SetFolderScroll(0)
     preset_store.SetBrowserError(nil)
 end
 

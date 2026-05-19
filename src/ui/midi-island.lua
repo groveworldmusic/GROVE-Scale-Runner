@@ -78,6 +78,9 @@ local THUMB_SIZE = 5  -- Thumb size: 5px in 7px track → 1px margin each side, 
 -- Scrollbar drag states (Phase 5: moved to island_store — kept as local refs for perf, synced on demand)
 -- NOTE: Use island_store.GetSbDragging/SetSbDragging for persistence across island toggle.
 
+-- Quantize dialog knob drag index (module-local, persists across frames)
+local _quantize_knob_drag = nil
+
 local function DrawPresetPanel(island_x, y, preset_w, h)
     if preset_w > 0 then
         local p_radius = 10
@@ -386,7 +389,13 @@ function m.Draw(char)
         remap_consumed_esc = remap.Draw(right_x, y, right_w, h, char)
     end
 
-    return remap_consumed_esc
+    -- 9. Quantize dialog overlay (drawn on top of everything, including remap)
+    local quantize_consumed_esc = false
+    if island_store.GetQuantizeDialogOpen() then
+        quantize_consumed_esc = m.DrawQuantizeDialog(right_x, y, right_w, h, char)
+    end
+
+    return remap_consumed_esc or quantize_consumed_esc
 end
 
 function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_SIZE)
@@ -482,6 +491,199 @@ function m.DrawScrollbars(right_x, LABEL_W, grid_w, pr_y, pr_h, ve_h, sb_y, SB_S
             else island_store.SetScrollOffsetY(math.max(0, math.min(max_scroll_y, island_store.GetVsbScrollAtDragStart() + ((my - island_store.GetVsbDragStartY()) / vsb_h) * max_scroll_y))) end
         end
     end
+end
+
+-- =========================================================
+-- Quantize Dialog Overlay (Batch I)
+-- =========================================================
+
+local _knob_labels = {"Start", "Duration", "Strength"}
+
+--- Draw the quantize popup dialog as an overlay.
+--- Draws a centered modal with 3 vertical slider knobs and Accept/Cancel buttons.
+--- Handles mouse events for knobs (click+drag vertical) and buttons.
+--- @param right_x number Left edge of content area
+--- @param y number Top edge of content area
+--- @param right_w number Content width
+--- @param h number Content height
+--- @param char number Current GFX key character
+--- @return boolean esc_consumed True if Escape was consumed
+function m.DrawQuantizeDialog(right_x, y, right_w, h, char)
+    if not island_store.GetQuantizeDialogOpen() then return false end
+
+    -- Handle Escape to close dialog
+    if char == 27 then
+        island_store.SetQuantizeDialogOpen(false)
+        return true
+    end
+
+    local mx = gfx.mouse_x
+    local my = gfx.mouse_y
+    local click = ui_store.GetMouseClick()
+    local left_held = (gfx.mouse_cap & 1) == 1
+
+    -- Semi-transparent dark overlay
+    helpers.SetColor({0.08, 0.08, 0.08, 0.85})
+    gfx.rect(right_x, y, right_w, h)
+
+    -- Dialog box dimensions
+    local box_w = 350
+    local box_h = 270
+    local box_x = right_x + math.floor((right_w - box_w) / 2)
+    local box_y = y + math.floor((h - box_h) / 2)
+
+    -- Dialog box background
+    helpers.SetColor({0.18, 0.18, 0.20, 0.95})
+    components.DrawRoundedRect(box_x, box_y, box_w, box_h, 10, true)
+
+    -- Title
+    helpers.SetColor(theme.colors.text)
+    gfx.setfont(1, "Calibri", 16)
+    local title = "Quantize Notes"
+    local tw, _ = gfx.measurestr(title)
+    gfx.x = box_x + (box_w - tw) / 2
+    gfx.y = box_y + 14
+    gfx.drawstr(title)
+
+    -- Knob layout
+    local knob_count = 3
+    local knob_w = 72
+    local knob_h = 120
+    local knob_gap = 18
+    local total_knobs_w = knob_count * knob_w + (knob_count - 1) * knob_gap
+    local knobs_start_x = box_x + math.floor((box_w - total_knobs_w) / 2)
+    local knobs_y = box_y + 42
+
+    -- Read current knob values from store each frame (updated by drag)
+    local knob_values = {
+        island_store.GetQuantizeStart(),
+        island_store.GetQuantizeDuration(),
+        island_store.GetQuantizeStrength(),
+    }
+
+    for i = 1, knob_count do
+        local kx = knobs_start_x + (i - 1) * (knob_w + knob_gap)
+
+        -- Label
+        helpers.SetColor(theme.colors.text)
+        gfx.setfont(1, "Calibri", 12)
+        local lw, _ = gfx.measurestr(_knob_labels[i])
+        gfx.x = kx + (knob_w - lw) / 2
+        gfx.y = knobs_y
+        gfx.drawstr(_knob_labels[i])
+
+        -- Slider track
+        local slider_x = kx + 6
+        local slider_w = knob_w - 12
+        local slider_y = knobs_y + 18
+        local slider_h = knob_h - 40
+
+        -- Track background
+        helpers.SetColor({0.12, 0.12, 0.14, 0.9})
+        components.DrawRoundedRect(slider_x, slider_y, slider_w, slider_h, 4, true)
+
+        -- Fill (bottom-up: value 100% = full fill)
+        local val = knob_values[i]
+        local fill_h = math.floor(slider_h * val / 100)
+        if fill_h > 0 then
+            helpers.SetColor({0.25, 0.50, 0.85, 0.8})
+            components.DrawRoundedRect(slider_x, slider_y + slider_h - fill_h, slider_w, fill_h, 4, true)
+        end
+
+        -- Value text
+        helpers.SetColor(theme.colors.text)
+        gfx.setfont(1, "Calibri", 11)
+        local val_str = tostring(val) .. "%"
+        local vw, _ = gfx.measurestr(val_str)
+        gfx.x = kx + (knob_w - vw) / 2
+        gfx.y = knobs_y + knob_h - 16
+        gfx.drawstr(val_str)
+
+        -- Mouse handling for knob slider
+        local in_slider = mx >= slider_x and mx <= slider_x + slider_w
+                      and my >= slider_y and my <= slider_y + slider_h
+
+        -- Click to set value immediately (start or resume drag)
+        if click and in_slider then
+            _quantize_knob_drag = i
+            local ratio = (my - slider_y) / slider_h
+            local new_val = math.floor((1 - ratio) * 100 + 0.5)
+            new_val = math.max(0, math.min(100, new_val))
+            if i == 1 then island_store.SetQuantizeStart(new_val)
+            elseif i == 2 then island_store.SetQuantizeDuration(new_val)
+            else island_store.SetQuantizeStrength(new_val) end
+            ui_store.ConsumeMouseClick()
+        end
+
+        -- Drag update: only if this knob is being dragged and mouse is held
+        if _quantize_knob_drag == i and left_held then
+            local clamp_my = math.max(slider_y, math.min(slider_y + slider_h, my))
+            local ratio = (clamp_my - slider_y) / slider_h
+            local new_val = math.floor((1 - ratio) * 100 + 0.5)
+            new_val = math.max(0, math.min(100, new_val))
+            if i == 1 then island_store.SetQuantizeStart(new_val)
+            elseif i == 2 then island_store.SetQuantizeDuration(new_val)
+            else island_store.SetQuantizeStrength(new_val) end
+        end
+    end
+
+    -- Reset knob drag when mouse button is released
+    if _quantize_knob_drag and not left_held then
+        _quantize_knob_drag = nil
+    end
+
+    -- Accept and Cancel buttons
+    local btn_w = 100
+    local btn_h = 28
+    local btn_gap = 16
+    local total_btns_w = btn_w * 2 + btn_gap
+    local btns_y = box_y + box_h - 48
+    local accept_x = box_x + math.floor((box_w - total_btns_w) / 2)
+    local cancel_x = accept_x + btn_w + btn_gap
+
+    -- Accept button
+    local accept_hover = mx >= accept_x and mx <= accept_x + btn_w
+                     and my >= btns_y and my <= btns_y + btn_h
+    helpers.SetColor(accept_hover and {0.2, 0.5, 0.2, 0.9} or {0.15, 0.4, 0.15, 0.8})
+    components.DrawRoundedRect(accept_x, btns_y, btn_w, btn_h, 6, true)
+    helpers.SetColor(theme.colors.text)
+    gfx.setfont(1, "Calibri", 13)
+    local acc_label = "Accept"
+    local acc_w, _ = gfx.measurestr(acc_label)
+    gfx.x = accept_x + (btn_w - acc_w) / 2
+    gfx.y = btns_y + (btn_h - 13) / 2
+    gfx.drawstr(acc_label)
+
+    if click and accept_hover then
+        piano_roll.ApplyQuantize(
+            island_store.GetQuantizeStart(),
+            island_store.GetQuantizeDuration(),
+            island_store.GetQuantizeStrength()
+        )
+        _cached_total_beats_valid = false  -- invalidate scrollbar cache
+        island_store.SetQuantizeDialogOpen(false)
+        ui_store.ConsumeMouseClick()
+    end
+
+    -- Cancel button
+    local cancel_hover = mx >= cancel_x and mx <= cancel_x + btn_w
+                     and my >= btns_y and my <= btns_y + btn_h
+    helpers.SetColor(cancel_hover and {0.5, 0.15, 0.15, 0.9} or {0.35, 0.1, 0.1, 0.8})
+    components.DrawRoundedRect(cancel_x, btns_y, btn_w, btn_h, 6, true)
+    helpers.SetColor(theme.colors.text)
+    gfx.setfont(1, "Calibri", 13)
+    local can_label = "Cancel"
+    local can_w, _ = gfx.measurestr(can_label)
+    gfx.x = cancel_x + (btn_w - can_w) / 2
+    gfx.y = btns_y + (btn_h - 13) / 2
+    gfx.drawstr(can_label)
+
+    if click and cancel_hover then
+        island_store.SetQuantizeDialogOpen(false)
+        ui_store.ConsumeMouseClick()
+    end
+
+    return false  -- Escape was already handled at top
 end
 
 return m

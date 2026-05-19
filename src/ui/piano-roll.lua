@@ -45,6 +45,7 @@ piano_roll.DrawNoteBlocks = note.DrawNoteBlocks
 piano_roll.NoteBlockHitTest = note.NoteBlockHitTest
 piano_roll.GetNotesInRect = note.GetNotesInRect
 piano_roll.MarkNotesDirty = note.MarkNotesDirty
+piano_roll.ApplyQuantize = note.ApplyQuantize
 
 -- =========================================================
 -- Re-export interaction module functions

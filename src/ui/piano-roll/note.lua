@@ -343,4 +343,45 @@ function m.GetNotesInRect(x1, y1, x2, y2, grid_x, grid_y, scroll_y, scroll_x, zo
     return results
 end
 
+-- =========================================================
+-- Quantize (Batch I)
+-- =========================================================
+
+--- Apply quantize to all notes with given parameters.
+--- Snaps note start and/or end to the current snap grid, controlled by
+--- three percentage parameters that blend between original and snapped.
+--- @param start_pct number 0-100 — how strongly note start snaps to grid
+--- @param duration_pct number 0-100 — how strongly note end snaps to grid
+--- @param strength_pct number 0-100 — overall strength applied proportionally
+function m.ApplyQuantize(start_pct, duration_pct, strength_pct)
+    local notes = island_store.GetNotes()
+    if not notes or #notes == 0 then return end
+
+    local snap = require("core.snap")
+    local snap_res = island_store.GetSnapResolution()
+    local snap_trip = island_store.GetSnapTriplet()
+
+    -- Only snap if resolution is valid (> 0)
+    local resolution = (snap_res and snap_res > 0) and snap_res or nil
+
+    for _, note in ipairs(notes) do
+        local raw_end = note.start_beat + note.duration
+
+        local snapped_start = snap.SnapBeat(note.start_beat, resolution, snap_trip)
+        local snapped_end = snap.SnapBeat(raw_end, resolution, snap_trip)
+
+        -- Blend between original and snapped positions
+        local start_offset = (snapped_start - note.start_beat) * (start_pct / 100) * (strength_pct / 100)
+        local new_start = note.start_beat + start_offset
+
+        local end_offset = (snapped_end - raw_end) * (duration_pct / 100) * (strength_pct / 100)
+        local new_end = raw_end + end_offset
+
+        note.start_beat = new_start
+        note.duration = math.max(0.25, new_end - new_start)
+    end
+
+    island_store.SetNotesState(island_store.NOTES_STATE_EDITED)
+end
+
 return m

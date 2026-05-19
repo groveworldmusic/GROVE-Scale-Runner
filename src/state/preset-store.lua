@@ -22,6 +22,7 @@ local state = {
     _stats_dirty = false,
     _editing_metadata = {},  -- {bpm=120, genre="", difficulty=1, tags="", notes=""}
     _thumbnail_cache = {},  -- keyed by path: {grid=table[8][8] of bool}
+    search_query = "",
 }
 
 function m.Init(defaults)
@@ -168,6 +169,11 @@ function m.GetThumbnail(path) return state._thumbnail_cache[path] end
 function m.SetThumbnail(path, grid) state._thumbnail_cache[path] = grid end
 function m.ClearThumbnailCache() state._thumbnail_cache = {} end
 
+-- Search query (for live search in preset browser)
+function m.GetSearchQuery() return state.search_query end
+function m.SetSearchQuery(v) state.search_query = v or "" end
+function m.ClearSearchQuery() state.search_query = "" end
+
 -- Clear all browser state to defaults
 function m.ClearBrowserState()
     state.current_directory = ""
@@ -177,6 +183,7 @@ function m.ClearBrowserState()
     state._last_selected_idx = nil
     state.browser_scroll = 0
     state.browser_error = nil
+    state.search_query = ""
 end
 
 return m

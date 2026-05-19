@@ -140,7 +140,7 @@ function m.DrawHeader(content_w)
     local snap_res_w = math.floor(b_w * 0.50)
     local snap_gap = 4
     local snap_w = snap_toggle_w + snap_gap + snap_res_w
-    local total_header_w = tools_w + main_gap + icon_btn_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + rec_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
+    local total_header_w = tools_w + main_gap + icon_btn_w + main_gap + ps_btn_w + main_gap + theme_btn_w + main_gap + rec_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + icon_btn_w + main_gap + snap_w
     local cur_x = layout.UX(0) + math.floor((content_w - total_header_w) / 2)
     local reload_requested = false
 
@@ -315,7 +315,26 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
-    -- 7. AUTOSCROLL toggle
+    -- 7. QUANTIZE toggle (opens quantize popup)
+    local q_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
+    helpers.SetColor(q_hover and theme.colors.btn_hover or theme.colors.island_bg)
+    components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)
+    if ui_store.GetMouseClick() and q_hover and not drag_store.GetIsDragging() then
+        ui_store.ConsumeMouseClick()
+        island_store.SetQuantizeDialogOpen(true)
+    end
+    helpers.SetColor(theme.colors.text_dim)
+    gfx.setfont(1, "Calibri", layout.US(2400))
+    local q_label = "Q"
+    local q_lw, q_lh = gfx.measurestr(q_label)
+    gfx.x, gfx.y = cur_x + (icon_btn_w - q_lw) / 2, header_y + (b_h - q_lh) / 2 - 3
+    gfx.drawstr(q_label)
+    if q_hover and not drag_store.GetIsDragging() then
+        helpers.DrawTooltip("Quantize notes to snap grid", layout.US(700))
+    end
+    cur_x = cur_x + icon_btn_w + main_gap
+
+    -- 8. AUTOSCROLL toggle
     local as_enabled = island_store.GetAutoscrollEnabled()
     local as_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     local as_bg = as_enabled and theme.colors.btn_active or (as_hover and theme.colors.btn_hover or theme.colors.island_bg)
@@ -336,7 +355,7 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
-    -- 8. SYNC to Transport (snaps sequencer to REAPER playback position)
+    -- 9. SYNC to Transport (snaps sequencer to REAPER playback position)
     local str_hover = gfx.mouse_x >= cur_x and gfx.mouse_x <= cur_x + icon_btn_w and gfx.mouse_y >= header_y and gfx.mouse_y <= header_y + b_h
     helpers.SetColor(str_hover and theme.colors.btn_hover or theme.colors.island_bg)
     components.DrawRoundedRect(cur_x, header_y, icon_btn_w, b_h, 10, true)
@@ -356,7 +375,7 @@ function m.DrawHeader(content_w)
     end
     cur_x = cur_x + icon_btn_w + main_gap
 
-    -- 9. SNAP controls
+    -- 10. SNAP controls
     cur_x = DrawSnapControls(cur_x, b_w, b_h, header_y)
 
     return cur_x, reload_requested, sync_requested
