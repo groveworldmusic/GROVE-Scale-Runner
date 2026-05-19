@@ -2,8 +2,8 @@
 
 > **Convención**: Este documento es el catálogo maestro de features. Toda feature nueva que se implemente debe agregarse aquí con su estado (`✅ Implementada` / `🚧 En progreso` / `📋 Planificada`).
 >
-> **Última actualización**: 2026-05-18 (sesión presets-full-features + Phase 1 & 2)
-> **Versión del script**: v1.1.0-dev
+> **Última actualización**: 2026-05-18 (sesión SDD Batches A–I: todas las features completadas)
+> **Versión del script**: v1.2.0-dev
 
 ---
 
@@ -190,8 +190,7 @@ La Isla MIDI es un panel expandible dentro del modo FULL que agrega:
 - `timeline.lua`: dibuja timeline con ticks de compás/beat, cabezal de reproducción; jerarquía 4-tier: measure → beat → 1/8 → 1/16 (filtrado por snap resolution)
 
 ### 5.5 Hover Highlight Piano Vertical
-> 📋 Planificada
-> Al pasar el cursor sobre una celda de la grilla del piano roll, se ilumina la nota correspondiente en el teclado vertical izquierdo.
+Al pasar el cursor sobre una celda de la grilla del piano roll, se ilumina la nota correspondiente en el teclado vertical izquierdo (overlay blanco 15% sobre la fila hovered en `grid.lua`).
 
 ### 5.6 Zoom / Scroll
 - **Zoom horizontal**: `scroll_zoom_x`, rango 10–200 px/beat
@@ -213,11 +212,25 @@ La Isla MIDI es un panel expandible dentro del modo FULL que agrega:
 |-------------|-------|-------------|
 | **Paint (✎)** | ✎ | Clic para añadir notas, Shift+clic en nota existente para eliminarla |
 | **Knife (✂)** | ✂ | Partir notas en dos en el punto de corte (`piano-roll/knife.lua`) |
-| **Eraser (⨯)** | ⨯ | Eliminar notas por clic o por lasso (`midi-island/input.lua`) |
+| **Eraser (⨯)** | ⨯ | Eliminar notas por clic (vía `HandlePaintRightClick` con left-click) o por lasso (`midi-island/input.lua`) |
 
 - `midi-island/header.lua` (194 LOC): toggle tool mode, MIDI channel selector, snap controls, zoom in/out
 
+### 5.9 Quantize Popup (B16)
+*Módulos: `src/ui/midi-island.lua` (DrawQuantizeDialog), `src/ui/piano-roll/note.lua` (ApplyQuantize), `src/state/island.lua` (quantize state)*
+
+- **Botón "Q"** en el header de la isla MIDI después del botón Sync
+- Al hacer clic, se abre un popup modal con 3 knobs verticales:
+  - **Start Time (0–100%)**: fuerza con la que el inicio de la nota se snap al grid
+  - **Duration (0–100%)**: fuerza con la que el final de la nota se snap al grid
+  - **Strength (0–100%)**: fuerza general que multiplica ambos parámetros
+- **Aceptar**: aplica `snap.SnapBeat()` a todas las notas con la resolución actual de snap
+- **Cancelar / Escape**: cierra el popup sin cambios
+- **Input bloqueado**: mientras el popup está abierto, no se procesan eventos de teclado ni mouse en el piano roll
+
 ---
+
+
 
 ## 6. Piano Roll — Edición de Notas
 
@@ -245,9 +258,10 @@ La Isla MIDI es un panel expandible dentro del modo FULL que agrega:
 *Módulo: `src/ui/velocity.lua`*
 - **Panel colapsable**: botón toggle en la UI
 - **Head circular de edición**: arrastrar el cabezal circular para ajustar la velocidad de la(s) nota(s) seleccionada(s)
+- **Precision drag (6px gate)**: el drag solo se activa cuando el click está dentro de 6px del centro del handle circular; clics fuera de ese radio actualizan la selección sin cambiar velocidad
 - **Delta relativo para multi-selección**: al arrastrar con varias notas seleccionadas, el delta desde el click inicial se aplica a todas, preservando diferencias relativas entre notas
 - **Número dinámico sobre cabezal**: muestra el valor de velocidad actual
-- **Ajuste a la izquierda**: si el número dinámico choca con el borde de la franja del piano (teclado), se muestra a la derecha
+- **Overflow flip**: si el número dinámico choca con el borde de la franja del piano (teclado), se reposiciona a la derecha del handle
 - Glass Blade aesthetic con glow stems + rounded pins; gradient coloring desde note color
 
 ### 6.5 Undo / Redo
@@ -614,6 +628,14 @@ El sistema de estado se compone de 9 stores + persistencia:
 | #21 | `src/core/keyboard.lua` | Velocity humanization activada: `85 + math.random(30)` |
 | #22 | `src/ui/views.lua` | Stuck note en play/stop toggle — `sequencer.Stop()` envía note-offs explícitos |
 | #23 | `src/state/note-store.lua`, `src/state/island.lua`, `src/ui/midi-island.lua`, `src/ui/views/islands.lua` | Inversion Island sync to MIDI island piano roll — `ProgressionToNotes` ahora acepta `inv_idx/inv_dir`, se regeneran notas al cambiar inversión cuando notes_state=LOADED |
+| #24 | `src/ui/views/islands.lua` | CHORD button order inverted: TRI/7MA/9NA ordenado bottom-up (TRI, 7MA, 9NA) |
+| #25 | `src/ui/dropdown.lua` | Scrollwheel magnitude fix — usar `math.abs(raw)` steps en vez de raw delta |
+| #26 | `src/ui/velocity.lua` | Velocity editor precision drag (6px handle zone) + label overflow flip |
+| #27 | `src/ui/midi-island/header.lua`, `src/ui/views.lua`, `src/state/island.lua` | MIDI Island header: CH → Settings submenu, Autoscroll toggle (AF+/AF-), Sync button (↻) con TimeMap2 |
+| #28 | `src/ui/piano-roll/note.lua`, `src/ui/piano-roll/grid.lua`, `src/ui/midi-island.lua`, `src/ui/piano-roll/interaction/handlers.lua` | Piano Roll visual: label gate 3-tier (nh<14/14-20/≥20), edge clip fix, hover highlight, resize detect, coord clamp |
+| #29 | `src/ui/midi-island/input.lua`, `src/ui/timeline.lua`, `src/state/sequencer.lua`, `src/core/sequencer.lua` | Piano Roll selection: Ctrl+drag lasso fix, time selection (ruler + state + sequencer gate) |
+| #30 | `src/ui/slots.lua`, `src/state/sequencer.lua`, `src/state/island.lua` | Slot system fixes: slot# visibility, right-click sub-delete, clear-all X, mouse wheel cycling, chord mode propagation |
+| #31 | `src/state/island.lua`, `src/ui/midi-island.lua`, `src/ui/piano-roll/note.lua` | Quantize popup: botón Q con 3 knobs (start/duration/strength) + modal overlay |
 
 ---
 
@@ -633,25 +655,25 @@ El sistema de estado se compone de 9 stores + persistencia:
 | # | Bug | Área | Estado |
 |---|-----|------|--------|
 | B01 | Scrollwheel en dropdowns requiere múltiples clics y a veces salta números | `src/ui/dropdown.lua` | 🐛 Pendiente |
-| B02 | Subdivisión de slots: cambiar de Tri → 9na no se aplica, piano roll no refleja el cambio | `src/ui/slots.lua`, piano roll | 🐛 Pendiente |
-| B03 | Clic derecho elimina ambos pads en slot subdividido (debería eliminar solo el seleccionado) | `src/ui/slots.lua` | 🐛 Pendiente |
-| B04 | Número del pad en esquina superior izquierda no se ve | `src/ui/slots.lua` (color/contraste) | 🐛 Pendiente |
-| B05 | Scrollwheel en subdivisión de slot: comportamiento inconsistente (debería cambiar entre subs, no paginar) | `src/ui/slots.lua` | 🐛 Pendiente |
+| B02 | Subdivisión de slots: cambiar de Tri → 9na no se aplica, piano roll no refleja el cambio | `src/ui/slots.lua`, piano roll | ✅ Resuelto (Batch E: chord mode propagation fix) |
+| B03 | Clic derecho elimina ambos pads en slot subdividido (debería eliminar solo el seleccionado) | `src/ui/slots.lua` | ✅ Resuelto (Batch E: right-click sub-delete) |
+| B04 | Número del pad en esquina superior izquierda no se ve | `src/ui/slots.lua` (color/contraste) | ✅ Resuelto (Batch E: slot# opacity 0.7, font h*0.2) |
+| B05 | Scrollwheel en subdivisión de slot: comportamiento inconsistente (debería cambiar entre subs, no paginar) | `src/ui/slots.lua` | ✅ Resuelto (Batch E: mouse wheel cycles sub-pads) |
 | B06 | Zoom vertical estrecho: notas negras (líneas de texto) dejan de apreciarse | `src/ui/piano-roll/note.lua` | 🐛 Pendiente |
 | B07 | Zoom vertical deforma bordes inferiores de notas (~1px hacia adentro) | `src/ui/piano-roll/note.lua` | 🐛 Pendiente |
 | B08 | Notas en borde inferior: scroll causa deformación por culling strategy | `src/ui/piano-roll/view.lua` | 🐛 Pendiente |
 | B09 | Notas pegadas a barra de velocity al dibujar cerca del borde inferior | `src/ui/velocity.lua` | 🐛 Pendiente |
-| B10 | CH button: posición invertida de botones Tri/7ma/9na | `src/ui/midi-island/header.lua` | 🐛 Pendiente |
-| B11 | Ctrl + drag izquierdo no activa lasso (debería ser selección por rectángulo) | `src/ui/midi-island/input.lua` | 🐛 Pendiente |
+| B10 | CH button: posición invertida de botones Tri/7ma/9na | `src/ui/views/islands.lua` | ✅ Resuelto (Batch A: orden bottom-up TRI/7MA/9NA) |
+| B11 | Ctrl + drag izquierdo no activa lasso (debería ser selección por rectángulo) | `src/ui/midi-island/input.lua` | ✅ Resuelto (Batch D: moved lasso init outside left_down block) |
 | B12 | Redimensionar ventana FULL: auto-zoom/scroll del piano roll no se reajusta | `src/ui/midi-island.lua` | 🐛 Pendiente |
 | B13 | Isla inversión no sincroniza cambios al piano roll | `src/state/note-store.lua`, `src/state/island.lua`, `src/ui/midi-island.lua`, `src/ui/views/islands.lua` | ✅ Resuelto (batch-g-inversion-sync: `ProgressionToNotes` + `LoadNotesFromProgression` aceptan `inv_idx/inv_dir`, islands.lua trigger) |
 | B14 | Panel de presets: bugs sin especificar (necesita investigación) | `src/ui/preset-browser/` | ✅ Resuelto (presets-full-features Phase 1 & 2) |
 | B15 | Botón X al lado de Cut para eliminar notas (no existe actualmente) | `src/ui/midi-island/header.lua` | 📋 Planificada |
-| B16 | Botón Quantize con popup de 3 knobs (start/duration/strength) | `src/core/quantize.lua` (existe), `quantize-popup.lua` (nuevo) | 📋 Planificada |
-| B17 | Botón SYNC en header isla MIDI: sincronizar cabezal de reproducción al cabezal de REAPER | `src/ui/midi-island/header.lua` | 📋 Planificada |
-| B18 | Mover botón Autoscroll al header de isla MIDI (actualmente en compact bar) + rediseño | `src/ui/midi-island/header.lua` | 📋 Planificada |
-| B19 | Mover botón CH desde header isla MIDI a submenú contextual de Settings | `src/ui/views/header.lua` | 📋 Planificada |
-| B20 | Subdivisión de slots: mostrar círculo rojo con X en esquina inferior derecha del slot para eliminar todos los pads | `src/ui/slots.lua` | 📋 Planificada |
-| B21 | Time selection en piano roll ruler → sincroniza con slots | `src/ui/timeline.lua`, piano-roll/store, `src/ui/slots.lua` | 📋 Planificada |
-| B22 | Hover highlight: nota del piano vertical se ilumina al pasar cursor por grilla | `src/ui/piano-roll/view.lua`, `src/ui/piano.lua` | 📋 Planificada |
-| B23 | Vista compacta: renderizada muy a la derecha (solapando controles REAPER) + no reposiciona | `src/ui/compact-bar.lua`, `src/ui/positioning.lua` | 📋 Planificada |
+| B16 | Botón Quantize con popup de 3 knobs (start/duration/strength) | `src/ui/midi-island.lua`, `src/ui/piano-roll/note.lua` | ✅ Resuelto (Batch I: botón Q + modal con knobs) |
+| B17 | Botón SYNC en header isla MIDI: sincronizar cabezal de reproducción al cabezal de REAPER | `src/ui/midi-island/header.lua` | ✅ Resuelto (Batch B: Sync con TimeMap2_timeToBeats) |
+| B18 | Mover botón Autoscroll al header de isla MIDI (actualmente en compact bar) + rediseño | `src/ui/midi-island/header.lua` | ✅ Resuelto (Batch B: botón AF+/AF- en header) |
+| B19 | Mover botón CH desde header isla MIDI a submenú contextual de Settings | `src/ui/views.lua` | ✅ Resuelto (Batch B: CH → submenu en ⚙) |
+| B20 | Subdivisión de slots: mostrar círculo rojo con X en esquina inferior derecha del slot para eliminar todos los pads | `src/ui/slots.lua` | ✅ Resuelto (Batch E: clear-all button) |
+| B21 | Time selection en piano roll ruler → sincroniza con slots | `src/ui/timeline.lua`, `src/state/island.lua`, `src/core/sequencer.lua` | ✅ Resuelto (Batch D: time selection state + ruler + sequencer gate) |
+| B22 | Hover highlight: nota del piano vertical se ilumina al pasar cursor por grilla | `src/ui/piano-roll/grid.lua` | ✅ Resuelto (Batch C: 15% white overlay on hovered row) |
+| B23 | Vista compacta: renderizada muy a la derecha (solapando controles REAPER) + no reposiciona | `src/ui/positioning.lua` | ✅ Resuelto (Batch A: auto-position leftmost empty area) |
